@@ -1,0 +1,163 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-glow: var(--primary-glow);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --radius: 0.875rem;
+  --background: oklch(0.985 0.005 250);
+  --foreground: oklch(0.21 0.04 260);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.54 0.22 277);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-glow: oklch(0.66 0.19 280);
+  --secondary: oklch(0.72 0.13 215);
+  --secondary-foreground: oklch(0.99 0 0);
+  --accent: oklch(0.78 0.16 75);
+  --accent-foreground: oklch(0.21 0.04 260);
+  --muted: oklch(0.96 0.005 250);
+  --muted-foreground: oklch(0.5 0.03 260);
+  --destructive: oklch(0.62 0.23 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.7 0.16 155);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.78 0.16 75);
+  --warning-foreground: oklch(0.21 0.04 260);
+  --border: oklch(0.92 0.01 255);
+  --input: oklch(0.92 0.01 255);
+  --ring: oklch(0.54 0.22 277);
+  --gradient-primary: linear-gradient(135deg, oklch(0.54 0.22 277), oklch(0.72 0.13 215));
+  --gradient-accent: linear-gradient(135deg, oklch(0.78 0.16 75), oklch(0.7 0.2 35));
+  --gradient-hero: radial-gradient(1200px 600px at 50% -10%, oklch(0.54 0.22 277 / 0.18), transparent 60%),
+                   radial-gradient(800px 400px at 90% 10%, oklch(0.72 0.13 215 / 0.15), transparent 60%);
+  --gradient-mesh: radial-gradient(at 20% 20%, oklch(0.54 0.22 277 / 0.12) 0, transparent 50%),
+                   radial-gradient(at 80% 0%, oklch(0.72 0.13 215 / 0.1) 0, transparent 50%),
+                   radial-gradient(at 0% 100%, oklch(0.78 0.16 75 / 0.08) 0, transparent 50%);
+  --shadow-sm: 0 1px 2px 0 oklch(0.21 0.04 260 / 0.04);
+  --shadow-md: 0 4px 16px -2px oklch(0.21 0.04 260 / 0.08);
+  --shadow-lg: 0 20px 40px -12px oklch(0.21 0.04 260 / 0.12);
+  --shadow-glow: 0 20px 60px -10px oklch(0.54 0.22 277 / 0.35);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.97 0.01 260);
+  --sidebar-accent-foreground: var(--primary);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+.dark {
+  --background: oklch(0.16 0.03 265);
+  --foreground: oklch(0.98 0.003 250);
+  --card: oklch(0.21 0.035 265);
+  --card-foreground: oklch(0.98 0.003 250);
+  --popover: oklch(0.21 0.035 265);
+  --popover-foreground: oklch(0.98 0.003 250);
+  --primary: oklch(0.66 0.19 280);
+  --primary-foreground: oklch(0.16 0.03 265);
+  --primary-glow: oklch(0.75 0.16 285);
+  --secondary: oklch(0.72 0.13 215);
+  --secondary-foreground: oklch(0.16 0.03 265);
+  --accent: oklch(0.78 0.16 75);
+  --accent-foreground: oklch(0.16 0.03 265);
+  --muted: oklch(0.26 0.03 265);
+  --muted-foreground: oklch(0.7 0.02 260);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.66 0.19 280);
+  --sidebar: oklch(0.18 0.03 265);
+  --sidebar-foreground: oklch(0.98 0.003 250);
+  --sidebar-accent: oklch(0.26 0.03 265);
+  --sidebar-accent-foreground: oklch(0.98 0.003 250);
+  --sidebar-border: oklch(1 0 0 / 8%);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  html { scroll-behavior: smooth; }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  .bg-gradient-primary { background-image: var(--gradient-primary); }
+  .bg-gradient-accent { background-image: var(--gradient-accent); }
+  .bg-gradient-hero { background-image: var(--gradient-hero); }
+  .bg-gradient-mesh { background-image: var(--gradient-mesh); }
+  .text-gradient {
+    background-image: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .shadow-elegant { box-shadow: var(--shadow-lg); }
+  .shadow-glow { box-shadow: var(--shadow-glow); }
+  .glass {
+    background: color-mix(in oklab, var(--card) 70%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  }
+  .animate-fade-in { animation: fade-in 0.3s ease-out both; }
+  .animate-scale-in { animation: scale-in 0.2s ease-out both; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
