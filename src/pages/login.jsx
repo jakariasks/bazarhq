@@ -13,10 +13,7 @@ function Login() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const search = useSearch({ strict: false })
- const redirect =
-  typeof search?.redirect === 'string' && search.redirect.startsWith('/')
-    ? search.redirect
-    : '/merchant'
+  const redirect = search?.redirect || '/merchant'
 
   const [tab, setTab] = useState('email')
 
@@ -32,12 +29,7 @@ function Login() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
-useEffect(() => {
-  if (user) {
-    navigate({ to: redirect, replace: true })
-  }
-}, [user, navigate, redirect])
-
+  useEffect(() => { if (user) navigate({ to: redirect }) }, [user])
 
   // ── Email login ──
   const submitEmail = async (e) => {
@@ -55,7 +47,7 @@ useEffect(() => {
     e.preventDefault()
     const digits = phone.replace(/\D/g, '')
     if (digits.length !== 11 || !/^01[3-9]/.test(digits)) {
-      toast.error('Enter a valid 11-digit Bangladeshi number (e.g. 01306060688)')
+      toast.error('Enter a valid 11-digit Bangladeshi number (e.g. 01712345678)')
       return
     }
     setLoading(true)
@@ -67,21 +59,14 @@ useEffect(() => {
     navigate({ to: redirect })
   }
 
-const signInWithGoogle = async () => {
-  setGoogleLoading(true)
-
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${window.location.origin}${redirect}`,
-    },
-  })
-
-  if (error) {
-    toast.error(error.message)
-    setGoogleLoading(false)
+  const signInWithGoogle = async () => {
+    setGoogleLoading(true)
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/merchant` },
+    })
+    if (error) { toast.error(error.message); setGoogleLoading(false) }
   }
-}
 
   const onPhoneChange = (val) => {
     setPhone(val.replace(/\D/g, '').slice(0, 11))
@@ -164,7 +149,8 @@ const signInWithGoogle = async () => {
                 transition={{ duration: 0.2 }}
                 onSubmit={submitEmail}
                 className="space-y-4"
-              >
+              
+                autoComplete="off">
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -172,7 +158,8 @@ const signInWithGoogle = async () => {
                     type="email"
                     required
                     autoFocus
-                    placeholder="jakaria@gmail.com"
+                    placeholder="you@example.com"
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
@@ -200,7 +187,8 @@ const signInWithGoogle = async () => {
                 transition={{ duration: 0.2 }}
                 onSubmit={submitPhone}
                 className="space-y-4"
-              >
+              
+                autoComplete="off">
                 <div className="grid gap-2">
                   <Label htmlFor="phone">Phone number</Label>
                   <div className="flex overflow-hidden rounded-lg border border-border bg-background transition-all focus-within:ring-2 focus-within:ring-ring">
@@ -210,17 +198,19 @@ const signInWithGoogle = async () => {
                     </div>
                     <Input
                       id="phone"
-                      type="tel"
+                      type="tel" autoComplete="off"
                       inputMode="numeric"
                       required
                       autoFocus
-                      placeholder="01306060688"
+                      placeholder="1XXXXXXXXXX"
                       value={phone}
                       onChange={(e) => onPhoneChange(e.target.value)}
                       className="border-0 focus-visible:ring-0"
                     />
                   </div>
-                 
+                  <p className="text-xs text-muted-foreground">
+                    Example: 01712345678 (11 digits starting with 1)
+                  </p>
                 </div>
                 <PasswordField
                   value={password}
@@ -262,7 +252,7 @@ function PasswordField({ value, onChange, show, onToggle, forgotLink }) {
       <div className="relative">
         <Input
           id="password"
-          type={show ? 'text' : 'password'}
+          type={show ? 'text' : 'password'} autoComplete="current-password"
           required
           value={value}
           onChange={(e) => onChange(e.target.value)}

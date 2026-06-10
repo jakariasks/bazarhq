@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { previewThemes } from '@/lib/preview-themes'
+import { SHOP_TYPES, CATEGORIES_BY_TYPE } from '@/lib/shop-categories'
 import { AuthGuard } from '@/components/auth-guard'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/integrations/supabase/client'
@@ -28,22 +29,15 @@ function validateSubdomain(raw) {
   return { ok: true, slug }
 }
 
-const SHOP_TYPES = ['Fashion & Apparel','Electronics','Grocery & Food','Beauty & Personal Care','Home & Living','Books & Stationery','Handmade & Crafts','Sports & Outdoors','Other']
-const SUGGESTED_CATS = ['Men','Women','Kids','Shoes','Accessories','Bags','Jewelry','Ethnic Wear','Electronics','Furniture','Skincare','Toys']
-
 const STEPS = [
-  { n: 1, label: 'Shop name' },
-  { n: 2, label: 'Subdomain' },
-  { n: 3, label: 'What you sell' },
-  { n: 4, label: 'Theme' },
-  { n: 5, label: 'Launch' },
+  { n: 1, label: 'Shop name' }, { n: 2, label: 'Subdomain' },
+  { n: 3, label: 'What you sell' }, { n: 4, label: 'Theme' }, { n: 5, label: 'Launch' },
 ]
 
 function CreateStorePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
-
   const [step, setStep] = useState(1)
   const [shopName, setShopName] = useState('')
   const [sub, setSub] = useState('')
@@ -56,6 +50,8 @@ function CreateStorePage() {
   const [launching, setLaunching] = useState(false)
   const debounceRef = useRef(null)
   const reqIdRef = useRef(0)
+
+  const suggestedCats = shopType ? CATEGORIES_BY_TYPE[shopType] ?? [] : []
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -75,14 +71,15 @@ function CreateStorePage() {
   }, [sub])
 
   const onSubInput = (raw) => { setTouched(true); setSub(raw.toLowerCase().replace(/\s+/g,'-').slice(0,32)) }
-  const addCategory = (cat) => { const c = cat.trim(); if (!c || categories.includes(c)) return; setCategories([...categories, c]); setCatInput('') }
-  const removeCategory = (cat) => setCategories(categories.filter((c) => c !== cat))
-  const toggleSuggested = (cat) => { if (categories.includes(cat)) removeCategory(cat); else addCategory(cat) }
+  const onShopTypeChange = (t) => { setShopType(t); setCategories([]) }
+  const toggleCategory = (cat) => setCategories((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat])
+  const addCustomCat = () => { const c = catInput.trim(); if (!c || categories.includes(c)) return; setCategories((p) => [...p, c]); setCatInput('') }
+  const removeCategory = (cat) => setCategories((prev) => prev.filter((c) => c !== cat))
 
   const canNext = () => {
     if (step === 1) return shopName.trim().length >= 2
     if (step === 2) return subStatus.kind === 'ok'
-    if (step === 3) return !!shopType
+    if (step === 3) return !!shopType && categories.length > 0
     return true
   }
 
@@ -96,12 +93,8 @@ function CreateStorePage() {
     if (!user) return
     setLaunching(true)
     const { data, error } = await supabase.from('stores').insert({
-      owner_id: user.id,
-      shop_name: shopName.trim(),
-      subdomain: sub,
-      theme_id: theme,
-      business_category: shopType,
-      categories: categories,
+      owner_id: user.id, shop_name: shopName.trim(), subdomain: sub,
+      theme_id: theme, business_category: shopType, categories,
     }).select('id').single()
     if (error || !data) { setLaunching(false); toast.error(error?.message ?? 'Failed'); return }
     await supabase.from('profiles').update({ current_store_id: data.id }).eq('id', user.id)
@@ -117,44 +110,28 @@ function CreateStorePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-4">
       <div className="mx-auto max-w-2xl">
-
         <div className="flex items-center justify-between py-5">
           <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary shadow-glow">
-              <ShoppingBag className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary shadow-glow"><ShoppingBag className="h-5 w-5 text-primary-foreground" /></div>
             <span className="font-semibold">BazarHQ</span>
           </Link>
           <Link to="/merchant" className="text-sm text-muted-foreground hover:text-foreground">Cancel</Link>
         </div>
 
-        {/* Steps */}
         <div className="mb-8 flex items-center justify-center">
           {STEPS.map((s, i) => (
             <div key={s.n} className="flex items-center">
-              <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-all duration-300 ${
-                s.n < step ? 'bg-primary text-primary-foreground shadow-glow'
-                : s.n === step ? 'bg-primary text-primary-foreground shadow-glow ring-4 ring-primary/20'
-                : 'border border-border bg-white text-muted-foreground'
-              }`}>
+              <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-all duration-300 ${s.n < step ? 'bg-primary text-primary-foreground shadow-glow' : s.n === step ? 'bg-primary text-primary-foreground shadow-glow ring-4 ring-primary/20' : 'border border-border bg-white text-muted-foreground'}`}>
                 {s.n < step ? <Check className="h-4 w-4" /> : s.n}
               </div>
-              {i < STEPS.length - 1 && (
-                <div className={`h-px w-10 sm:w-16 transition-all duration-500 ${s.n < step ? 'bg-primary' : 'bg-border'}`} />
-              )}
+              {i < STEPS.length - 1 && <div className={`h-px w-10 sm:w-16 transition-all duration-500 ${s.n < step ? 'bg-primary' : 'bg-border'}`} />}
             </div>
           ))}
         </div>
 
         <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -30 }}
-            transition={{ duration: 0.22 }}
-            className="rounded-2xl bg-white p-7 shadow-elegant sm:p-10"
-          >
+          <motion.div key={step} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} transition={{ duration: 0.22 }}
+            className="rounded-2xl bg-white p-7 shadow-elegant sm:p-10">
 
             {step === 1 && (
               <>
@@ -197,38 +174,57 @@ function CreateStorePage() {
             {step === 3 && (
               <>
                 <h1 className="text-2xl font-bold">What do you sell?</h1>
-                <p className="mt-1 text-sm text-muted-foreground">Pick your shop type and the categories you carry.</p>
-                <div className="mt-6">
-                  <Label className="mb-3 block">Shop type</Label>
+                <p className="mt-1 text-sm text-muted-foreground">Pick your shop type — categories will load automatically.</p>
+                <div className="mt-5">
+                  <Label className="mb-3 block font-semibold">Shop type <span className="text-destructive">*</span></Label>
                   <div className="flex flex-wrap gap-2">
                     {SHOP_TYPES.map((t) => (
-                      <button key={t} type="button" onClick={() => setShopType(t)} className={`rounded-lg border px-3 py-1.5 text-sm transition-all ${shopType === t ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border bg-white text-foreground hover:border-primary/50'}`}>{t}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-6">
-                  <Label className="mb-3 block">Categories <span className="font-normal text-muted-foreground">({categories.length} selected)</span></Label>
-                  <div className="flex flex-wrap gap-2">
-                    {SUGGESTED_CATS.map((c) => (
-                      <button key={c} type="button" onClick={() => toggleSuggested(c)} className={`rounded-full border px-3 py-1 text-xs transition-all ${categories.includes(c) ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-white text-muted-foreground hover:border-primary/50'}`}>
-                        {categories.includes(c) && '✓ '}{c}
+                      <button key={t} type="button" onClick={() => onShopTypeChange(t)}
+                        className={`rounded-lg border px-3 py-1.5 text-sm transition-all ${shopType === t ? 'border-primary bg-primary/10 text-primary font-semibold shadow-sm' : 'border-border bg-white text-foreground hover:border-primary/40 hover:bg-primary/5'}`}>
+                        {t}
                       </button>
                     ))}
                   </div>
-                  {categories.filter((c) => !SUGGESTED_CATS.includes(c)).length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {categories.filter((c) => !SUGGESTED_CATS.includes(c)).map((c) => (
-                        <span key={c} className="flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                          {c}<button type="button" onClick={() => removeCategory(c)} className="hover:text-destructive"><X className="h-3 w-3" /></button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 flex gap-2">
-                    <Input value={catInput} onChange={(e) => setCatInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCategory(catInput) } }} placeholder="Add another category..." className="flex-1" />
-                    <Button type="button" variant="outline" onClick={() => addCategory(catInput)} disabled={!catInput.trim()}>Add</Button>
-                  </div>
                 </div>
+                <AnimatePresence>
+                  {shopType && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="mt-6">
+                      <div className="mb-3 flex items-center justify-between">
+                        <Label className="font-semibold">
+                          Categories for <span className="text-primary">{shopType}</span>
+                          <span className="ml-1 font-normal text-muted-foreground">({categories.length} selected)</span>
+                        </Label>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setCategories(suggestedCats)} className="text-xs text-primary hover:underline">Select all</button>
+                          <span className="text-muted-foreground">·</span>
+                          <button type="button" onClick={() => setCategories([])} className="text-xs text-muted-foreground hover:text-foreground">Clear</button>
+                        </div>
+                      </div>
+                      <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto rounded-xl border border-border bg-muted/30 p-3">
+                        {suggestedCats.map((c) => (
+                          <button key={c} type="button" onClick={() => toggleCategory(c)}
+                            className={`rounded-full border px-3 py-1 text-xs transition-all ${categories.includes(c) ? 'border-primary bg-primary text-primary-foreground font-medium' : 'border-border bg-white text-muted-foreground hover:border-primary/50 hover:text-foreground'}`}>
+                            {categories.includes(c) && '✓ '}{c}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <Input value={catInput} onChange={(e) => setCatInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomCat() } }} placeholder="Add a custom category…" className="flex-1" />
+                        <Button type="button" variant="outline" onClick={addCustomCat} disabled={!catInput.trim()}>Add</Button>
+                      </div>
+                      {categories.filter((c) => !suggestedCats.includes(c)).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {categories.filter((c) => !suggestedCats.includes(c)).map((c) => (
+                            <span key={c} className="flex items-center gap-1 rounded-full bg-accent/20 px-3 py-1 text-xs font-medium text-accent-foreground">
+                              {c}<button type="button" onClick={() => removeCategory(c)} className="hover:text-destructive"><X className="h-3 w-3" /></button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {categories.length === 0 && <p className="mt-2 text-xs text-destructive">Please select at least one category.</p>}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </>
             )}
 
@@ -238,7 +234,8 @@ function CreateStorePage() {
                 <p className="mt-1 text-sm text-muted-foreground">You can customise everything later.</p>
                 <div className="mt-6 grid grid-cols-2 gap-4">
                   {previewThemes.map((t) => (
-                    <button key={t.id} type="button" onClick={() => setTheme(t.id)} className={`relative overflow-hidden rounded-xl border-2 p-3 text-left transition-all ${theme === t.id ? 'border-primary shadow-glow' : 'border-border hover:border-primary/50'}`}>
+                    <button key={t.id} type="button" onClick={() => setTheme(t.id)}
+                      className={`relative overflow-hidden rounded-xl border-2 p-3 text-left transition-all ${theme === t.id ? 'border-primary shadow-glow' : 'border-border hover:border-primary/50'}`}>
                       <div className="mb-3 h-24 rounded-lg" style={{ background: `linear-gradient(135deg, ${t.swatch}, ${t.swatch}88)` }} />
                       <div className="text-sm font-semibold">{t.name}</div>
                       <div className="text-xs text-muted-foreground">Brand-ready palette</div>
@@ -251,19 +248,20 @@ function CreateStorePage() {
 
             {step === 5 && (
               <div className="flex flex-col items-center py-6 text-center">
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 15 }} className="flex h-20 w-20 items-center justify-center rounded-full bg-primary shadow-glow">
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                  className="flex h-20 w-20 items-center justify-center rounded-full bg-primary shadow-glow">
                   <Check className="h-10 w-10 text-primary-foreground" />
                 </motion.div>
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                   <h1 className="mt-6 text-2xl font-bold">Ready to launch! 🎉</h1>
                   <p className="mt-2 text-sm text-muted-foreground">Your new store will live at <strong className="text-foreground">{sub}.bazarhq.com</strong></p>
-                  {shopType && (
-                    <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                      <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{shopType}</span>
-                      {categories.slice(0, 4).map((c) => <span key={c} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{c}</span>)}
-                      {categories.length > 4 && <span className="text-xs text-muted-foreground">+{categories.length - 4} more</span>}
+                  <div className="mt-4 space-y-2">
+                    <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">{shopType}</span>
+                    <div className="flex flex-wrap items-center justify-center gap-1.5">
+                      {categories.slice(0, 6).map((c) => <span key={c} className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground">{c}</span>)}
+                      {categories.length > 6 && <span className="text-xs text-muted-foreground">+{categories.length - 6} more</span>}
                     </div>
-                  )}
+                  </div>
                 </motion.div>
               </div>
             )}
@@ -289,8 +287,5 @@ function CreateStorePage() {
   )
 }
 
-function WrappedCreateStorePage() {
-  return <AuthGuard><CreateStorePage /></AuthGuard>
-}
-
+function WrappedCreateStorePage() { return <AuthGuard><CreateStorePage /></AuthGuard> }
 export default WrappedCreateStorePage
