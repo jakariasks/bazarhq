@@ -13,7 +13,10 @@ function Login() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const search = useSearch({ strict: false })
-  const redirect = search?.redirect || '/merchant'
+ const redirect =
+  typeof search?.redirect === 'string' && search.redirect.startsWith('/')
+    ? search.redirect
+    : '/merchant'
 
   const [tab, setTab] = useState('email')
 
@@ -29,7 +32,12 @@ function Login() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
-  useEffect(() => { if (user) navigate({ to: redirect }) }, [user])
+useEffect(() => {
+  if (user) {
+    navigate({ to: redirect, replace: true })
+  }
+}, [user, navigate, redirect])
+
 
   // ── Email login ──
   const submitEmail = async (e) => {
@@ -59,14 +67,21 @@ function Login() {
     navigate({ to: redirect })
   }
 
-  const signInWithGoogle = async () => {
-    setGoogleLoading(true)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/merchant` },
-    })
-    if (error) { toast.error(error.message); setGoogleLoading(false) }
+const signInWithGoogle = async () => {
+  setGoogleLoading(true)
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}${redirect}`,
+    },
+  })
+
+  if (error) {
+    toast.error(error.message)
+    setGoogleLoading(false)
   }
+}
 
   const onPhoneChange = (val) => {
     setPhone(val.replace(/\D/g, '').slice(0, 11))
