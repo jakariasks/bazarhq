@@ -3,6 +3,7 @@ import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, Cred
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
+import { Logo } from '@/components/logo'
 import { Input } from '@/components/ui/input'
 import { AuthGuard } from '@/components/auth-guard'
 import { useAuth } from '@/hooks/use-auth'
@@ -54,10 +55,7 @@ function MerchantLayout() {
 
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 transform border-r border-border bg-sidebar transition-transform lg:static lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-16 items-center justify-between border-b border-border px-5">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary"><ShoppingBag className="h-4 w-4 text-primary-foreground" /></div>
-            <span className="font-semibold tracking-tight">BazarHQ</span>
-          </Link>
+          <Logo size="sm" />
           <button className="lg:hidden" onClick={() => setOpen(false)}><X className="h-5 w-5" /></button>
         </div>
 

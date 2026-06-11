@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ShoppingBag, Loader2, ArrowLeft, Mail, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Logo } from '@/components/logo'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/integrations/supabase/client'
@@ -32,12 +33,7 @@ function ForgotPassword() {
         transition={{ duration: 0.4, ease: 'easeOut' }}
         className="w-full max-w-md"
       >
-        <Link to="/" className="mb-8 flex items-center justify-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary shadow-glow">
-            <ShoppingBag className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight">BazarHQ</span>
-        </Link>
+        <Logo size="lg" className="mb-8 justify-center" />
 
         <div className="rounded-2xl border border-border bg-card p-6 shadow-elegant sm:p-8">
           {sent ? (

@@ -5,6 +5,7 @@ import { Check, ShoppingBag, ArrowRight, ArrowLeft, Loader2, X, AlertCircle } fr
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
+import { Logo } from '@/components/logo'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { previewThemes } from '@/lib/preview-themes'
@@ -147,12 +148,7 @@ function Onboarding() {
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-4">
       <div className="mx-auto max-w-2xl">
         <div className="flex items-center justify-between py-5">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary shadow-glow">
-              <ShoppingBag className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-semibold">BazarHQ</span>
-          </Link>
+          <Logo size="md" />
           <Link to="/merchant" className="text-sm text-muted-foreground hover:text-foreground">Cancel</Link>
         </div>
 

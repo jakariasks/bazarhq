@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { motion } from 'framer-motion'
 import { ArrowRight, Check, ShoppingBag, CreditCard, Smartphone, BarChart3, Package, Truck, Sparkles, Zap, Globe, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Logo } from '@/components/logo'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/use-auth'
@@ -27,12 +28,7 @@ function Nav() {
   return (
     <header className="sticky top-0 z-50 glass border-b border-border/60">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary shadow-glow">
-            <ShoppingBag className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight">BazarHQ</span>
-        </Link>
+        <Logo size="md" />
         <nav className="hidden items-center gap-8 md:flex">
           <a href="#features" className="text-sm text-muted-foreground hover:text-foreground">Features</a>
           <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground">Pricing</a>
@@ -215,10 +211,7 @@ function Footer() {
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary"><ShoppingBag className="h-4 w-4 text-primary-foreground" /></div>
-              <span className="font-semibold">BazarHQ</span>
-            </div>
+            <Logo size="sm" />
             <p className="mt-3 text-sm text-muted-foreground">Commerce infrastructure for Bangladesh.</p>
             <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground"><Shield className="h-3.5 w-3.5" /> SOC2 • PCI-DSS ready</div>
           </div>
