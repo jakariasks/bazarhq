@@ -15,12 +15,18 @@ import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { getTheme, themeCssVars } from '@/lib/preview-themes'
+import { getCart, setCart, addToCart as cartAdd, updateQty as cartUpdateQty, removeFromCart as cartRemove, clearCart, cartTotal, cartCount, generateOrderId } from '@/lib/cart'
 
 export default function ShopPage() {
   const { user } = useAuth()
   const { store } = useCurrentStore()
   const [cartOpen, setCartOpen] = useState(false)
   const [cartItems, setCartItems] = useState([])
+
+  // Load cart from localStorage when store loads
+  useEffect(() => {
+    if (store?.id) setCartItems(getCart(store.id))
+  }, [store?.id])
   const [searchQ, setSearchQ] = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
   const [sortBy, setSortBy] = useState('newest')
@@ -84,19 +90,25 @@ export default function ShopPage() {
     return list
   }, [allProducts, searchQ, activeCategory, sortBy, priceRange])
 
-  const cartCount = cartItems.reduce((s, i) => s + i.qty, 0)
-  const cartTotal = cartItems.reduce((s, i) => s + i.price * i.qty, 0)
+  const cartCountVal = cartCount(cartItems)
+  const cartTotalVal = cartTotal(cartItems)
 
   const addToCart = (item) => {
-    setCartItems(prev => {
-      const ex = prev.find(i => i.id === item.id)
-      if (ex) return prev.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i)
-      return [...prev, { ...item, qty: 1 }]
-    })
+    if (!store?.id) return
+    const next = cartAdd(store.id, item)
+    setCartItems(next)
     setCartOpen(true)
   }
-  const updateQty = (id, delta) => setCartItems(prev => prev.map(i => i.id === id ? { ...i, qty: Math.max(0, i.qty + delta) } : i).filter(i => i.qty > 0))
-  const removeItem = (id) => setCartItems(prev => prev.filter(i => i.id !== id))
+  const updateQty = (id, delta) => {
+    if (!store?.id) return
+    const next = cartUpdateQty(store.id, id, delta)
+    setCartItems(next)
+  }
+  const removeItem = (id) => {
+    if (!store?.id) return
+    const next = cartRemove(store.id, id)
+    setCartItems(next)
+  }
 
   const clearFilters = () => { setSearchQ(''); setActiveCategory('All'); setSortBy('newest'); setPriceRange({ min: '', max: '' }) }
   const hasFilters = searchQ || activeCategory !== 'All' || sortBy !== 'newest' || priceRange.min || priceRange.max
@@ -160,11 +172,11 @@ export default function ShopPage() {
               className="relative flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card shadow-sm transition hover:shadow-md">
               <ShoppingBag className="h-5 w-5" />
               <AnimatePresence>
-                {cartCount > 0 && (
+                {cartCountVal > 0 && (
                   <motion.span key="badge" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
                     className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white shadow"
                     style={{ background: brandColor }}>
-                    {cartCount}
+                    {cartCountVal}
                   </motion.span>
                 )}
               </AnimatePresence>
@@ -416,7 +428,7 @@ export default function ShopPage() {
               <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <div>
                   <h2 className="text-lg font-bold">Your Cart</h2>
-                  <p className="text-xs text-muted-foreground">{cartCount} item{cartCount !== 1 ? 's' : ''}</p>
+                  <p className="text-xs text-muted-foreground">{cartCountVal} item{cartCountVal !== 1 ? 's' : ''}</p>
                 </div>
                 <button onClick={() => setCartOpen(false)} className="rounded-lg p-2 transition hover:bg-muted"><X className="h-5 w-5" /></button>
               </div>
@@ -464,11 +476,18 @@ export default function ShopPage() {
               {cartItems.length > 0 && (
                 <div className="border-t border-border bg-card px-5 py-4">
                   <div className="mb-3 space-y-1.5 text-sm">
-                    <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{symbol} {cartTotal.toLocaleString()}</span></div>
+                    <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{symbol} {cartTotalVal.toLocaleString()}</span></div>
                     <div className="flex justify-between text-muted-foreground"><span>Shipping</span><span>Calculated at checkout</span></div>
-                    <div className="flex justify-between border-t border-border pt-1.5 font-bold text-base"><span>Total</span><span>{symbol} {cartTotal.toLocaleString()}</span></div>
+                    <div className="flex justify-between border-t border-border pt-1.5 font-bold text-base"><span>Total</span><span>{symbol} {cartTotalVal.toLocaleString()}</span></div>
                   </div>
-                  <Button className="w-full text-white font-semibold text-base h-11" style={{ background: brandColor }}>
+                  <Button
+                    className="w-full text-white font-semibold text-base h-11"
+                    style={{ background: brandColor }}
+                    onClick={() => {
+                      setCartOpen(false)
+                      window.location.href = `/checkout?store=${store?.subdomain}`
+                    }}
+                  >
                     Checkout <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                   <button onClick={() => setCartOpen(false)} className="mt-2 w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors">
