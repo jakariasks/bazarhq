@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { getTheme, themeCssVars } from '@/lib/preview-themes'
 import { getCart, setCart, addToCart as cartAdd, updateQty as cartUpdateQty, removeFromCart as cartRemove, clearCart, cartTotal, cartCount, generateOrderId } from '@/lib/cart'
+import { toast } from 'sonner'
 
 export default function ShopPage() {
   const { user } = useAuth()
@@ -94,11 +95,21 @@ export default function ShopPage() {
   const cartTotalVal = cartTotal(cartItems)
 
   const addToCart = (item) => {
-    if (!store?.id) return
-    const next = cartAdd(store.id, item)
-    setCartItems(next)
-    setCartOpen(true)
+  if (!store?.id) return
+
+  const result = cartAdd(store.id, item)
+
+  if (!result.success) {
+    alert(result.error || 'Could not add item to cart')
+    setCartItems(result.next || [])
+    return
   }
+
+  setCartItems(result.next || [])
+  setCartOpen(true)
+}
+
+
   const updateQty = (id, delta) => {
     if (!store?.id) return
     const next = cartUpdateQty(store.id, id, delta)
