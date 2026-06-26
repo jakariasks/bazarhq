@@ -117,9 +117,9 @@ function Features() {
 }
 
 const plans = [
-  { name: 'Starter', price: '৳ 0', desc: 'For testing the waters', features: ['1 storefront', '50 products', 'COD only', 'BazarHQ branding'], cta: 'Start Free' },
-  { name: 'Growth', price: '৳ 1,499', desc: 'For growing brands', features: ['Custom subdomain', 'Unlimited products', 'All payment methods', 'Analytics & themes', 'Remove branding'], cta: 'Start 14-day trial', popular: true },
-  { name: 'Pro', price: '৳ 3,999', desc: 'For scaling businesses', features: ['Everything in Growth', 'Priority support', 'Advanced analytics', 'API access', 'Custom domain'], cta: 'Talk to sales' },
+  { name: 'Starter', price: '৳ 0', desc: 'For testing the waters', features: ['1 storefront', '200 products', 'COD only', 'BazarHQ branding'], cta: 'Start Free' },
+  { name: 'Growth', price: '৳ 99/month', desc: 'For growing brands', features: ['Custom subdomain', 'Unlimited products', 'All payment methods', 'Analytics & themes', 'Remove branding'], cta: 'Start 14-day trial', popular: true },
+  { name: 'Pro', price: '৳ 499/month', desc: 'For scaling businesses', features: ['Everything in Growth', 'Priority support', 'Advanced analytics', 'API access', 'Custom domain'], cta: 'Talk to sales' },
 ]
 
 function Pricing() {
