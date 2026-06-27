@@ -83,6 +83,8 @@ export default function CheckoutPage() {
   const [orderId, setOrderId] = useState(null);
   const [deliveryErrors, setDeliveryErrors] = useState({});
   const [paymentError, setPaymentError] = useState("");
+  const [availableMethods, setAvailableMethods] = useState([]);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   const [delivery, setDelivery] = useState({
     full_name: "",
@@ -106,7 +108,7 @@ export default function CheckoutPage() {
     async function loadStore() {
       const { data, error } = await supabase
         .from("stores")
-        .select("id, shop_name, subdomain, payment_methods_configured, return_policy, shipping_policy, logo_url")
+        .select("id, shop_name, subdomain, return_policy, shipping_policy, logo_url")
         .eq("subdomain", subdomain)
         .maybeSingle();
 
@@ -185,22 +187,44 @@ export default function CheckoutPage() {
     [store?.id, cartVersion]
   );
 
-  const availableMethods = useMemo(() => {
-    const config = store?.payment_methods_configured || {};
-    const methods = [
-      config.bkash && { id: "bkash", label: "bKash", needsTxn: true },
-      config.nagad && { id: "nagad", label: "Nagad", needsTxn: true },
-      config.rocket && { id: "rocket", label: "Rocket", needsTxn: true },
-      config.sslcommerz && { id: "sslcommerz", label: "Online Payment", needsTxn: false },
-      config.cod && { id: "cod", label: "Cash on Delivery", needsTxn: false },
-    ].filter(Boolean);
+  useEffect(() => {
+    if (!store?.id) return;
 
-    return methods.length ? methods : [{ id: "cod", label: "Cash on Delivery", needsTxn: false }];
-  }, [store?.payment_methods_configured]);
+    async function loadPaymentMethods() {
+      setPaymentLoading(true);
+
+      const { data, error } = await supabase.rpc("get_public_payment_methods", {
+        p_store_id: store.id,
+      });
+
+      if (error) {
+        setPaymentError("No payment method is available for this shop yet.");
+        setAvailableMethods([]);
+        setPaymentLoading(false);
+        return;
+      }
+
+      const rows = (data || []).map((method) => ({
+        id: method.method,
+        label: method.label,
+        needsTxn: !!method.needs_txn,
+        merchantNumber: method.merchant_number || "",
+      }));
+
+      setAvailableMethods(rows);
+      setPaymentLoading(false);
+    }
+
+    loadPaymentMethods();
+  }, [store?.id]);
 
   useEffect(() => {
     if (!paymentMethod && availableMethods.length) {
       setPaymentMethod(availableMethods[0].id);
+    }
+    if (paymentMethod && availableMethods.length && !availableMethods.some((method) => method.id === paymentMethod)) {
+      setPaymentMethod(availableMethods[0].id);
+      setTxnId("");
     }
   }, [availableMethods, paymentMethod]);
 
@@ -237,6 +261,11 @@ export default function CheckoutPage() {
 
   function validatePayment() {
     setPaymentError("");
+
+    if (!availableMethods.length) {
+      setPaymentError("This shop has no active payment method. Please contact the merchant.");
+      return false;
+    }
 
     if (!paymentMethod) {
       setPaymentError("Choose a payment method.");
@@ -487,49 +516,62 @@ export default function CheckoutPage() {
           <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 space-y-4">
             <h2 className="text-lg font-bold">Payment method</h2>
 
-            <div className="space-y-2">
-              {availableMethods.map((method) => (
-                <label
-                  key={method.id}
-                  className={`flex gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
-                    paymentMethod === method.id ? "border-[var(--primary)] bg-[var(--primary)]/5" : "border-[var(--border)]"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="payment"
-                    value={method.id}
-                    checked={paymentMethod === method.id}
-                    onChange={() => {
-                      setPaymentMethod(method.id);
-                      setTxnId("");
-                      setPaymentError("");
-                    }}
-                    className="mt-0.5"
-                  />
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{method.label}</p>
-                    {paymentMethod === method.id && method.needsTxn && (
-                      <div className="mt-3">
-                        <p className="text-xs text-[var(--muted-foreground)] mb-1">
-                          Enter the transaction ID after completing the payment.
-                        </p>
-                        <Input placeholder="Transaction ID or reference" value={txnId} onChange={(event) => setTxnId(event.target.value)} className="text-sm" />
-                      </div>
-                    )}
-                    {paymentMethod === method.id && method.id === "cod" && (
-                      <p className="text-xs text-[var(--muted-foreground)] mt-1">Pay in cash when the order is delivered.</p>
-                    )}
-                  </div>
-                </label>
-              ))}
-            </div>
+            {paymentLoading ? (
+              <div className="flex items-center justify-center rounded-xl border border-[var(--border)] p-6 text-sm text-[var(--muted-foreground)]">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading payment methods...
+              </div>
+            ) : availableMethods.length === 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                This shop has no active payment method. Please contact the merchant before checkout.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {availableMethods.map((method) => (
+                  <label
+                    key={method.id}
+                    className={`flex gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                      paymentMethod === method.id ? "border-[var(--primary)] bg-[var(--primary)]/5" : "border-[var(--border)]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="payment"
+                      value={method.id}
+                      checked={paymentMethod === method.id}
+                      onChange={() => {
+                        setPaymentMethod(method.id);
+                        setTxnId("");
+                        setPaymentError("");
+                      }}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{method.label}</p>
+                      {method.merchantNumber && (
+                        <p className="mt-1 text-xs text-[var(--muted-foreground)]">Merchant number: {method.merchantNumber}</p>
+                      )}
+                      {paymentMethod === method.id && method.needsTxn && (
+                        <div className="mt-3">
+                          <p className="text-xs text-[var(--muted-foreground)] mb-1">
+                            Complete the payment first, then enter the transaction ID.
+                          </p>
+                          <Input placeholder="Transaction ID or reference" value={txnId} onChange={(event) => setTxnId(event.target.value)} className="text-sm" />
+                        </div>
+                      )}
+                      {paymentMethod === method.id && method.id === "cod" && (
+                        <p className="text-xs text-[var(--muted-foreground)] mt-1">Pay in cash when the order is delivered.</p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
 
             {paymentError && <p className="text-sm text-red-500">{paymentError}</p>}
 
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
-              <Button onClick={handleStep2Next}>Review order</Button>
+              <Button onClick={handleStep2Next} disabled={paymentLoading || availableMethods.length === 0}>Review order</Button>
             </div>
           </div>
         )}

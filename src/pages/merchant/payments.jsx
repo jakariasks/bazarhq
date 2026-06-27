@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Check, Settings2, Eye, EyeOff, Loader2, AlertCircle, Lock, CreditCard } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, Settings2, Eye, EyeOff, Loader2, AlertCircle, Lock, CreditCard, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Switch } from '@/components/ui/switch'
@@ -14,225 +14,358 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 
 const METHODS = [
-  { id: 'bkash',  name: 'bKash',            logo: '🔴', color: '#E2136E', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
-  { id: 'nagad',  name: 'Nagad',             logo: '🟠', color: '#F7941D', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
-  { id: 'rocket', name: 'Rocket (DBBL)',     logo: '🟣', color: '#8B3FC8', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
-  { id: 'ssl',    name: 'SSLCommerz (Cards)', logo: '💳', color: '#2563EB', fields: [
-    { key: 'store_id',       label: 'Store ID',       placeholder: 'your_store_id' },
-    { key: 'store_password', label: 'Store Password', placeholder: '••••••••', secret: true },
-  ]},
-  { id: 'cod',    name: 'Cash on Delivery',  logo: '💵', color: '#16A34A', fields: [] },
+  {
+    id: 'bkash',
+    name: 'bKash',
+    logo: '🔴',
+    color: '#E2136E',
+    fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }],
+  },
+  {
+    id: 'nagad',
+    name: 'Nagad',
+    logo: '🟠',
+    color: '#F7941D',
+    fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }],
+  },
+  {
+    id: 'rocket',
+    name: 'Rocket (DBBL)',
+    logo: '🟣',
+    color: '#8B3FC8',
+    fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }],
+  },
+  {
+    id: 'ssl',
+    name: 'SSLCommerz (Cards)',
+    logo: '💳',
+    color: '#2563EB',
+    fields: [
+      { key: 'ssl_store_id', label: 'SSL Store ID', placeholder: 'your_ssl_store_id' },
+      { key: 'store_password', label: 'SSL Store Password', placeholder: '••••••••', secret: true },
+    ],
+  },
+  {
+    id: 'cod',
+    name: 'Cash on Delivery',
+    logo: '💵',
+    color: '#16A34A',
+    fields: [],
+  },
 ]
 
-// SRS M6: Mask credentials — show last 4 chars
-function maskValue(val) {
-  if (!val || val.length <= 4) return '****'
-  return '•'.repeat(val.length - 4) + val.slice(-4)
+function maskValue(value) {
+  if (!value) return ''
+  const text = String(value)
+  if (text.length <= 4) return '••••'
+  return '•'.repeat(Math.max(4, text.length - 4)) + text.slice(-4)
+}
+
+function isConfigured(method, config) {
+  if (!method) return false
+  if (method.fields.length === 0) return true
+  return method.fields.every((field) => String(config?.[field.key] || '').trim().length > 0)
+}
+
+function normalizeRow(row) {
+  return {
+    ...row,
+    enabled: !!row.enabled,
+    // Backward safety: old code accidentally displayed parent store_id as a credential.
+    // Only ssl_store_id is treated as SSLCommerz credential now.
+    ssl_store_id: row.ssl_store_id || '',
+  }
 }
 
 export default function PaymentsPage() {
   const { user } = useAuth()
   const { store, isLoading } = useCurrentStore()
   const qc = useQueryClient()
-  const [configs, setConfigs] = useState({}) // { bkash: { enabled, merchant_number }, ... }
+
+  const [configs, setConfigs] = useState({})
   const [loading, setLoading] = useState(true)
   const [configOpen, setConfigOpen] = useState(false)
   const [activeMethod, setActiveMethod] = useState(null)
   const [fieldValues, setFieldValues] = useState({})
   const [showFields, setShowFields] = useState({})
   const [saving, setSaving] = useState(false)
+  const [toggleSaving, setToggleSaving] = useState('')
+
+  const enabledCount = useMemo(
+    () => METHODS.filter((method) => configs[method.id]?.enabled).length,
+    [configs]
+  )
 
   useEffect(() => {
-    if (!store?.id) return
+    if (!store?.id) {
+      setLoading(false)
+      return
+    }
+
     loadConfigs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store?.id])
 
-  const loadConfigs = async () => {
+  async function loadConfigs() {
+    if (!store?.id) return
+
     setLoading(true)
-    const { data } = await supabase.from('payment_configs').select('*').eq('store_id', store.id)
+    const { data, error } = await supabase
+      .from('payment_configs')
+      .select('id, store_id, method, enabled, merchant_number, ssl_store_id, store_password, created_at, updated_at')
+      .eq('store_id', store.id)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      toast.error(error.message)
+      setConfigs({})
+      setLoading(false)
+      return
+    }
+
     const map = {}
-    for (const row of data ?? []) { map[row.method] = row }
+    for (const row of data || []) map[row.method] = normalizeRow(row)
     setConfigs(map)
     setLoading(false)
   }
 
-  const toggleMethod = async (methodId, enabled) => {
-    if (!store) return
-    const method = METHODS.find(m => m.id === methodId)
+  async function saveRow(methodId, patch) {
+    const existing = configs[methodId]
 
-    // SRS M6: methods with credentials must be configured first
-    if (enabled && method.fields.length > 0 && !configs[methodId]?.merchant_number && !configs[methodId]?.store_id) {
-      setActiveMethod(method)
-      setFieldValues({})
-      setShowFields({})
-      setConfigOpen(true)
+    if (existing?.id) {
+      const { error } = await supabase
+        .from('payment_configs')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .eq('store_id', store.id)
+
+      if (error) throw error
       return
     }
 
-    const existing = configs[methodId]
-    if (existing) {
-      await supabase.from('payment_configs').update({ enabled }).eq('id', existing.id)
-    } else {
-      await supabase.from('payment_configs').insert({ store_id: store.id, method: methodId, enabled })
-    }
-    toast.success(enabled ? `${method.name} enabled` : `${method.name} disabled`)
-    loadConfigs()
-    qc.invalidateQueries({ queryKey: ['stores', user?.id] })
+    const { error } = await supabase
+      .from('payment_configs')
+      .insert({ store_id: store.id, method: methodId, ...patch })
+
+    if (error) throw error
   }
 
-  const openConfig = (method) => {
+  async function refreshAfterChange() {
+    await loadConfigs()
+    qc.invalidateQueries({ queryKey: ['stores', user?.id] })
+    qc.invalidateQueries({ queryKey: ['publish-status', 'payments', store?.id] })
+    qc.invalidateQueries({ queryKey: ['dashboard-payment-count', store?.id] })
+  }
+
+  async function toggleMethod(methodId, enabled) {
+    if (!store) return
+
+    const method = METHODS.find((item) => item.id === methodId)
+    const existing = configs[methodId]
+
+    if (!method) return
+
+    if (enabled && !isConfigured(method, existing)) {
+      openConfig(method)
+      return
+    }
+
+    if (!enabled && existing?.enabled && enabledCount <= 1) {
+      toast.error('Keep at least one payment method active.')
+      return
+    }
+
+    setToggleSaving(methodId)
+
+    try {
+      await saveRow(methodId, { enabled })
+      toast.success(enabled ? `${method.name} enabled` : `${method.name} disabled`)
+      await refreshAfterChange()
+    } catch (error) {
+      toast.error(error.message || 'Could not update payment method')
+    } finally {
+      setToggleSaving('')
+    }
+  }
+
+  function openConfig(method) {
     setActiveMethod(method)
     const existing = configs[method.id] || {}
-    const vals = {}
-    for (const f of method.fields) vals[f.key] = existing[f.key] || ''
-    setFieldValues(vals)
+    const values = {}
+
+    for (const field of method.fields) values[field.key] = existing[field.key] || ''
+
+    setFieldValues(values)
     setShowFields({})
     setConfigOpen(true)
   }
 
-  const saveConfig = async () => {
+  async function saveConfig() {
     if (!store || !activeMethod) return
-    // SRS M6: validate format
-    for (const f of activeMethod.fields) {
-      if (!fieldValues[f.key]?.trim()) {
-        toast.error(`Please enter ${f.label}`)
+
+    for (const field of activeMethod.fields) {
+      if (!String(fieldValues[field.key] || '').trim()) {
+        toast.error(`Enter ${field.label}`)
         return
       }
     }
-    // Phone format check for bKash/Nagad/Rocket
-    if (['bkash','nagad','rocket'].includes(activeMethod.id)) {
-      const num = fieldValues['merchant_number']?.replace(/\D/g,'')
-      if (!num || num.length !== 11 || !/^01[3-9]/.test(num)) {
-        toast.error('Invalid merchant number — must be 11-digit BD number (01XXXXXXXXX)')
+
+    if (['bkash', 'nagad', 'rocket'].includes(activeMethod.id)) {
+      const number = fieldValues.merchant_number?.replace(/\D/g, '')
+      if (!number || number.length !== 11 || !/^01[3-9]/.test(number)) {
+        toast.error('Enter a valid 11-digit Bangladesh merchant number.')
         return
       }
+      fieldValues.merchant_number = number
     }
+
     setSaving(true)
-    const existing = configs[activeMethod.id]
-    const payload = { store_id: store.id, method: activeMethod.id, enabled: true, ...fieldValues }
-    if (existing) {
-      await supabase.from('payment_configs').update(payload).eq('id', existing.id)
-    } else {
-      await supabase.from('payment_configs').insert(payload)
+
+    try {
+      const payload = { enabled: true }
+      for (const field of activeMethod.fields) payload[field.key] = String(fieldValues[field.key] || '').trim()
+
+      await saveRow(activeMethod.id, payload)
+      toast.success(`${activeMethod.name} is ready`)
+      setConfigOpen(false)
+      await refreshAfterChange()
+    } catch (error) {
+      toast.error(error.message || 'Could not save payment configuration')
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-    toast.success(`${activeMethod.name} configured & enabled`)
-    setConfigOpen(false)
-    loadConfigs()
-    qc.invalidateQueries({ queryKey: ['stores', user?.id] })
   }
 
-  const enabledCount = METHODS.filter(m => configs[m.id]?.enabled).length
+  if (isLoading || loading) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-10 w-64 rounded-xl" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          {[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-36 rounded-2xl" />)}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Payment Methods</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Configure the payment methods available to your customers at checkout.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Payment Methods</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Enable at least one method for checkout.</p>
+        </div>
+        <Badge variant="secondary" className={enabledCount > 0 ? 'w-fit gap-1 text-success' : 'w-fit gap-1 text-amber-600'}>
+          {enabledCount > 0 ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+          {enabledCount} active
+        </Badge>
       </div>
 
-      {/* SRS M6: at least 1 active warning */}
-      {!loading && enabledCount === 0 && (
-        <div className="flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-5 py-4">
-          <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
-          <p className="text-sm text-destructive">You need at least one payment method enabled before publishing your shop.</p>
+      {enabledCount === 0 ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <p className="text-sm font-medium">Choose one payment method. Cash on Delivery is enough for the free version.</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-800">
+          <ShieldCheck className="h-5 w-5 shrink-0" />
+          <p className="text-sm font-medium">Payment setup complete. One active method is enough; you can enable more anytime.</p>
         </div>
       )}
 
-      {isLoading || loading ? (
-        <div className="space-y-4">{[0,1,2].map(i=><Skeleton key={i} className="h-28 rounded-2xl"/>)}</div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {METHODS.map(m => {
-            const cfg = configs[m.id]
-            const enabled = cfg?.enabled ?? false
-            const configured = m.fields.length === 0 || (cfg && (cfg.merchant_number || cfg.store_id))
-            return (
-              <div key={m.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-xl text-2xl"
-                      style={{ background: m.color + '18', border: `1.5px solid ${m.color}40` }}>
-                      {m.logo}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{m.name}</h3>
-                        {enabled && <Badge variant="secondary" className="gap-1 text-success text-[10px]"><Check className="h-3 w-3"/>Active</Badge>}
-                        {!configured && <Badge variant="secondary" className="text-[10px] text-amber-600">Setup needed</Badge>}
-                      </div>
-                      {/* SRS M6: show masked credentials */}
-                      {cfg?.merchant_number && (
-                        <p className="text-xs text-muted-foreground">
-                          Number: <span className="font-mono">{maskValue(cfg.merchant_number)}</span>
-                        </p>
-                      )}
-                      {cfg?.store_id && (
-                        <p className="text-xs text-muted-foreground">
-                          Store ID: <span className="font-mono">{maskValue(cfg.store_id)}</span>
-                        </p>
-                      )}
-                      {m.fields.length === 0 && <p className="text-xs text-muted-foreground">No credentials needed</p>}
-                    </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {METHODS.map((method) => {
+          const config = configs[method.id]
+          const enabled = !!config?.enabled
+          const configured = isConfigured(method, config)
+          const busy = toggleSaving === method.id
+
+          return (
+            <div key={method.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div
+                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-2xl"
+                    style={{ background: `${method.color}18`, border: `1.5px solid ${method.color}40` }}
+                  >
+                    {method.logo}
                   </div>
-                  <Switch checked={enabled} onCheckedChange={v=>toggleMethod(m.id, v)} />
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">{method.name}</h3>
+                      {enabled && <Badge variant="secondary" className="gap-1 text-[10px] text-success"><Check className="h-3 w-3" />Active</Badge>}
+                      {!configured && <Badge variant="secondary" className="text-[10px] text-amber-600">Setup needed</Badge>}
+                    </div>
+
+                    {config?.merchant_number && (
+                      <p className="mt-1 text-xs text-muted-foreground">Number: <span className="font-mono">{maskValue(config.merchant_number)}</span></p>
+                    )}
+                    {method.id === 'ssl' && config?.ssl_store_id && (
+                      <p className="mt-1 text-xs text-muted-foreground">SSL Store ID: <span className="font-mono">{maskValue(config.ssl_store_id)}</span></p>
+                    )}
+                    {method.fields.length === 0 && <p className="mt-1 text-xs text-muted-foreground">No credentials needed</p>}
+                  </div>
                 </div>
-                {m.fields.length > 0 && (
-                  <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Lock className="h-3 w-3" /> Credentials stored encrypted
-                    </div>
-                    <Button variant="outline" size="sm" onClick={()=>openConfig(m)} className="gap-1.5">
-                      <Settings2 className="h-3.5 w-3.5" />{configured ? 'Update' : 'Configure'}
-                    </Button>
-                  </div>
+
+                <div className="flex items-center gap-2">
+                  {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                  <Switch checked={enabled} disabled={busy || saving} onCheckedChange={(value) => toggleMethod(method.id, value)} />
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Lock className="h-3 w-3" /> {method.fields.length ? 'Credentials are private' : 'Ready for checkout'}
+                </div>
+
+                {method.fields.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => openConfig(method)} className="gap-1.5">
+                    <Settings2 className="h-3.5 w-3.5" />{configured ? 'Update' : 'Configure'}
+                  </Button>
                 )}
               </div>
-            )
-          })}
-        </div>
-      )}
+            </div>
+          )
+        })}
+      </div>
 
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><CreditCard className="h-5 w-5"/></div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><CreditCard className="h-5 w-5" /></div>
           <div>
-            <p className="font-semibold">Payouts</p>
-            <p className="mt-1 text-sm text-muted-foreground">Receive earnings directly to your bKash or bank. Configure payout in Settings.</p>
-            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><Lock className="h-3 w-3"/>BazarHQ never stores card numbers or full credentials.</div>
+            <p className="font-semibold">Checkout rule</p>
+            <p className="mt-1 text-sm text-muted-foreground">Customers will only see active methods. Keep at least one active method for a live store.</p>
           </div>
         </div>
       </div>
 
-      {/* Configure dialog */}
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Configure {activeMethod?.name}</DialogTitle>
           </DialogHeader>
+
           {activeMethod && (
             <div className="space-y-4 py-2">
-              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-xs text-amber-700">
-                🔒 Your credentials are stored encrypted. BazarHQ never exposes them to customers.
-              </div>
-              {activeMethod.fields.map(f => (
-                <div key={f.key} className="grid gap-2">
-                  <Label>{f.label} <span className="text-destructive">*</span></Label>
+              {activeMethod.fields.map((field) => (
+                <div key={field.key} className="grid gap-2">
+                  <Label>{field.label} <span className="text-destructive">*</span></Label>
                   <div className="relative">
                     <Input
-                      type={f.secret && !showFields[f.key] ? 'password' : 'text'}
+                      type={field.secret && !showFields[field.key] ? 'password' : 'text'}
                       autoComplete="off"
-                      value={fieldValues[f.key] || ''}
-                      onChange={e=>setFieldValues(v=>({...v,[f.key]:e.target.value}))}
-                      placeholder={f.placeholder}
+                      value={fieldValues[field.key] || ''}
+                      onChange={(event) => setFieldValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                      placeholder={field.placeholder}
                       className="font-mono"
                     />
-                    {f.secret && (
-                      <button type="button" onClick={()=>setShowFields(s=>({...s,[f.key]:!s[f.key]}))}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                        {showFields[f.key] ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                    {field.secret && (
+                      <button
+                        type="button"
+                        onClick={() => setShowFields((current) => ({ ...current, [field.key]: !current[field.key] }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showFields[field.key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     )}
                   </div>
@@ -240,10 +373,11 @@ export default function PaymentsPage() {
               ))}
             </div>
           )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={()=>setConfigOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setConfigOpen(false)}>Cancel</Button>
             <Button onClick={saveConfig} disabled={saving} className="bg-gradient-primary">
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save & Enable
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save & Enable
             </Button>
           </DialogFooter>
         </DialogContent>

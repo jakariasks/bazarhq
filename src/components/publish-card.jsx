@@ -29,6 +29,21 @@ export function PublishCard() {
     },
   })
 
+  const { data: activePaymentCount = 0 } = useQuery({
+    queryKey: ['publish-status', 'payments', store?.id],
+    enabled: !!store,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('payment_configs')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', store.id)
+        .eq('enabled', true)
+
+      if (error) return 0
+      return count ?? 0
+    },
+  })
+
   useEffect(() => {
     if (store?.id) qc.invalidateQueries({ queryKey: ['publish-status', 'products', store.id] })
   }, [store?.id, qc])
@@ -41,7 +56,8 @@ export function PublishCard() {
   const isRestricted = isSuspended || isDeleted
   const published = !!store.storefront_published && !isRestricted
   const hasSubdomain = !!store.subdomain
-  const canPublish = hasSubdomain && publishedCount > 0 && !isRestricted
+  const hasPaymentMethod = activePaymentCount > 0
+  const canPublish = hasSubdomain && publishedCount > 0 && hasPaymentMethod && !isRestricted
   const shopUrl = hasSubdomain ? getStorefrontUrl(store.subdomain, { absolute: true }) : null
   const shopLabel = hasSubdomain ? getStorefrontLabel(store.subdomain) : ''
 
@@ -53,7 +69,9 @@ export function PublishCard() {
     }
 
     if (next && !canPublish) {
-      toast.error(!hasSubdomain ? 'Set a subdomain in store settings first' : 'Publish at least one product first')
+      if (!hasSubdomain) toast.error('Set a subdomain in store settings first')
+      else if (publishedCount <= 0) toast.error('Publish at least one product first')
+      else if (!hasPaymentMethod) toast.error('Enable at least one payment method first')
       return
     }
 
@@ -144,6 +162,11 @@ export function PublishCard() {
           <div className="flex items-center gap-1.5">
             {publishedCount > 0 ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <AlertCircle className="h-3.5 w-3.5 text-warning" />}
             <span className={publishedCount > 0 ? '' : 'text-muted-foreground'}>{publishedCount} published product{publishedCount === 1 ? '' : 's'}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {hasPaymentMethod ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <AlertCircle className="h-3.5 w-3.5 text-warning" />}
+            <span className={hasPaymentMethod ? '' : 'text-muted-foreground'}>{activePaymentCount} active payment method{activePaymentCount === 1 ? '' : 's'}</span>
           </div>
 
           <Link

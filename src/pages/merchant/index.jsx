@@ -37,12 +37,27 @@ export default function DashboardPage() {
     },
   })
 
+  const { data: activePaymentCount = 0 } = useQuery({
+    queryKey: ['dashboard-payment-count', store?.id],
+    enabled: !!store,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('payment_configs')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', store.id)
+        .eq('enabled', true)
+
+      if (error) return 0
+      return count ?? 0
+    },
+  })
+
   // SRS M2: Onboarding checklist
   const onboardingSteps = [
     { id: 'store', label: 'Create your store', done: !!store, link: '/onboarding', desc: 'Your shop is created' },
     { id: 'theme', label: 'Customise your theme', done: !!(store?.theme_id && store?.brand_color), link: '/merchant/themes', desc: 'Pick colors & theme' },
     { id: 'product', label: 'Add your first product', done: productCount > 0, link: '/merchant/products', desc: 'Add at least 1 product' },
-    { id: 'payment', label: 'Configure payments', done: !!(store?.payment_methods_configured), link: '/merchant/payments', desc: 'Set up bKash, COD etc.' },
+    { id: 'payment', label: 'Configure payments', done: activePaymentCount > 0, link: '/merchant/payments', desc: 'Enable at least 1 method' },
     { id: 'publish', label: 'Publish your storefront', done: !!store?.storefront_published, link: '/merchant', desc: 'Go live to customers' },
   ]
   const completedSteps = onboardingSteps.filter(s => s.done).length
