@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, ShoppingBag, Search, Bell, Menu, X, LogOut, Check } from 'lucide-react'
+import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, ShoppingBag, Search, Bell, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -48,6 +48,10 @@ function MerchantLayout() {
   }
   const activeTheme = getTheme(themeId)
   const initial = (user?.user_metadata?.shop_name || user?.email || '?').charAt(0).toUpperCase()
+  const accountStatus = store?.account_status || 'active'
+  const isSuspended = accountStatus === 'suspended'
+  const isDeleted = accountStatus === 'deleted'
+  const isRestricted = isSuspended || isDeleted
 
   return (
     <div className="flex min-h-screen w-full bg-muted/30" style={themeCssVars(activeTheme)}>
@@ -90,9 +94,9 @@ function MerchantLayout() {
             <Input placeholder="Search products, orders, customers…" className="pl-9" />
           </div>
           <div className="flex flex-1 items-center justify-end gap-2">
-            <span className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${store?.storefront_published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${store?.storefront_published ? 'bg-success' : 'bg-muted-foreground'}`} />
-              {store?.storefront_published ? 'Live' : 'Draft'}
+            <span className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${isSuspended ? 'border-red-300 bg-red-50 text-red-700' : isDeleted ? 'border-slate-300 bg-slate-100 text-slate-600' : store?.storefront_published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${isSuspended ? 'bg-red-600' : isDeleted ? 'bg-slate-500' : store?.storefront_published ? 'bg-success' : 'bg-muted-foreground'}`} />
+              {isSuspended ? 'Suspended' : isDeleted ? 'Deleted' : store?.storefront_published ? 'Live' : 'Draft'}
             </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -132,6 +136,26 @@ function MerchantLayout() {
         </header>
 
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+          {isRestricted && (
+            <div className={`mb-5 rounded-2xl border p-4 shadow-sm ${isSuspended ? 'border-red-200 bg-red-50 text-red-900' : 'border-slate-200 bg-slate-50 text-slate-900'}`}>
+              <div className="flex items-start gap-3">
+                <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isSuspended ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-700'}`}>
+                  {isSuspended ? <ShieldAlert className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+                </div>
+                <div className="min-w-0">
+                  <h2 className="font-semibold">
+                    {isSuspended ? 'Your merchant account is suspended' : 'This store was deleted by BazarHQ'}
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 opacity-80">
+                    {isSuspended
+                      ? `Your storefront is offline and cannot be published now${store?.suspended_reason ? `: ${store.suspended_reason}` : '.'}`
+                      : 'This storefront is offline and cannot be published again from the merchant dashboard.'}
+                  </p>
+                  <p className="mt-2 text-xs opacity-70">Contact BazarHQ support if you think this is a mistake.</p>
+                </div>
+              </div>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

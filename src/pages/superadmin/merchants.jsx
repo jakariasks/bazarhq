@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase }      from "@/integrations/supabase/client";
 import { useAdminAuth }  from "@/hooks/use-admin-auth";
+import { toast } from "sonner";
 import { Button }   from "@/components/ui/button";
 import { getStorefrontLabel, getStorefrontUrl } from "@/lib/storefront-url";
 import { Input }    from "@/components/ui/input";
@@ -252,7 +253,7 @@ export default function MerchantsPage() {
     setLoading(true);
     const { data } = await supabase
       .from("stores")
-      .select("id, shop_name, subdomain, business_category, storefront_published, account_status, suspended_reason, created_at, owner_id")
+      .select("id, shop_name, subdomain, business_category, storefront_published, account_status, suspended_reason, suspended_at, deleted_at, created_at, owner_id")
       .order("created_at", { ascending: false });
     setMerchants(data || []);
     setLoading(false);
@@ -278,56 +279,106 @@ export default function MerchantsPage() {
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
 
+  function updateMerchantInState(storeId, patch) {
+    setMerchants((rows) => rows.map((row) => row.id === storeId ? { ...row, ...patch } : row));
+    setSelected((row) => row?.id === storeId ? { ...row, ...patch } : row);
+  }
+
   // Suspend
   async function handleSuspend(reason) {
     if (!suspendTarget) return;
     setActionLoading(true);
-    const { error } = await supabase.from("stores").update({
-      account_status:    "suspended",
+
+    const patch = {
+      account_status: "suspended",
       storefront_published: false,
-      suspended_reason:  reason,
-      suspended_at:      new Date().toISOString(),
-    }).eq("id", suspendTarget.id);
-    if (!error) {
-      await writeAuditLog("merchant.suspend", { reason }, "merchant", suspendTarget.id);
-      await load();
-      setSuspendTarget(null);
-      setSelected(null);
+      suspended_reason: reason,
+      suspended_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase.rpc("superadmin_set_store_status", {
+      p_store_id: suspendTarget.id,
+      p_action: "suspend",
+      p_reason: reason,
+    });
+
+    if (error) {
+      toast.error(`Suspend failed: ${error.message}`);
+      setActionLoading(false);
+      return;
     }
+
+    await writeAuditLog("merchant.suspend", { reason }, "merchant", suspendTarget.id);
+    updateMerchantInState(suspendTarget.id, Array.isArray(data) ? data[0] : data || patch);
+    await load();
+    setSuspendTarget(null);
+    setSelected(null);
     setActionLoading(false);
+    toast.success("Merchant suspended. Storefront is now offline.");
   }
 
   // Reinstate
   async function handleReinstate(merchant) {
     setActionLoading(true);
-    const { error } = await supabase.from("stores").update({
-      account_status:    "active",
-      suspended_reason:  null,
-      suspended_at:      null,
-    }).eq("id", merchant.id);
-    if (!error) {
-      await writeAuditLog("merchant.reinstate", {}, "merchant", merchant.id);
-      await load();
-      setSelected(null);
+
+    const patch = {
+      account_status: "active",
+      suspended_reason: null,
+      suspended_at: null,
+    };
+
+    const { data, error } = await supabase.rpc("superadmin_set_store_status", {
+      p_store_id: merchant.id,
+      p_action: "reinstate",
+      p_reason: null,
+    });
+
+    if (error) {
+      toast.error(`Reinstate failed: ${error.message}`);
+      setActionLoading(false);
+      return;
     }
+
+    await writeAuditLog("merchant.reinstate", {}, "merchant", merchant.id);
+    updateMerchantInState(merchant.id, Array.isArray(data) ? data[0] : data || patch);
+    await load();
+    setSelected(null);
     setActionLoading(false);
+    toast.success("Merchant reinstated.");
   }
 
   // Delete
   async function handleDelete() {
     if (!deleteTarget) return;
     setActionLoading(true);
-    const { error } = await supabase.from("stores").update({
-      account_status:       "deleted",
+
+    const patch = {
+      account_status: "deleted",
       storefront_published: false,
-    }).eq("id", deleteTarget.id);
-    if (!error) {
-      await writeAuditLog("merchant.delete", {}, "merchant", deleteTarget.id);
-      await load();
-      setDeleteTarget(null);
-      setSelected(null);
+      suspended_reason: "Store deleted by BazarHQ admin.",
+      suspended_at: new Date().toISOString(),
+      deleted_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase.rpc("superadmin_set_store_status", {
+      p_store_id: deleteTarget.id,
+      p_action: "delete",
+      p_reason: "Store deleted by BazarHQ admin.",
+    });
+
+    if (error) {
+      toast.error(`Delete failed: ${error.message}`);
+      setActionLoading(false);
+      return;
     }
+
+    await writeAuditLog("merchant.delete", {}, "merchant", deleteTarget.id);
+    updateMerchantInState(deleteTarget.id, Array.isArray(data) ? data[0] : data || patch);
+    await load();
+    setDeleteTarget(null);
+    setSelected(null);
     setActionLoading(false);
+    toast.success("Merchant deleted. Storefront is now offline.");
   }
 
   return (

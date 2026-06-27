@@ -967,6 +967,20 @@ export default function ShopPage() {
         return;
       }
 
+      const accountStatus = storeData.account_status || "active";
+
+      if (accountStatus === "suspended") {
+        setStore(storeData);
+        setStatus("suspended");
+        return;
+      }
+
+      if (accountStatus === "deleted") {
+        setStore(storeData);
+        setStatus("deleted");
+        return;
+      }
+
       if (!storeData.storefront_published) {
         setStore(storeData);
         setStatus("unpublished");
@@ -1169,6 +1183,26 @@ export default function ShopPage() {
         title="Shop is currently unavailable"
         message="The merchant has temporarily unpublished this storefront. Please check again later."
         emoji="🚧"
+      />
+    );
+  }
+
+  if (status === "suspended") {
+    return (
+      <EmptyShopState
+        title="This shop is suspended"
+        message="This storefront is temporarily offline because the merchant account was suspended by BazarHQ. Please contact the merchant or BazarHQ support for details."
+        emoji="⛔"
+      />
+    );
+  }
+
+  if (status === "deleted") {
+    return (
+      <EmptyShopState
+        title="This shop is no longer available"
+        message="This storefront has been removed from BazarHQ."
+        emoji="🗑️"
       />
     );
   }

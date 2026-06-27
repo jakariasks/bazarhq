@@ -17,6 +17,8 @@ export function useStores() {
       if (error) throw error
       return data ?? []
     },
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
   })
 }
 

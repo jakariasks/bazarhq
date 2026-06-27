@@ -35,14 +35,23 @@ export function PublishCard() {
 
   if (isLoading || !store) return <Skeleton className="h-44 w-full rounded-2xl" />
 
-  const published = !!store.storefront_published
+  const accountStatus = store.account_status || 'active'
+  const isSuspended = accountStatus === 'suspended'
+  const isDeleted = accountStatus === 'deleted'
+  const isRestricted = isSuspended || isDeleted
+  const published = !!store.storefront_published && !isRestricted
   const hasSubdomain = !!store.subdomain
-  const canPublish = hasSubdomain && publishedCount > 0
+  const canPublish = hasSubdomain && publishedCount > 0 && !isRestricted
   const shopUrl = hasSubdomain ? getStorefrontUrl(store.subdomain, { absolute: true }) : null
   const shopLabel = hasSubdomain ? getStorefrontLabel(store.subdomain) : ''
 
   const toggle = async (next) => {
     if (!user || !store) return
+    if (isRestricted) {
+      toast.error(isSuspended ? 'This store is suspended by BazarHQ. You cannot publish it now.' : 'This store was deleted by BazarHQ.')
+      return
+    }
+
     if (next && !canPublish) {
       toast.error(!hasSubdomain ? 'Set a subdomain in store settings first' : 'Publish at least one product first')
       return
@@ -86,13 +95,19 @@ export function PublishCard() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">Storefront</h3>
-              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
-                {published ? 'Live' : 'Draft'}
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${isSuspended ? 'border-red-300 bg-red-50 text-red-700' : isDeleted ? 'border-slate-300 bg-slate-100 text-slate-600' : published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
+                {isSuspended ? 'Suspended' : isDeleted ? 'Deleted' : published ? 'Live' : 'Draft'}
               </span>
             </div>
 
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {published ? 'Your shop is public. Anyone with the link can browse it.' : 'Only you can see your storefront. Toggle on to make it public.'}
+              {isSuspended
+                ? `Your storefront is offline because BazarHQ suspended this store${store.suspended_reason ? `: ${store.suspended_reason}` : '.'}`
+                : isDeleted
+                  ? 'This store was deleted by BazarHQ and can no longer be published.'
+                  : published
+                    ? 'Your shop is public. Anyone with the link can browse it.'
+                    : 'Only you can see your storefront. Toggle on to make it public.'}
             </p>
 
             {shopUrl && (
@@ -114,7 +129,7 @@ export function PublishCard() {
         </div>
 
         <div className="flex items-center gap-3 sm:flex-col sm:items-end">
-          <Switch checked={published} disabled={saving} onCheckedChange={toggle} />
+          <Switch checked={published} disabled={saving || isRestricted} onCheckedChange={toggle} />
           {saving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
       </div>

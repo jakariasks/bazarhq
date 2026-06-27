@@ -115,6 +115,17 @@ export default function ShopAboutPage() {
       }
 
       setStore(data);
+
+      const accountStatus = data.account_status || "active";
+      if (accountStatus === "suspended") {
+        setStatus("suspended");
+        return;
+      }
+      if (accountStatus === "deleted") {
+        setStatus("deleted");
+        return;
+      }
+
       setStatus(data.storefront_published ? "ok" : "unpublished");
     }
 
@@ -138,6 +149,14 @@ export default function ShopAboutPage() {
 
   if (status === "unpublished") {
     return <EmptyState title="Shop is currently unavailable" message="The merchant has temporarily unpublished this storefront. Please check again later." />;
+  }
+
+  if (status === "suspended") {
+    return <EmptyState title="This shop is suspended" message="This merchant account has been suspended by BazarHQ, so the about page is temporarily unavailable." />;
+  }
+
+  if (status === "deleted") {
+    return <EmptyState title="This shop is no longer available" message="This storefront has been removed from BazarHQ." />;
   }
 
   const theme = getTheme(store?.theme_id);
