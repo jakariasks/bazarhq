@@ -121,7 +121,6 @@ export default function Login() {
   }, [user, navigate])
 
   const emailCheck = useMemo(() => validateRealEmail(email), [email])
-  const formReady = emailCheck.ok && password.length > 0 && !!captchaToken
 
   const resetCaptcha = useCallback(() => {
     setCaptchaToken('')
@@ -238,7 +237,7 @@ export default function Login() {
 
           <AuthCaptcha key={captchaResetKey} resetKey={captchaResetKey} onVerify={setCaptchaToken} />
 
-          <Button type="submit" className="h-11 w-full rounded-xl" disabled={!formReady || loading || googleLoading}>
+          <Button type="submit" className="h-11 w-full rounded-xl" disabled={loading || googleLoading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sign in'}
           </Button>
         </form>
