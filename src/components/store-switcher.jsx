@@ -59,6 +59,7 @@ export function StoreSwitcher({ variant = 'sidebar' }) {
 
   const label = store?.shop_name?.trim() || 'Untitled store'
   const sub = store?.subdomain ? getStorefrontLabel(store.subdomain) : 'Not set up yet'
+  const canCreateStore = stores.length === 0
 
   const handleSelect = (id) => {
     if (id !== store?.id) switchStore(id)
@@ -89,9 +90,15 @@ export function StoreSwitcher({ variant = 'sidebar' }) {
           </ScrollArea>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link to="/merchant/stores/new" className="gap-2"><Plus className="h-4 w-4" /> Create store</Link>
-        </DropdownMenuItem>
+        {canCreateStore ? (
+          <DropdownMenuItem asChild>
+            <Link to="/merchant/stores/new" className="gap-2"><Plus className="h-4 w-4" /> Create store</Link>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem disabled className="gap-2 text-xs">
+            <Sparkles className="h-4 w-4" /> Free plan: 1 store only
+          </DropdownMenuItem>
+        )}
       </>
     )
   }
@@ -134,12 +141,19 @@ export function StoreSwitcher({ variant = 'sidebar' }) {
           </>
         )}
         <DropdownMenuSeparator className="my-0" />
-        <DropdownMenuItem asChild className="gap-2 rounded-none px-3 py-2.5">
-          <Link to="/merchant/stores/new">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md border border-dashed border-muted-foreground/40 text-muted-foreground"><Plus className="h-3.5 w-3.5" /></span>
-            <span className="text-sm font-medium">Create store</span>
-          </Link>
-        </DropdownMenuItem>
+        {canCreateStore ? (
+          <DropdownMenuItem asChild className="gap-2 rounded-none px-3 py-2.5">
+            <Link to="/merchant/stores/new">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md border border-dashed border-muted-foreground/40 text-muted-foreground"><Plus className="h-3.5 w-3.5" /></span>
+              <span className="text-sm font-medium">Create store</span>
+            </Link>
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem disabled className="gap-2 rounded-none px-3 py-2.5 text-xs">
+            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary"><Sparkles className="h-3.5 w-3.5" /></span>
+            <span>Free plan: one store per merchant email</span>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

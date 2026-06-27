@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, ShoppingBag, Search, Bell, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, ShoppingBag, Search, Bell, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,7 @@ function MerchantLayout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { store } = useCurrentStore()
+  const { store, isLoading: storeLoading } = useCurrentStore()
 
   const [themeId, setThemeId] = useState(DEFAULT_THEME_ID)
   useEffect(() => { if (store?.theme_id) setThemeId(store.theme_id) }, [store?.theme_id])
@@ -52,6 +52,26 @@ function MerchantLayout() {
   const isSuspended = accountStatus === 'suspended'
   const isDeleted = accountStatus === 'deleted'
   const isRestricted = isSuspended || isDeleted
+  const isNewStoreRoute = path === '/merchant/stores/new' || path.startsWith('/merchant/stores/new')
+  const hasNoActiveStore = !storeLoading && !store
+
+  useEffect(() => {
+    if (hasNoActiveStore && !isNewStoreRoute) {
+      navigate({ to: '/onboarding' })
+    }
+  }, [hasNoActiveStore, isNewStoreRoute, navigate])
+
+  if (hasNoActiveStore && !isNewStoreRoute) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4" style={themeCssVars(activeTheme)}>
+        <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-elegant">
+          <Loader2 className="mx-auto h-7 w-7 animate-spin text-primary" />
+          <h1 className="mt-4 text-xl font-semibold">No active store found</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Your deleted store is hidden from the dashboard. Redirecting you to create a new store.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen w-full bg-muted/30" style={themeCssVars(activeTheme)}>
@@ -144,7 +164,7 @@ function MerchantLayout() {
                 </div>
                 <div className="min-w-0">
                   <h2 className="font-semibold">
-                    {isSuspended ? 'Your merchant account is suspended' : 'This store was deleted by BazarHQ'}
+                    {isSuspended ? 'Your merchant account is suspended' : 'This store has been deleted'}
                   </h2>
                   <p className="mt-1 text-sm leading-6 opacity-80">
                     {isSuspended

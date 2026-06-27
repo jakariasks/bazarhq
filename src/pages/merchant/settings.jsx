@@ -243,17 +243,63 @@ export default function SettingsPage() {
     toast.success('Notification preferences saved')
   }
 
-  // SRS M8: account deletion
+  // SRS M8: account / shop deletion request
   const deleteAccount = async () => {
-    if (deletePhrase !== DELETE_PHRASE) { toast.error('Please type the confirmation phrase exactly'); return }
+    if (deletePhrase !== DELETE_PHRASE) {
+      toast.error('Please type the confirmation phrase exactly')
+      return
+    }
+
+    if (!store?.id) {
+      toast.error('No active store found to delete')
+      return
+    }
+
     setDeleting(true)
-    // Unpublish shop immediately
-    if (store) await supabase.from('stores').update({ storefront_published: false }).eq('id', store.id)
-    // Sign out — actual deletion handled by backend/admin (Supabase Admin API)
-    toast.success('Account deletion requested. Your shop has been unpublished. Full deletion completes within 30 days.')
-    setDeleteOpen(false)
-    setDeleting(false)
-    await signOut()
+
+    try {
+      // Preferred path: SECURITY DEFINER RPC. This works even when normal store updates
+      // are blocked by RLS, but it still verifies auth.uid() = store.owner_id inside SQL.
+      const { error: rpcError } = await supabase.rpc('merchant_delete_store', {
+        p_store_id: store.id,
+      })
+
+      // Fallback for projects where the SQL migration has not been run yet.
+      if (rpcError) {
+        const missingFunction = /merchant_delete_store|function .* does not exist|Could not find the function/i.test(rpcError.message || '')
+
+        if (!missingFunction) {
+          throw rpcError
+        }
+
+        const { error: fallbackError } = await supabase
+          .from('stores')
+          .update({
+            account_status: 'deleted',
+            storefront_published: false,
+            deleted_at: new Date().toISOString(),
+            suspended_reason: 'Deleted by merchant from account settings.',
+          })
+          .eq('id', store.id)
+          .eq('owner_id', user.id)
+
+        if (fallbackError) throw fallbackError
+      }
+
+      await qc.invalidateQueries({ queryKey: ['stores', user?.id] })
+      await qc.invalidateQueries({ queryKey: ['storeLimit'] })
+      setDeleteOpen(false)
+      setDeletePhrase('')
+      toast.success('Your store has been deleted and unpublished.')
+
+      // Keep the user out of a deleted merchant dashboard state.
+      await signOut()
+      window.location.href = '/'
+    } catch (error) {
+      console.error('Store deletion failed:', error)
+      toast.error(error?.message || 'Could not delete your store. Please try again.')
+      setDeleting(false)
+    }
   }
 
   const initial = (form.shop_name || user?.email || '?').charAt(0).toUpperCase()
@@ -580,12 +626,12 @@ export default function SettingsPage() {
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10"><Trash2 className="h-5 w-5 text-destructive"/></div>
               <div className="flex-1">
-                <h3 className="text-base font-semibold text-destructive">Delete account</h3>
+                <h3 className="text-base font-semibold text-destructive">Delete store</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Your shop will be unpublished immediately. All products, orders history and settings will be permanently removed within 30 days. <strong>This cannot be undone.</strong>
+                  Your shop will be unpublished immediately and marked as deleted. Customers will not be able to open the storefront. Products, orders history, and settings can be permanently removed later by admin cleanup. <strong>This cannot be undone from the merchant dashboard.</strong>
                 </p>
                 <Button variant="destructive" size="sm" className="mt-4 gap-2" onClick={()=>setDeleteOpen(true)}>
-                  <Trash2 className="h-4 w-4"/>Delete my account
+                  <Trash2 className="h-4 w-4"/>Delete my store
                 </Button>
               </div>
             </div>
@@ -596,11 +642,11 @@ export default function SettingsPage() {
       {/* Delete confirmation dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle className="text-destructive">Delete account permanently</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-destructive">Delete store permanently</DialogTitle></DialogHeader>
           <div className="py-2 space-y-4">
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
               <AlertTriangle className="mb-2 h-5 w-5"/>
-              <p>This will <strong>immediately unpublish</strong> your shop. All data will be permanently deleted within 30 days. Orders cannot be recovered.</p>
+              <p>This will <strong>immediately unpublish</strong> your shop and mark it as deleted. Customers will not be able to browse or place orders from this store.</p>
             </div>
             <div className="grid gap-2">
               <Label>Type <strong>{DELETE_PHRASE}</strong> to confirm</Label>
@@ -611,7 +657,7 @@ export default function SettingsPage() {
             <Button variant="outline" onClick={()=>{setDeleteOpen(false);setDeletePhrase('')}}>Cancel</Button>
             <Button variant="destructive" onClick={deleteAccount} disabled={deleting||deletePhrase!==DELETE_PHRASE}>
               {deleting?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<Trash2 className="mr-2 h-4 w-4"/>}
-              Delete permanently
+              Delete store
             </Button>
           </DialogFooter>
         </DialogContent>

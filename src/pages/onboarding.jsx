@@ -13,6 +13,7 @@ import { SHOP_TYPES, CATEGORIES_BY_TYPE } from '@/lib/shop-categories'
 import { AuthGuard } from '@/components/auth-guard'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchMerchantStoreLimit } from '@/lib/store-limit'
 
 const RESERVED = new Set(['www','api','app','admin','dashboard','shop','store','checkout','help','support','blog','docs','mail','email','status','about','login','signup','auth','static','assets','cdn','bazarhq'])
 const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,32)
@@ -53,6 +54,7 @@ function Onboarding() {
   const [catInput, setCatInput] = useState('')
   const [theme, setTheme] = useState(previewThemes[0].id)
   const [launching, setLaunching] = useState(false)
+  const [limitStatus, setLimitStatus] = useState({ loading: true, canCreate: true, existingStore: null, planTier: 'free', storeLimit: 1, storeCount: 0 })
   const debounceRef = useRef(null)
   const reqIdRef = useRef(0)
 
@@ -61,12 +63,23 @@ function Onboarding() {
 
   useEffect(() => {
     if (!user) return
-    const meta = user.user_metadata?.full_name || user.user_metadata?.shop_name || ''
-    if (meta) { setShopName(meta); setSub(slugify(meta)) }
-    supabase.from('stores').select('shop_name,subdomain').eq('owner_id', user.id).limit(1).maybeSingle().then(({ data }) => {
-      if (data?.shop_name) setShopName(data.shop_name)
-      if (data?.subdomain) { setSub(data.subdomain); setSubStatus({ kind: 'ok' }); setTouched(true) }
-    })
+    let cancelled = false
+
+    const loadMerchantLimit = async () => {
+      setLimitStatus((prev) => ({ ...prev, loading: true }))
+      const status = await fetchMerchantStoreLimit(supabase, user.id)
+      if (cancelled) return
+
+      setLimitStatus({ ...status, loading: false })
+
+      if (!status.canCreate) return
+
+      const meta = user.user_metadata?.full_name || user.user_metadata?.shop_name || ''
+      if (meta) { setShopName(meta); setSub(slugify(meta)) }
+    }
+
+    loadMerchantLimit()
+    return () => { cancelled = true }
   }, [user])
 
   useEffect(() => {
@@ -125,6 +138,16 @@ function Onboarding() {
   const launch = async () => {
     if (!user) return
     setLaunching(true)
+
+    const latestLimit = await fetchMerchantStoreLimit(supabase, user.id)
+    if (!latestLimit.canCreate) {
+      setLimitStatus({ ...latestLimit, loading: false })
+      setLaunching(false)
+      toast.error('Free plan allows only one store per merchant account.')
+      navigate({ to: '/merchant' })
+      return
+    }
+
     const { data, error } = await supabase.from('stores').insert({
       owner_id: user.id,
       shop_name: shopName.trim(),
@@ -143,6 +166,50 @@ function Onboarding() {
 
   const showSubError = touched && subStatus.kind === 'error'
   const showSubOk = subStatus.kind === 'ok'
+
+  if (limitStatus.loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-4">
+        <div className="rounded-2xl bg-white p-8 text-center shadow-elegant">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <p className="mt-3 text-sm text-muted-foreground">Checking your store limit…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!limitStatus.canCreate) {
+    const existing = limitStatus.existingStore
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-4">
+        <div className="mx-auto max-w-xl py-6">
+          <div className="flex items-center justify-between py-5">
+            <Logo size="md" />
+            <Link to="/merchant" className="text-sm text-muted-foreground hover:text-foreground">Back to dashboard</Link>
+          </div>
+          <div className="rounded-3xl border border-border bg-white p-8 text-center shadow-elegant">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <ShoppingBag className="h-8 w-8" />
+            </div>
+            <h1 className="mt-5 text-2xl font-bold">Free plan allows one store only</h1>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              This merchant account already owns a store. In the free version, one unique merchant email can create only one active store.
+            </p>
+            {existing && (
+              <div className="mt-5 rounded-2xl border border-border bg-muted/40 p-4 text-left">
+                <div className="text-sm font-semibold">{existing.shop_name || 'Your store'}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{existing.subdomain ? `${existing.subdomain}.bazarhq.com` : 'Subdomain not set'}</div>
+              </div>
+            )}
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <Link to="/merchant"><Button className="w-full sm:w-auto bg-gradient-primary">Go to dashboard</Button></Link>
+              <Link to="/merchant/settings"><Button variant="outline" className="w-full sm:w-auto">Manage store</Button></Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-4">
