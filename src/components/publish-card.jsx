@@ -37,7 +37,17 @@ export function PublishCard() {
   const published = store.storefront_published
   const hasSubdomain = !!store.subdomain
   const canPublish = hasSubdomain && publishedCount > 0
-  const shopUrl = store.subdomain ? `https://${store.subdomain}.bazarhq.com` : null
+  const isLocalDev = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  const shopUrl = store.subdomain
+    ? isLocalDev
+      ? `/shop?store=${encodeURIComponent(store.subdomain)}`
+      : `https://${store.subdomain}.bazarhq.com/shop`
+    : null
+  const shopLabel = store.subdomain
+    ? isLocalDev
+      ? `localhost:5173/shop?store=${store.subdomain}`
+      : `${store.subdomain}.bazarhq.com/shop`
+    : ''
 
   const toggle = async (next) => {
     if (!user || !store) return
@@ -75,7 +85,7 @@ export function PublishCard() {
             </p>
             {shopUrl && (
               <a href={shopUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                {store.subdomain}.bazarhq.com <ExternalLink className="h-3 w-3" />
+                {shopLabel} <ExternalLink className="h-3 w-3" />
               </a>
             )}
           </div>
@@ -95,7 +105,11 @@ export function PublishCard() {
             {publishedCount > 0 ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <AlertCircle className="h-3.5 w-3.5 text-warning" />}
             <span className={publishedCount > 0 ? '' : 'text-muted-foreground'}>{publishedCount} published product{publishedCount === 1 ? '' : 's'}</span>
           </div>
-          <Link to="/shop" className="ml-auto inline-flex items-center gap-1 font-medium text-primary hover:underline">
+          <Link
+            to="/shop"
+            search={store.subdomain ? { store: store.subdomain } : {}}
+            className="ml-auto inline-flex items-center gap-1 font-medium text-primary hover:underline"
+          >
             Preview storefront <ExternalLink className="h-3 w-3" />
           </Link>
         </div>

@@ -9,6 +9,7 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage  from "@/pages/reset-password";
 import OnboardingPage     from "@/pages/onboarding";
 import ShopPage           from "@/pages/shop";
+import ShopAboutPage      from "@/pages/shop-about";
 import CheckoutPage       from "@/pages/checkout";
 import TrackPage          from "@/pages/track";
 
@@ -52,6 +53,7 @@ const forgotRoute         = createRoute({ getParentRoute: () => rootRoute, path:
 const resetRoute          = createRoute({ getParentRoute: () => rootRoute, path: "/reset-password",  component: ResetPasswordPage  });
 const onboardingRoute     = createRoute({ getParentRoute: () => rootRoute, path: "/onboarding",      component: OnboardingPage     });
 const shopRoute           = createRoute({ getParentRoute: () => rootRoute, path: "/shop",            component: ShopPage           });
+const shopAboutRoute      = createRoute({ getParentRoute: () => rootRoute, path: "/shop/about",      component: ShopAboutPage      });
 const checkoutRoute       = createRoute({ getParentRoute: () => rootRoute, path: "/checkout",        component: CheckoutPage       });
 const trackRoute          = createRoute({ getParentRoute: () => rootRoute, path: "/track",           component: TrackPage          });
 
@@ -94,6 +96,7 @@ export const routeTree = rootRoute.addChildren([
   resetRoute,
   onboardingRoute,
   shopRoute,
+  shopAboutRoute,
   checkoutRoute,
   trackRoute,
 

@@ -399,10 +399,13 @@ function ProductDialog({ open, onOpenChange, product, store }) {
             <div className="grid gap-2">
               <Label>Category</Label>
               {allCats.length > 0 ? (
-                <Select value={category} onValueChange={setCategory}>
+                <Select
+                  value={category || '__none__'}
+                  onValueChange={value => setCategory(value === '__none__' ? '' : value)}
+                >
                   <SelectTrigger><SelectValue placeholder="Select category"/></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— None —</SelectItem>
+                    <SelectItem value="__none__">— None —</SelectItem>
                     {allCats.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>

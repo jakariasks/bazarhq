@@ -37,9 +37,10 @@ function formatDate(iso) {
 export default function TrackPage() {
   const search = useSearch({ strict: false })
 
-  // Pre-fill from URL params (coming from order success page)
-  const [storeSlug, setStoreSlug] = useState(search?.store || '')
-  const [orderId, setOrderId] = useState(search?.order || '')
+  // Pre-fill from URL params. Accept both old and new names for backward compatibility.
+  const initialStoreSlug = search?.store || search?.shop || ''
+  const initialOrderId = search?.order || search?.order_id || ''
+  const [orderId, setOrderId] = useState(initialOrderId)
   const [phone, setPhone] = useState(search?.phone || '')
   const [loading, setLoading] = useState(false)
   const [order, setOrder] = useState(null)
@@ -48,12 +49,14 @@ export default function TrackPage() {
   const [error, setError] = useState('')
   const [searched, setSearched] = useState(false)
 
-  // Auto-search if all params provided from URL
+  // Auto-search when an order ID and phone number are passed from checkout/account.
   useEffect(() => {
-    if (search?.order && search?.phone && search?.store) {
+    if (initialOrderId && search?.phone) {
       handleSearch()
     }
-  }, []) // eslint-disable-line
+    // Run once on page load only; input state is initialized from URL above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSearch = async () => {
     const oid = orderId.trim()
@@ -88,19 +91,25 @@ export default function TrackPage() {
       return
     }
 
-    // Load timeline
-    const { data: timelineData } = await supabase
-      .from('order_timeline')
-      .select('*')
-      .eq('order_id', orderData.id)
-      .order('created_at', { ascending: true })
-
     // Load store
     const { data: storeData } = await supabase
       .from('stores')
       .select('shop_name, logo_url, brand_color, phone, contact_email, whatsapp_number, subdomain')
       .eq('id', orderData.store_id)
       .maybeSingle()
+
+    if (initialStoreSlug && storeData?.subdomain && storeData.subdomain !== initialStoreSlug) {
+      setLoading(false)
+      setError('Order not found for this shop.')
+      return
+    }
+
+    // Timeline is stored against the internal orders.id UUID.
+    const { data: timelineData } = await supabase
+      .from('order_timeline')
+      .select('*')
+      .eq('order_id', orderData.id)
+      .order('created_at', { ascending: true })
 
     setOrder(orderData)
     setTimeline(timelineData ?? [])
@@ -121,7 +130,11 @@ export default function TrackPage() {
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-          <Link to="/shop" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <Link
+            to="/shop"
+            search={store?.subdomain || initialStoreSlug ? { store: store?.subdomain || initialStoreSlug } : {}}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
             <ArrowLeft className="h-4 w-4" /> Shop
           </Link>
           <div className="flex items-center gap-2">

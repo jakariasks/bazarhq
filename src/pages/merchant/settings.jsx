@@ -24,11 +24,33 @@ import { useQueryClient } from '@tanstack/react-query'
 const CATEGORIES = ['Fashion & Apparel','Electronics','Grocery & Food','Beauty & Personal Care','Home & Living','Books & Stationery','Handmade & Crafts','Sports & Outdoors','Other']
 const CURRENCIES = [{ v:'BDT', l:'BDT — Bangladeshi Taka' },{ v:'USD', l:'USD — US Dollar' },{ v:'EUR', l:'EUR — Euro' }]
 
+function normalizeUrlList(value) {
+  if (Array.isArray(value)) return value.map(v => String(v || '').trim()).filter(Boolean).slice(0, 4)
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) return parsed.map(v => String(v || '').trim()).filter(Boolean).slice(0, 4)
+    } catch {
+      return value.split(',').map(v => v.trim()).filter(Boolean).slice(0, 4)
+    }
+  }
+  return []
+}
+
+function padHeroUrls(value) {
+  const list = normalizeUrlList(value)
+  while (list.length < 4) list.push('')
+  return list.slice(0, 4)
+}
+
 const EMPTY = {
   shop_name:'', business_category:'', tagline:'', description:'',
   contact_email:'', phone:'', whatsapp_number:'', website_url:'',
   address:'', city:'', currency:'BDT', brand_color:'#6366f1',
   facebook_handle:'', instagram_handle:'',
+  hero_title:'', hero_subtitle:'', hero_banner_urls:['','','',''],
+  about_title:'', about_image_url:'', about_mission:'',
+  offer_enabled:true, offer_badge:'', offer_title:'', offer_subtitle:'', offer_button_text:'', offer_image_url:'',
 }
 
 const NOTIF_DEFAULTS = {
@@ -87,6 +109,18 @@ export default function SettingsPage() {
         brand_color: store.brand_color ?? '#6366f1',
         facebook_handle: store.facebook_handle ?? '',
         instagram_handle: store.instagram_handle ?? '',
+        hero_title: store.hero_title ?? '',
+        hero_subtitle: store.hero_subtitle ?? '',
+        hero_banner_urls: padHeroUrls(store.hero_banner_urls ?? store.banner_urls ?? store.banner_images ?? store.hero_images),
+        about_title: store.about_title ?? '',
+        about_image_url: store.about_image_url ?? '',
+        about_mission: store.about_mission ?? '',
+        offer_enabled: store.offer_enabled ?? true,
+        offer_badge: store.offer_badge ?? '',
+        offer_title: store.offer_title ?? '',
+        offer_subtitle: store.offer_subtitle ?? '',
+        offer_button_text: store.offer_button_text ?? '',
+        offer_image_url: store.offer_image_url ?? '',
       })
       setLogoUrl(store.logo_url ?? null)
       setBannerUrl(store.banner_url ?? null)
@@ -99,6 +133,32 @@ export default function SettingsPage() {
   }, [store, storeLoading, user])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const updateHeroUrl = (index, value) => {
+    setForm(f => {
+      const next = padHeroUrls(f.hero_banner_urls)
+      next[index] = value
+      return { ...f, hero_banner_urls: next }
+    })
+  }
+
+  const uploadCustomImage = async (file, target, index = null) => {
+    if (!user || !store || !file) return
+    if (file.size > 3 * 1024 * 1024) { toast.error('Image must be under 3 MB'); return }
+    const uploadKey = index == null ? target : `${target}-${index}`
+    setUploading(uploadKey)
+    const ext = file.name.split('.').pop() || 'png'
+    const path = `${user.id}/${target}-${index ?? 'single'}-${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage.from('shop-branding').upload(path, file, { upsert: true, contentType: file.type })
+    if (upErr) { toast.error(upErr.message); setUploading(null); return }
+    const { data: pub } = supabase.storage.from('shop-branding').getPublicUrl(path)
+    const url = pub.publicUrl
+    if (target === 'hero') updateHeroUrl(index, url)
+    if (target === 'about') set('about_image_url', url)
+    if (target === 'offer') set('offer_image_url', url)
+    setUploading(null)
+    toast.success('Image uploaded. Click Save changes to publish it.')
+  }
 
   const uploadImage = async (file, kind) => {
     if (!user || !store) return
@@ -137,6 +197,18 @@ export default function SettingsPage() {
       brand_color: form.brand_color,
       facebook_handle: form.facebook_handle || null,
       instagram_handle: form.instagram_handle || null,
+      hero_title: form.hero_title || null,
+      hero_subtitle: form.hero_subtitle || null,
+      hero_banner_urls: normalizeUrlList(form.hero_banner_urls),
+      about_title: form.about_title || null,
+      about_image_url: form.about_image_url || null,
+      about_mission: form.about_mission || null,
+      offer_enabled: form.offer_enabled !== false,
+      offer_badge: form.offer_badge || null,
+      offer_title: form.offer_title || null,
+      offer_subtitle: form.offer_subtitle || null,
+      offer_button_text: form.offer_button_text || null,
+      offer_image_url: form.offer_image_url || null,
     }).eq('id', store.id)
     setSaving(false)
     if (error) { toast.error(error.message); return }
@@ -257,6 +329,55 @@ export default function SettingsPage() {
                   </Select>
                 </Field>
                 <Field label="City"><Input value={form.city} onChange={e=>set('city',e.target.value)} placeholder="Dhaka"/></Field>
+              </Sec>
+
+              <Sec title="Storefront hero & slideshow">
+                <Field label="Hero title" className="sm:col-span-2">
+                  <Input value={form.hero_title||''} onChange={e=>set('hero_title',e.target.value)} placeholder="Clean shopping, trusted checkout" maxLength={120}/>
+                </Field>
+                <Field label="Hero subtitle" className="sm:col-span-2">
+                  <Textarea value={form.hero_subtitle||''} onChange={e=>set('hero_subtitle',e.target.value)} rows={2} maxLength={220} placeholder="Short message for the storefront hero area"/>
+                </Field>
+                <div className="sm:col-span-2 grid gap-4 sm:grid-cols-2">
+                  {padHeroUrls(form.hero_banner_urls).map((url, index)=>(
+                    <div key={index} className="rounded-xl border border-border p-3">
+                      <Label className="text-sm">Hero banner image {index + 1}</Label>
+                      <Input className="mt-2" value={url} onChange={e=>updateHeroUrl(index,e.target.value)} placeholder="https://..."/>
+                      {url && <img src={url} alt={`Hero banner ${index + 1}`} className="mt-3 h-24 w-full rounded-lg object-cover"/>}
+                      <Input className="mt-3" type="file" accept="image/*" onChange={e=>e.target.files?.[0]&&uploadCustomImage(e.target.files[0],'hero',index)} disabled={uploading===`hero-${index}`}/>
+                      <p className="mt-1 text-xs text-muted-foreground">Use at least 2 images. Maximum 4 images will show.</p>
+                    </div>
+                  ))}
+                </div>
+              </Sec>
+
+              <Sec title="Store offer section">
+                <div className="sm:col-span-2 flex items-center justify-between rounded-xl border border-border p-4">
+                  <div>
+                    <Label className="text-sm font-medium">Show offer section</Label>
+                    <p className="text-xs text-muted-foreground">This appears below the full product collection.</p>
+                  </div>
+                  <Switch checked={form.offer_enabled !== false} onCheckedChange={v=>set('offer_enabled',v)}/>
+                </div>
+                <Field label="Offer badge"><Input value={form.offer_badge||''} onChange={e=>set('offer_badge',e.target.value)} placeholder="Limited offer" maxLength={40}/></Field>
+                <Field label="Offer button text"><Input value={form.offer_button_text||''} onChange={e=>set('offer_button_text',e.target.value)} placeholder="Shop products" maxLength={40}/></Field>
+                <Field label="Offer title" className="sm:col-span-2"><Input value={form.offer_title||''} onChange={e=>set('offer_title',e.target.value)} placeholder="Special deal for smart shoppers" maxLength={120}/></Field>
+                <Field label="Offer subtitle" className="sm:col-span-2"><Textarea value={form.offer_subtitle||''} onChange={e=>set('offer_subtitle',e.target.value)} rows={3} maxLength={260} placeholder="Write the offer message customers will see."/></Field>
+                <Field label="Offer image URL" className="sm:col-span-2">
+                  <Input value={form.offer_image_url||''} onChange={e=>set('offer_image_url',e.target.value)} placeholder="https://..."/>
+                  {form.offer_image_url && <img src={form.offer_image_url} alt="Offer preview" className="mt-3 h-36 w-full rounded-xl object-cover"/>}
+                  <Input className="mt-3" type="file" accept="image/*" onChange={e=>e.target.files?.[0]&&uploadCustomImage(e.target.files[0],'offer')} disabled={uploading==='offer'}/>
+                </Field>
+              </Sec>
+
+              <Sec title="About page content">
+                <Field label="About page title" className="sm:col-span-2"><Input value={form.about_title||''} onChange={e=>set('about_title',e.target.value)} placeholder="About our shop" maxLength={120}/></Field>
+                <Field label="About page image URL" className="sm:col-span-2">
+                  <Input value={form.about_image_url||''} onChange={e=>set('about_image_url',e.target.value)} placeholder="https://..."/>
+                  {form.about_image_url && <img src={form.about_image_url} alt="About preview" className="mt-3 h-40 w-full rounded-xl object-cover"/>}
+                  <Input className="mt-3" type="file" accept="image/*" onChange={e=>e.target.files?.[0]&&uploadCustomImage(e.target.files[0],'about')} disabled={uploading==='about'}/>
+                </Field>
+                <Field label="About mission / story" className="sm:col-span-2"><Textarea value={form.about_mission||''} onChange={e=>set('about_mission',e.target.value)} rows={4} maxLength={700} placeholder="Tell customers about your mission, story, and service promise."/></Field>
               </Sec>
 
               <Sec title="Contact info">

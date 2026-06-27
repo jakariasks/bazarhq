@@ -9,6 +9,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import {
+  MERCHANT_OAUTH_INTENT_KEY,
+  ROLE_MERCHANT,
+  clearAllRoleIntents,
+  setStoredIntent,
+} from '@/lib/auth-roles'
 
 function validateBDPhone(raw) {
   const digits = raw.replace(/\D/g, '')
@@ -32,7 +38,7 @@ function Signup() {
   const [phone, setPhone] = useState('')
   const [phoneError, setPhoneError] = useState('')
 
-  useEffect(() => { if (user) navigate({ to: '/onboarding' }) }, [user])
+  useEffect(() => { if (user) navigate({ to: '/onboarding' }) }, [user, navigate])
 
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword
@@ -41,9 +47,15 @@ function Signup() {
     e.preventDefault()
     if (password !== confirmPassword) { toast.error('Passwords do not match.'); return }
     setLoading(true)
+    await supabase.auth.signOut()
+    clearAllRoleIntents()
+
     const { error } = await supabase.auth.signUp({
-      email, password,
-      options: { emailRedirectTo: `${window.location.origin}/onboarding`, data: { full_name: name } },
+      email: email.trim().toLowerCase(), password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/onboarding`,
+        data: { full_name: name, role: ROLE_MERCHANT },
+      },
     })
     setLoading(false)
     if (error) { toast.error(error.message); return }
@@ -57,10 +69,20 @@ function Signup() {
     if (!v.ok) { setPhoneError(v.message); return }
     if (password !== confirmPassword) { toast.error('Passwords do not match.'); return }
     setLoading(true)
+    await supabase.auth.signOut()
+    clearAllRoleIntents()
+
     const fakeEmail = `${v.digits}@phone.bazarhq.com`
     const { error } = await supabase.auth.signUp({
       email: fakeEmail, password,
-      options: { data: { full_name: name, phone_number: '+88' + v.digits, signup_method: 'phone' } },
+      options: {
+        data: {
+          full_name: name,
+          phone_number: '+88' + v.digits,
+          signup_method: 'phone',
+          role: ROLE_MERCHANT,
+        },
+      },
     })
     setLoading(false)
     if (error) { toast.error(error.message); return }
@@ -70,11 +92,24 @@ function Signup() {
 
   const signInWithGoogle = async () => {
     setGoogleLoading(true)
+
+    await supabase.auth.signOut()
+    clearAllRoleIntents()
+    setStoredIntent(MERCHANT_OAUTH_INTENT_KEY, { redirectTo: '/onboarding' })
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/onboarding` },
+      options: {
+        redirectTo: `${window.location.origin}/onboarding`,
+        queryParams: { prompt: 'select_account' },
+      },
     })
-    if (error) { toast.error(error.message); setGoogleLoading(false) }
+
+    if (error) {
+      clearAllRoleIntents()
+      toast.error(error.message)
+      setGoogleLoading(false)
+    }
   }
 
   const onPhoneChange = (val) => {

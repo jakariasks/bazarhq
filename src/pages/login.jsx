@@ -8,12 +8,56 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import {
+  MERCHANT_OAUTH_INTENT_KEY,
+  ROLE_CUSTOMER,
+  ROLE_MERCHANT,
+  clearAllRoleIntents,
+  getUserRole,
+  safeInternalPath,
+  setStoredIntent,
+} from '@/lib/auth-roles'
+
+
+async function hasMerchantRecord(userId) {
+  if (!userId) return false
+
+  const [{ data: profile }, { data: store }] = await Promise.all([
+    supabase.from('profiles').select('id').eq('id', userId).maybeSingle(),
+    supabase.from('stores').select('id').eq('owner_id', userId).limit(1).maybeSingle(),
+  ])
+
+  return !!profile || !!store
+}
+
+async function assertMerchantAccount(user) {
+  const role = getUserRole(user)
+
+  if (role === ROLE_CUSTOMER) {
+    throw new Error('This email is registered as a customer account. Please use a merchant account.')
+  }
+
+  if (role === ROLE_MERCHANT) return
+
+  const hasRecord = await hasMerchantRecord(user?.id)
+  if (!hasRecord) {
+    throw new Error('No merchant account was found for this email address.')
+  }
+
+  await supabase.auth.updateUser({
+    data: {
+      ...user.user_metadata,
+      role: ROLE_MERCHANT,
+      full_name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Merchant',
+    },
+  })
+}
 
 function Login() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const search = useSearch({ strict: false })
-  const redirect = search?.redirect || '/merchant'
+  const redirect = safeInternalPath(search?.redirect, '/merchant')
 
   const [tab, setTab] = useState('email')
 
@@ -29,15 +73,25 @@ function Login() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
-  useEffect(() => { if (user) navigate({ to: redirect }) }, [user])
+  useEffect(() => { if (user) navigate({ to: redirect }) }, [user, navigate, redirect])
 
   // ── Email login ──
   const submitEmail = async (e) => {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) { setLoading(false); toast.error(error.message); return }
+
+    try {
+      await assertMerchantAccount(data.user)
+    } catch (err) {
+      await supabase.auth.signOut()
+      setLoading(false)
+      toast.error(err.message || 'This account cannot access the merchant dashboard.')
+      return
+    }
+
     setLoading(false)
-    if (error) { toast.error(error.message); return }
     toast.success('Welcome back!')
     navigate({ to: redirect })
   }
@@ -52,20 +106,43 @@ function Login() {
     }
     setLoading(true)
     const fakeEmail = `${digits}@phone.bazarhq.com`
-    const { error } = await supabase.auth.signInWithPassword({ email: fakeEmail, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email: fakeEmail, password })
+    if (error) { setLoading(false); toast.error('Invalid phone number or password'); return }
+
+    try {
+      await assertMerchantAccount(data.user)
+    } catch (err) {
+      await supabase.auth.signOut()
+      setLoading(false)
+      toast.error(err.message || 'This account cannot access the merchant dashboard.')
+      return
+    }
+
     setLoading(false)
-    if (error) { toast.error('Invalid phone number or password'); return }
     toast.success('Welcome back!')
     navigate({ to: redirect })
   }
 
   const signInWithGoogle = async () => {
     setGoogleLoading(true)
+
+    await supabase.auth.signOut()
+    clearAllRoleIntents()
+    setStoredIntent(MERCHANT_OAUTH_INTENT_KEY, { redirectTo: redirect })
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/merchant` },
+      options: {
+        redirectTo: `${window.location.origin}${redirect}`,
+        queryParams: { prompt: 'select_account' },
+      },
     })
-    if (error) { toast.error(error.message); setGoogleLoading(false) }
+
+    if (error) {
+      clearAllRoleIntents()
+      toast.error(error.message)
+      setGoogleLoading(false)
+    }
   }
 
   const onPhoneChange = (val) => {
