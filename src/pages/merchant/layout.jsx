@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, ShoppingBag, Search, Bell, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, Loader2 } from 'lucide-react'
+import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, Search, Bell, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, PlusCircle, Store as StoreIcon, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -14,9 +14,8 @@ import { toast } from 'sonner'
 import { StoreSwitcher } from '@/components/store-switcher'
 import { useCurrentStore } from '@/lib/use-current-store'
 
-
 const nav = [
-  { to: '/merchant', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/merchant', label: 'Dashboard', icon: LayoutDashboard, exact: true, noStore: true },
   { to: '/merchant/products', label: 'Products', icon: Package },
   { to: '/merchant/orders', label: 'Orders', icon: ShoppingCart },
   { to: '/merchant/customers', label: 'Customers', icon: Users },
@@ -25,6 +24,70 @@ const nav = [
   { to: '/merchant/payments', label: 'Payments', icon: CreditCard },
   { to: '/merchant/settings', label: 'Settings', icon: Settings },
 ]
+
+function NoStoreDashboard({ user, navigate }) {
+  return (
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-[2rem] border border-border bg-card p-6 shadow-elegant sm:p-8">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,.18),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,.14),transparent_30%)]" />
+        <div className="relative grid gap-8 lg:grid-cols-[1.1fr_.9fr] lg:items-center">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              <Sparkles className="h-3.5 w-3.5" /> Dashboard ready
+            </span>
+            <h1 className="mt-5 max-w-2xl text-3xl font-black tracking-tight sm:text-4xl">
+              Welcome to BazarHQ, {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Merchant'}.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+              Your merchant account is active. You have not created a shop yet. Start when you are ready; your free plan allows one store per merchant email.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button className="gap-2 rounded-xl bg-gradient-primary shadow-glow" onClick={() => navigate({ to: '/merchant/stores/new' })}>
+                <PlusCircle className="h-4 w-4" /> Create your shop
+              </Button>
+              <Button variant="outline" className="rounded-xl" onClick={() => navigate({ to: '/merchant/settings' })}>
+                Account settings
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-[1.5rem] border border-border bg-background/80 p-5 shadow-sm backdrop-blur">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <StoreIcon className="h-7 w-7" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold">Next steps</h2>
+            <div className="mt-4 space-y-3">
+              {[
+                'Choose a store name and unique storefront URL.',
+                'Select your business categories.',
+                'Add products and payment methods.',
+                'Publish your storefront when setup is complete.',
+              ].map((item, index) => (
+                <div key={item} className="flex gap-3 rounded-xl border border-border bg-muted/30 p-3 text-sm">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</span>
+                  <span className="text-muted-foreground">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        {[
+          ['Secure account', 'Email verification and bot protection help keep fake signups away.'],
+          ['Free plan limit', 'One active store per merchant email in the free version.'],
+          ['Create later', 'You can use the dashboard first and create your shop later.'],
+        ].map(([title, desc]) => (
+          <div key={title} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <h3 className="font-semibold">{title}</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{desc}</p>
+          </div>
+        ))}
+      </section>
+    </div>
+  )
+}
 
 function MerchantLayout() {
   const location = useLocation()
@@ -46,32 +109,16 @@ function MerchantLayout() {
     toast.success(`Theme set to ${t.name}`)
     qc.invalidateQueries({ queryKey: ['stores', user?.id] })
   }
+
   const activeTheme = getTheme(themeId)
   const initial = (user?.user_metadata?.shop_name || user?.email || '?').charAt(0).toUpperCase()
   const accountStatus = store?.account_status || 'active'
   const isSuspended = accountStatus === 'suspended'
   const isDeleted = accountStatus === 'deleted'
-  const isRestricted = isSuspended || isDeleted
+  const isRestricted = !!store && (isSuspended || isDeleted)
   const isNewStoreRoute = path === '/merchant/stores/new' || path.startsWith('/merchant/stores/new')
   const hasNoActiveStore = !storeLoading && !store
-
-  useEffect(() => {
-    if (hasNoActiveStore && !isNewStoreRoute) {
-      navigate({ to: '/onboarding' })
-    }
-  }, [hasNoActiveStore, isNewStoreRoute, navigate])
-
-  if (hasNoActiveStore && !isNewStoreRoute) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4" style={themeCssVars(activeTheme)}>
-        <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-elegant">
-          <Loader2 className="mx-auto h-7 w-7 animate-spin text-primary" />
-          <h1 className="mt-4 text-xl font-semibold">No active store found</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Your deleted store is hidden from the dashboard. Redirecting you to create a new store.</p>
-        </div>
-      </div>
-    )
-  }
+  const showNoStoreDashboard = hasNoActiveStore && !isNewStoreRoute
 
   return (
     <div className="flex min-h-screen w-full bg-muted/30" style={themeCssVars(activeTheme)}>
@@ -90,6 +137,16 @@ function MerchantLayout() {
         <nav className="space-y-1 px-3 py-2">
           {nav.map((item) => {
             const active = item.exact ? path === item.to : path === item.to || path.startsWith(item.to + '/')
+            const disabled = hasNoActiveStore && !item.noStore
+
+            if (disabled) {
+              return (
+                <button key={item.to} type="button" disabled className="flex w-full cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-muted-foreground/50">
+                  <item.icon className="h-4 w-4" /> {item.label}
+                </button>
+              )
+            }
+
             return (
               <Link key={item.to} to={item.to} onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium' : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground'}`}>
@@ -111,16 +168,16 @@ function MerchantLayout() {
           <button className="lg:hidden" onClick={() => setOpen(true)}><Menu className="h-5 w-5" /></button>
           <div className="relative hidden flex-1 max-w-md md:block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search products, orders, customers…" className="pl-9" />
+            <Input placeholder={hasNoActiveStore ? 'Create a store to search products, orders, customers…' : 'Search products, orders, customers…'} className="pl-9" disabled={hasNoActiveStore} />
           </div>
           <div className="flex flex-1 items-center justify-end gap-2">
-            <span className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${isSuspended ? 'border-red-300 bg-red-50 text-red-700' : isDeleted ? 'border-slate-300 bg-slate-100 text-slate-600' : store?.storefront_published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${isSuspended ? 'bg-red-600' : isDeleted ? 'bg-slate-500' : store?.storefront_published ? 'bg-success' : 'bg-muted-foreground'}`} />
-              {isSuspended ? 'Suspended' : isDeleted ? 'Deleted' : store?.storefront_published ? 'Live' : 'Draft'}
+            <span className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${hasNoActiveStore ? 'border-primary/20 bg-primary/10 text-primary' : isSuspended ? 'border-red-300 bg-red-50 text-red-700' : isDeleted ? 'border-slate-300 bg-slate-100 text-slate-600' : store?.storefront_published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${hasNoActiveStore ? 'bg-primary' : isSuspended ? 'bg-red-600' : isDeleted ? 'bg-slate-500' : store?.storefront_published ? 'bg-success' : 'bg-muted-foreground'}`} />
+              {hasNoActiveStore ? 'No store yet' : isSuspended ? 'Suspended' : isDeleted ? 'Deleted' : store?.storefront_published ? 'Live' : 'Draft'}
             </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button variant="outline" size="sm" className="gap-2" disabled={hasNoActiveStore}>
                   <span className="inline-block h-3.5 w-3.5 rounded-full ring-2 ring-background" style={{ background: activeTheme.swatch }} />
                   <span className="hidden sm:inline">{activeTheme.name}</span>
                   <Palette className="h-3.5 w-3.5 opacity-70" />
@@ -148,7 +205,11 @@ function MerchantLayout() {
                 <DropdownMenuSeparator />
                 <StoreSwitcher variant="menu" />
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate({ to: '/merchant/settings' })}><Settings className="mr-2 h-4 w-4" /> Settings</DropdownMenuItem>
+                {hasNoActiveStore ? (
+                  <DropdownMenuItem onClick={() => navigate({ to: '/merchant/stores/new' })}><PlusCircle className="mr-2 h-4 w-4" /> Create store</DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => navigate({ to: '/merchant/settings' })}><Settings className="mr-2 h-4 w-4" /> Settings</DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={async () => { await signOut(); navigate({ to: '/' }) }}><LogOut className="mr-2 h-4 w-4" /> Sign out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -163,9 +224,7 @@ function MerchantLayout() {
                   {isSuspended ? <ShieldAlert className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
                 </div>
                 <div className="min-w-0">
-                  <h2 className="font-semibold">
-                    {isSuspended ? 'Your merchant account is suspended' : 'This store has been deleted'}
-                  </h2>
+                  <h2 className="font-semibold">{isSuspended ? 'Your merchant account is suspended' : 'This store has been deleted'}</h2>
                   <p className="mt-1 text-sm leading-6 opacity-80">
                     {isSuspended
                       ? `Your storefront is offline and cannot be published now${store?.suspended_reason ? `: ${store.suspended_reason}` : '.'}`
@@ -176,7 +235,7 @@ function MerchantLayout() {
               </div>
             </div>
           )}
-          <Outlet />
+          {showNoStoreDashboard ? <NoStoreDashboard user={user} navigate={navigate} /> : <Outlet />}
         </main>
       </div>
     </div>

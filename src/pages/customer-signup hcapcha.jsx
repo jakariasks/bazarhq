@@ -1,39 +1,18 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { CheckCircle2, Eye, EyeOff, Loader2, Store } from 'lucide-react'
-import { toast } from 'sonner'
+import { CheckCircle2, Eye, EyeOff, Loader2, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Logo } from '@/components/logo'
-import { supabase } from '@/integrations/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
 import { AuthCaptcha } from '@/components/auth-captcha'
+import { useCustomerAuth } from '@/hooks/use-customer-auth'
 import { validateRealEmail } from '@/lib/email-validation'
-import {
-  MERCHANT_OAUTH_INTENT_KEY,
-  ROLE_MERCHANT,
-  clearAllRoleIntents,
-  setStoredIntent,
-} from '@/lib/auth-roles'
 
-async function createMerchantProfile(user, fallbackName) {
-  if (!user?.id || !user?.email) return
-
-  const fullName = fallbackName || user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0]
-
-  const { error } = await supabase
-    .from('profiles')
-    .upsert({
-      id: user.id,
-      email: user.email.toLowerCase(),
-      full_name: fullName,
-      plan_tier: 'free',
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' })
-
-  if (error) console.warn('Profile upsert failed:', error.message)
+function getRedirectTo() {
+  const redirect = new URLSearchParams(window.location.search).get('redirect')
+  return redirect?.startsWith('/') && !redirect.startsWith('//') ? redirect : '/customer/account'
 }
 
 function GoogleIcon() {
@@ -50,7 +29,6 @@ function GoogleIcon() {
 function AuthShell({ children }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.10),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(99,102,241,0.12),transparent_35%),linear-gradient(180deg,#f8fafc_0%,#ffffff_48%,#f6f8fb_100%)] p-4">
-      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
       <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: 'easeOut' }} className="relative w-full max-w-md">
         {children}
       </motion.div>
@@ -58,10 +36,10 @@ function AuthShell({ children }) {
   )
 }
 
-export default function Signup() {
+export default function CustomerSignupPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const [name, setName] = useState('')
+  const { signUp, signInWithGoogle } = useCustomerAuth()
+  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -69,120 +47,89 @@ export default function Signup() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [captchaToken, setCaptchaToken] = useState('')
   const [captchaResetKey, setCaptchaResetKey] = useState(0)
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [checkEmail, setCheckEmail] = useState('')
+  const [success, setSuccess] = useState(false)
 
-  useEffect(() => {
-    if (user) navigate({ to: '/merchant' })
-  }, [user, navigate])
-
+  const redirectTo = getRedirectTo()
+  const loginSearch = redirectTo !== '/customer/account' ? { redirect: redirectTo } : {}
   const emailCheck = useMemo(() => validateRealEmail(email), [email])
-  const passwordStrong = password.length >= 8 && /[A-Z]/.test(password) && /\d/.test(password)
+  const passwordStrong = password.length >= 8 && /\d/.test(password)
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword
-  const formReady = name.trim().length >= 2 && emailCheck.ok && passwordStrong && passwordsMatch && !!captchaToken
+  const formReady = fullName.trim().length >= 2 && emailCheck.ok && passwordStrong && passwordsMatch && !!captchaToken
 
   const resetCaptcha = useCallback(() => {
     setCaptchaToken('')
     setCaptchaResetKey((value) => value + 1)
   }, [])
 
-  const submitEmail = async (event) => {
+  async function handleSignup(event) {
     event.preventDefault()
 
-    if (name.trim().length < 2) {
-      toast.error('Enter your name.')
+    if (fullName.trim().length < 2) {
+      setError('Enter your name.')
       return
     }
 
     if (!emailCheck.ok) {
-      toast.error(emailCheck.message)
+      setError(emailCheck.message)
       return
     }
 
     if (!passwordStrong) {
-      toast.error('Use 8+ characters with uppercase and number.')
+      setError('Use 8+ characters and one number.')
       return
     }
 
     if (!passwordsMatch) {
-      toast.error('Passwords do not match.')
+      setError('Passwords do not match.')
       return
     }
 
     if (!captchaToken) {
-      toast.error('Complete the robot check.')
+      setError('Complete the robot check.')
       return
     }
 
+    setError('')
     setLoading(true)
 
-    const { data, error } = await supabase.auth.signUp({
-      email: emailCheck.email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/merchant`,
-        captchaToken,
-        data: {
-          role: ROLE_MERCHANT,
-          full_name: name.trim(),
-          signup_method: 'email',
-          plan_tier: 'free',
-        },
-      },
-    })
-
-    if (error) {
-      setLoading(false)
+    try {
+      const data = await signUp({ email: emailCheck.email, password, fullName, captchaToken, redirectTo })
+      if (data.session) {
+        window.location.assign(redirectTo)
+        return
+      }
+      setSuccess(true)
+    } catch (err) {
+      setError(err.message || 'Registration failed.')
       resetCaptcha()
-      toast.error(error.message)
-      return
+    } finally {
+      setLoading(false)
     }
-
-    if (data?.user) {
-      await createMerchantProfile(data.user, name.trim())
-    }
-
-    setLoading(false)
-
-    if (data?.session) {
-      navigate({ to: '/merchant' })
-      return
-    }
-
-    setCheckEmail(emailCheck.email)
-    toast.success('Check your email to continue.')
   }
 
-  const signUpWithGoogle = async () => {
+  async function handleGoogleSignup() {
+    setError('')
     setGoogleLoading(true)
-    await supabase.auth.signOut()
-    clearAllRoleIntents()
-    setStoredIntent(MERCHANT_OAUTH_INTENT_KEY, { redirectTo: '/merchant' })
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/merchant`,
-        queryParams: { prompt: 'select_account' },
-      },
-    })
-
-    if (error) {
-      clearAllRoleIntents()
-      toast.error(error.message)
+    try {
+      await signInWithGoogle(redirectTo)
+    } catch (err) {
+      setError(err.message || 'Google signup failed.')
       setGoogleLoading(false)
     }
   }
 
-  if (checkEmail) {
+  if (success) {
     return (
       <AuthShell>
         <div className="rounded-[2rem] border border-border/80 bg-card/95 p-8 text-center text-card-foreground shadow-xl shadow-slate-200/70 backdrop-blur">
           <CheckCircle2 className="mx-auto h-12 w-12 text-success" />
           <h1 className="mt-5 text-2xl font-bold">Check your email</h1>
           <p className="mt-2 text-sm text-muted-foreground">Verify your account to continue.</p>
-          <Button className="mt-6 h-11 w-full rounded-xl" onClick={() => navigate({ to: '/login' })}>Go to login</Button>
+          <Button variant="outline" className="mt-6 h-11 w-full rounded-xl" onClick={() => navigate({ to: '/customer/login', search: loginSearch })}>Go to login</Button>
         </div>
       </AuthShell>
     )
@@ -197,13 +144,13 @@ export default function Signup() {
       <div className="rounded-[2rem] border border-border/80 bg-card/95 p-6 text-card-foreground shadow-xl shadow-slate-200/70 backdrop-blur sm:p-8">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <Store className="h-6 w-6" />
+            <UserRound className="h-6 w-6" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Create account</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Merchant dashboard</p>
+          <p className="mt-1 text-sm text-muted-foreground">Customer account</p>
         </div>
 
-        <Button type="button" variant="outline" className="h-11 w-full gap-2 rounded-xl" onClick={signUpWithGoogle} disabled={googleLoading || loading}>
+        <Button type="button" variant="outline" className="h-11 w-full gap-2 rounded-xl" onClick={handleGoogleSignup} disabled={googleLoading || loading}>
           {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
           Continue with Google
         </Button>
@@ -214,21 +161,21 @@ export default function Signup() {
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        <form onSubmit={submitEmail} className="space-y-4">
+        <form onSubmit={handleSignup} className="space-y-4">
           <div>
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" type="text" autoComplete="name" placeholder="Your name" value={name} onChange={(event) => setName(event.target.value)} required className="mt-1 h-11 rounded-xl" />
+            <Label htmlFor="customerName">Name</Label>
+            <Input id="customerName" type="text" autoComplete="name" placeholder="Your name" value={fullName} onChange={(event) => setFullName(event.target.value)} required className="mt-1 h-11 rounded-xl" />
           </div>
 
           <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required className="mt-1 h-11 rounded-xl" />
+            <Label htmlFor="customerEmail">Email</Label>
+            <Input id="customerEmail" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required className="mt-1 h-11 rounded-xl" />
           </div>
 
           <div>
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="customerPassword">Password</Label>
             <div className="relative mt-1">
-              <Input id="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="8+ chars, uppercase, number" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-11 rounded-xl pr-10" />
+              <Input id="customerPassword" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="8+ chars and number" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-11 rounded-xl pr-10" />
               <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -236,9 +183,9 @@ export default function Signup() {
           </div>
 
           <div>
-            <Label htmlFor="confirmPassword">Confirm password</Label>
+            <Label htmlFor="customerConfirmPassword">Confirm password</Label>
             <div className="relative mt-1">
-              <Input id="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required className="h-11 rounded-xl pr-10" />
+              <Input id="customerConfirmPassword" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required className="h-11 rounded-xl pr-10" />
               <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
                 {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -247,6 +194,8 @@ export default function Signup() {
 
           <AuthCaptcha key={captchaResetKey} resetKey={captchaResetKey} onVerify={setCaptchaToken} />
 
+          {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+
           <Button type="submit" className="h-11 w-full rounded-xl" disabled={!formReady || loading || googleLoading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create account'}
           </Button>
@@ -254,7 +203,7 @@ export default function Signup() {
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-primary hover:underline">Sign in</Link>
+          <Link to="/customer/login" search={loginSearch} className="font-semibold text-primary hover:underline">Log in</Link>
         </p>
       </div>
     </AuthShell>
