@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase }      from "@/integrations/supabase/client";
 import { useAdminAuth }  from "@/hooks/use-admin-auth";
 import { Button }   from "@/components/ui/button";
+import { getStorefrontLabel, getStorefrontUrl } from "@/lib/storefront-url";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
 import { Badge }    from "@/components/ui/badge";
@@ -91,7 +92,7 @@ function MerchantDetail({ merchant, onClose, onSuspend, onReinstate, onDelete, a
 
           {/* Details */}
           <div className="space-y-2 text-sm">
-            <Row label="Subdomain"    value={merchant.subdomain ? `${merchant.subdomain}.bazarhq.com` : "—"} />
+            <Row label="Storefront"    value={merchant.subdomain ? getStorefrontLabel(merchant.subdomain) : "—"} />
             <Row label="Category"     value={merchant.business_category || "—"} />
             <Row label="Registered"   value={new Date(merchant.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })} />
             {merchant.suspended_reason && <Row label="Suspension Reason" value={merchant.suspended_reason} highlight />}
@@ -99,7 +100,7 @@ function MerchantDetail({ merchant, onClose, onSuspend, onReinstate, onDelete, a
 
           {/* Live storefront link */}
           {merchant.subdomain && merchant.storefront_published && (
-            <a href={`https://${merchant.subdomain}.bazarhq.com`} target="_blank" rel="noreferrer"
+            <a href={getStorefrontUrl(merchant.subdomain, { absolute: true })} target="_blank" rel="noreferrer"
               className="flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300 hover:underline">
               <ExternalLink className="h-4 w-4" /> View Live Storefront
             </a>

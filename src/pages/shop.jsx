@@ -1,6 +1,6 @@
 // src/pages/shop.jsx
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addToCart,
@@ -35,7 +35,9 @@ import {
   Zap,
 } from "lucide-react";
 
-function getSubdomain() {
+function getSubdomain(routeSlug) {
+  if (typeof routeSlug === "string" && routeSlug.trim()) return decodeURIComponent(routeSlug.trim()).toLowerCase();
+
   const host = window.location.hostname.toLowerCase();
   const params = new URLSearchParams(window.location.search);
   const querySlug = params.get("store") || params.get("shop") || params.get("subdomain");
@@ -922,9 +924,12 @@ function EmptyShopState({ title, message, emoji = "🔍" }) {
 
 export default function ShopPage() {
   const navigate = useNavigate();
+  const params = useParams({ strict: false });
   const { isLoggedIn } = useCustomerAuth();
-  const subdomain = useMemo(() => getSubdomain(), []);
-  const currentShopPath = subdomain ? `/shop?store=${encodeURIComponent(subdomain)}` : "/shop";
+  const routeSlug = params?.storeSlug || params?.shopSlug || params?.subdomain;
+  const subdomain = useMemo(() => getSubdomain(routeSlug), [routeSlug]);
+  const currentShopPath = subdomain ? `/shop/${encodeURIComponent(subdomain)}` : "/shop";
+  const aboutPath = subdomain ? `/shop/${encodeURIComponent(subdomain)}/about` : "/shop/about";
 
   const [store, setStore] = useState(null);
   const [products, setProducts] = useState([]);
@@ -1153,7 +1158,7 @@ export default function ShopPage() {
     return (
       <EmptyShopState
         title="Shop not found"
-        message="No shop was found for this subdomain. On localhost, open a URL like /shop?store=your-shop."
+        message="No shop was found for this shop URL. Open a URL like /shop/your-shop."
       />
     );
   }
@@ -1236,7 +1241,7 @@ export default function ShopPage() {
             <a href="#featured" className="transition hover:text-[var(--shop-primary)]">Featured</a>
             <a href="#products" className="transition hover:text-[var(--shop-primary)]">Products</a>
             <a href="#offers" className="transition hover:text-[var(--shop-primary)]">Offers</a>
-            <Link to="/shop/about" search={{ store: subdomain }} className="transition hover:text-[var(--shop-primary)]">About</Link>
+            <Link to={aboutPath} className="transition hover:text-[var(--shop-primary)]">About</Link>
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -1315,7 +1320,7 @@ export default function ShopPage() {
                     <Button
                       className="h-11 rounded-2xl border-white/20 bg-white/10 px-5 font-bold text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
                       variant="outline"
-                      onClick={() => navigate({ to: "/shop/about", search: { store: subdomain } })}
+                      onClick={() => navigate({ to: aboutPath })}
                     >
                       About
                     </Button>
@@ -1455,7 +1460,7 @@ export default function ShopPage() {
             <p className="mb-4 font-black">Useful links</p>
             <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
               <Link to="/track" search={{ store: subdomain }} className="block transition hover:text-[var(--shop-primary)]">Track order</Link>
-              <Link to="/shop/about" search={{ store: subdomain }} className="block transition hover:text-[var(--shop-primary)]">About merchant</Link>
+              <Link to={aboutPath} className="block transition hover:text-[var(--shop-primary)]">About merchant</Link>
               <button type="button" onClick={() => document.getElementById("products")?.scrollIntoView({ behavior: "smooth" })} className="block transition hover:text-[var(--shop-primary)]">All products</button>
               {store.return_policy && <button type="button" onClick={() => alert(store.return_policy)} className="block transition hover:text-[var(--shop-primary)]">Return policy</button>}
               {store.shipping_policy && <button type="button" onClick={() => alert(store.shipping_policy)} className="block transition hover:text-[var(--shop-primary)]">Shipping policy</button>}

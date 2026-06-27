@@ -1,6 +1,6 @@
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Globe, EyeOff, Loader2, ExternalLink, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Globe, EyeOff, Loader2, ExternalLink, AlertCircle, CheckCircle2, Copy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
+import { getStorefrontLabel, getStorefrontPath, getStorefrontUrl } from '@/lib/storefront-url'
 
 export function PublishCard() {
   const { user } = useAuth()
@@ -34,20 +35,11 @@ export function PublishCard() {
 
   if (isLoading || !store) return <Skeleton className="h-44 w-full rounded-2xl" />
 
-  const published = store.storefront_published
+  const published = !!store.storefront_published
   const hasSubdomain = !!store.subdomain
   const canPublish = hasSubdomain && publishedCount > 0
-  const isLocalDev = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)
-  const shopUrl = store.subdomain
-    ? isLocalDev
-      ? `/shop?store=${encodeURIComponent(store.subdomain)}`
-      : `https://${store.subdomain}.bazarhq.com/shop`
-    : null
-  const shopLabel = store.subdomain
-    ? isLocalDev
-      ? `localhost:5173/shop?store=${store.subdomain}`
-      : `${store.subdomain}.bazarhq.com/shop`
-    : ''
+  const shopUrl = hasSubdomain ? getStorefrontUrl(store.subdomain, { absolute: true }) : null
+  const shopLabel = hasSubdomain ? getStorefrontLabel(store.subdomain) : ''
 
   const toggle = async (next) => {
     if (!user || !store) return
@@ -55,59 +47,92 @@ export function PublishCard() {
       toast.error(!hasSubdomain ? 'Set a subdomain in store settings first' : 'Publish at least one product first')
       return
     }
+
     setSaving(true)
     const patch = next
       ? { storefront_published: true, published_at: new Date().toISOString() }
       : { storefront_published: false }
+
     const { error } = await supabase.from('stores').update(patch).eq('id', store.id)
     setSaving(false)
-    if (error) { toast.error(error.message); return }
+
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+
     toast.success(next ? 'Storefront is live 🎉' : 'Storefront unpublished')
     qc.invalidateQueries({ queryKey: ['stores', user.id] })
+  }
+
+  const copyLink = async () => {
+    if (!shopUrl) return
+    try {
+      await navigator.clipboard.writeText(shopUrl)
+      toast.success('Storefront link copied')
+    } catch {
+      toast.error('Could not copy link')
+    }
   }
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${published ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${published ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
             {published ? <Globe className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
           </div>
-          <div>
+
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">Storefront</h3>
               <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
                 {published ? 'Live' : 'Draft'}
               </span>
             </div>
+
             <p className="mt-0.5 text-sm text-muted-foreground">
               {published ? 'Your shop is public. Anyone with the link can browse it.' : 'Only you can see your storefront. Toggle on to make it public.'}
             </p>
+
             {shopUrl && (
-              <a href={shopUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                {shopLabel} <ExternalLink className="h-3 w-3" />
-              </a>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <a href={shopUrl} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1 truncate text-xs font-medium text-primary hover:underline">
+                  <span className="truncate">{shopLabel}</span>
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+                >
+                  <Copy className="h-3 w-3" /> Copy
+                </button>
+              </div>
             )}
           </div>
         </div>
+
         <div className="flex items-center gap-3 sm:flex-col sm:items-end">
           <Switch checked={published} disabled={saving} onCheckedChange={toggle} />
           {saving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
       </div>
+
       <div className="border-t border-border bg-muted/30 px-5 py-3">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
           <div className="flex items-center gap-1.5">
             {hasSubdomain ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <AlertCircle className="h-3.5 w-3.5 text-warning" />}
             <span className={hasSubdomain ? '' : 'text-muted-foreground'}>Subdomain {hasSubdomain ? 'set' : 'not set'}</span>
           </div>
+
           <div className="flex items-center gap-1.5">
             {publishedCount > 0 ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <AlertCircle className="h-3.5 w-3.5 text-warning" />}
             <span className={publishedCount > 0 ? '' : 'text-muted-foreground'}>{publishedCount} published product{publishedCount === 1 ? '' : 's'}</span>
           </div>
+
           <Link
-            to="/shop"
-            search={store.subdomain ? { store: store.subdomain } : {}}
+            to={store.subdomain ? getStorefrontPath(store.subdomain) : "/shop"}
             className="ml-auto inline-flex items-center gap-1 font-medium text-primary hover:underline"
           >
             Preview storefront <ExternalLink className="h-3 w-3" />

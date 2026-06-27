@@ -9,6 +9,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useCurrentStore, useSwitchStore } from '@/lib/use-current-store'
+import { getStorefrontLabel } from '@/lib/storefront-url'
 
 function StoreAvatar({ store, size = 28 }) {
   const color = store?.brand_color || '#6366f1'
@@ -34,7 +35,7 @@ function StoreRow({ s, active, onSelect }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{s.shop_name || 'Untitled store'}</span>
         <span className="block truncate text-[11px] text-muted-foreground">
-          {s.subdomain ? `${s.subdomain}.bazarhq.com` : 'No subdomain'}
+          {s.subdomain ? getStorefrontLabel(s.subdomain) : 'No subdomain'}
         </span>
       </span>
       <Check className={cn('h-4 w-4 shrink-0 text-primary transition-all', active ? 'opacity-100 scale-100' : 'opacity-0 scale-75')} />
@@ -57,7 +58,7 @@ export function StoreSwitcher({ variant = 'sidebar' }) {
   }, [stores, query])
 
   const label = store?.shop_name?.trim() || 'Untitled store'
-  const sub = store?.subdomain ? `${store.subdomain}.bazarhq.com` : 'Not set up yet'
+  const sub = store?.subdomain ? getStorefrontLabel(store.subdomain) : 'Not set up yet'
 
   const handleSelect = (id) => {
     if (id !== store?.id) switchStore(id)

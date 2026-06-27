@@ -1,6 +1,6 @@
 // src/pages/shop-about.jsx
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { getTheme, themeCssVars } from "@/lib/preview-themes";
@@ -21,7 +21,9 @@ import {
   User,
 } from "lucide-react";
 
-function getSubdomain() {
+function getSubdomain(routeSlug) {
+  if (typeof routeSlug === "string" && routeSlug.trim()) return decodeURIComponent(routeSlug.trim()).toLowerCase();
+
   const host = window.location.hostname.toLowerCase();
   const params = new URLSearchParams(window.location.search);
   const querySlug = params.get("store") || params.get("shop") || params.get("subdomain");
@@ -86,8 +88,10 @@ function EmptyState({ title, message }) {
 
 export default function ShopAboutPage() {
   const navigate = useNavigate();
+  const params = useParams({ strict: false });
   const { isLoggedIn } = useCustomerAuth();
-  const subdomain = useMemo(() => getSubdomain(), []);
+  const routeSlug = params?.storeSlug || params?.shopSlug || params?.subdomain;
+  const subdomain = useMemo(() => getSubdomain(routeSlug), [routeSlug]);
   const [store, setStore] = useState(null);
   const [status, setStatus] = useState("loading");
 
@@ -129,7 +133,7 @@ export default function ShopAboutPage() {
   }
 
   if (status === "not-found") {
-    return <EmptyState title="Shop not found" message="No shop was found for this subdomain. On localhost, open /shop/about?store=your-shop." />;
+    return <EmptyState title="Shop not found" message="No shop was found for this shop URL. Open /shop/your-shop/about." />;
   }
 
   if (status === "unpublished") {
@@ -154,13 +158,14 @@ export default function ShopAboutPage() {
     store.about_mission || store.about_text || store.description,
     "This merchant has created a modern online storefront with BazarHQ to sell products, manage orders, and serve customers with a smooth checkout experience."
   );
-  const currentAboutPath = subdomain ? `/shop/about?store=${encodeURIComponent(subdomain)}` : "/shop/about";
+  const currentShopPath = subdomain ? `/shop/${encodeURIComponent(subdomain)}` : "/shop";
+  const currentAboutPath = subdomain ? `/shop/${encodeURIComponent(subdomain)}/about` : "/shop/about";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white" style={shopVars}>
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/90">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
-          <Link to="/shop" search={{ store: subdomain }} className="flex min-w-0 items-center gap-3">
+          <Link to={currentShopPath} className="flex min-w-0 items-center gap-3">
             {store.logo_url ? (
               <img src={store.logo_url} alt={shopName} className="h-10 w-10 rounded-2xl object-cover" />
             ) : (
@@ -172,8 +177,8 @@ export default function ShopAboutPage() {
           </Link>
 
           <nav className="ml-4 hidden items-center gap-5 text-sm font-semibold text-slate-600 lg:flex dark:text-slate-300">
-            <Link to="/shop" search={{ store: subdomain }} className="hover:text-[var(--shop-primary)]">Shop</Link>
-            <Link to="/shop/about" search={{ store: subdomain }} className="text-[var(--shop-primary)]">About</Link>
+            <Link to={currentShopPath} className="hover:text-[var(--shop-primary)]">Shop</Link>
+            <Link to={currentAboutPath} className="text-[var(--shop-primary)]">About</Link>
             <Link to="/track" search={{ store: subdomain }} className="hover:text-[var(--shop-primary)]">Track order</Link>
           </nav>
 
@@ -198,7 +203,7 @@ export default function ShopAboutPage() {
           <div className="absolute inset-0 bg-gradient-to-br from-[var(--shop-primary-soft)] via-white to-white dark:via-slate-950 dark:to-slate-950" />
           <div className="absolute -right-28 -top-28 h-72 w-72 rounded-full bg-[var(--shop-primary-ring)] blur-3xl" />
           <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-            <Link to="/shop" search={{ store: subdomain }} className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-[var(--shop-primary)] dark:text-slate-300">
+            <Link to={currentShopPath} className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-[var(--shop-primary)] dark:text-slate-300">
               <ArrowLeft className="h-4 w-4" /> Back to shop
             </Link>
 
@@ -223,7 +228,7 @@ export default function ShopAboutPage() {
                 <p className="mt-4 text-base leading-8 text-slate-600 dark:text-slate-300">{shopName} — {tagline}</p>
                 <p className="mt-6 whitespace-pre-line text-sm leading-8 text-slate-600 dark:text-slate-300">{about}</p>
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                  <Button className="h-12 rounded-2xl bg-[var(--shop-primary)] text-white hover:opacity-90" onClick={() => navigate({ to: "/shop", search: { store: subdomain } })}>
+                  <Button className="h-12 rounded-2xl bg-[var(--shop-primary)] text-white hover:opacity-90" onClick={() => navigate({ to: currentShopPath })}>
                     Browse products <ArrowRight className="h-4 w-4" />
                   </Button>
                   <Button className="h-12 rounded-2xl" variant="outline" onClick={() => navigate({ to: "/track", search: { store: subdomain } })}>
