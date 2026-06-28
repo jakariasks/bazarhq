@@ -238,11 +238,7 @@ function Nav() {
           </nav>
 
           <div className="hidden items-center gap-2 md:flex">
-            <Link to="/track">
-              <Button variant="ghost" size="sm" className="rounded-full px-4 font-semibold text-slate-600 hover:text-slate-950">
-                Track order
-              </Button>
-            </Link>
+
             {user ? (
               <Link to="/merchant">
                 <Button size="sm" className="rounded-full bg-gradient-primary px-5 text-primary-foreground shadow-glow transition-all duration-200 hover:-translate-y-0.5 hover:opacity-95">
@@ -289,9 +285,7 @@ function Nav() {
                     {link.label}
                   </a>
                 ))}
-                <Link to="/track" onClick={closeMenu} className="rounded-2xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                  Track order
-                </Link>
+
               </div>
               <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3">
                 {user ? (
@@ -676,6 +670,14 @@ const faqs = [
   { q: 'Which payment methods can I use?', a: 'Stores can enable Cash on Delivery and supported local payment methods such as bKash, Nagad, Rocket, and SSLCommerz.' },
   { q: 'Can customers create accounts?', a: 'Yes. Customers can sign up, save addresses, place orders, and track order history.' },
   { q: 'Does BazarHQ work on mobile?', a: 'Yes. Storefront, checkout, and dashboard screens are designed to be responsive.' },
+  { q: 'Can I use my own domain?', a: 'Yes. Custom domains can be added to any store pro plan, not available in the free plan.' },
+  { q: 'Is there a limit on products or orders?', a: 'No. Merchants can create as many products and manage as many orders as they want.' },
+  { q: 'Can I upgrade my plan later?', a: 'Yes. Merchants can upgrade to a paid plan at any time from the dashboard.' },
+  { q: 'Is there a trial period for paid plans?', a: 'No. Paid plans are billed monthly, and merchants can cancel anytime.' },
+  { q: 'What support is available?', a: 'Email support is available for all merchants. Paid plans receive priority support.' },
+  { q: 'Can I switch back to the free plan?', a: 'Yes. Merchants can downgrade to the free plan at any time, but custom domains will be removed.' },
+  { q: 'Is BazarHQ secure?', a: 'Yes. BazarHQ uses HTTPS, secure authentication, and follows best practices for data protection.' },
+  
 ]
 
 function FAQ() {
@@ -851,7 +853,7 @@ function Footer() {
     { label: 'Download app', href: '#mobile-app' },
     { label: 'Support', href: `mailto:${SUPPORT_EMAIL}?subject=BazarHQ%20Support` },
     { label: 'Contact', href: `mailto:${SUPPORT_EMAIL}?subject=BazarHQ%20Support` },
-    { label: 'Admin', href: '/superadmin/login' },
+    { label: '.', href: '/superadmin/login' },
   ]
 
   return (
@@ -915,11 +917,11 @@ function Footer() {
             </div>
           </div>
         </div>
-
-        <div className="mt-24 flex flex-col gap-6 text-xs text-slate-500 sm:mt-28 lg:mt-32 lg:flex-row lg:items-end lg:justify-between">
+                <hr className="my-10 border-t border-border" />
+        <div className="mt-30 flex flex-col gap-3 text-xs text-slate-500 sm:mt-20 lg:mt-2 lg:flex-row lg:items-end lg:justify-between">
           <div className="leading-6">
             <p className="font-semibold text-slate-300">© 2026 BazarHQ. All rights reserved.</p>
-            <p className="mt-1 max-w-xl">Designed and maintained by SoftThinkers for modern online commerce in Bangladesh.</p>
+            <p className="mt-1 max-w-xl">Designed and maintained by SoftThinkers (CSE-15 BRUR) for modern online commerce in Bangladesh.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-x-5 gap-y-3 font-medium text-slate-400 lg:justify-end">
@@ -928,10 +930,7 @@ function Footer() {
                 {link.label}
               </a>
             ))}
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1.5 text-emerald-200">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.8)]" />
-              Platform online
-            </span>
+
           </div>
         </div>
       </div>
