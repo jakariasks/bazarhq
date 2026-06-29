@@ -10,8 +10,10 @@ import ResetPasswordPage  from "@/pages/reset-password";
 import OnboardingPage     from "@/pages/onboarding";
 import ShopPage           from "@/pages/shop";
 import ShopAboutPage      from "@/pages/shop-about";
+import ShopProductPage    from "@/pages/shop-product";
 import CheckoutPage       from "@/pages/checkout";
 import TrackPage          from "@/pages/track";
+import PaymentResultPage  from "@/pages/payment-result";
 
 // ── Merchant dashboard ────────────────────────────────────────────────────────
 import MerchantLayout   from "@/pages/merchant/layout";
@@ -56,8 +58,12 @@ const shopRoute           = createRoute({ getParentRoute: () => rootRoute, path:
 const shopSlugRoute       = createRoute({ getParentRoute: () => rootRoute, path: "/shop/$storeSlug", component: ShopPage           });
 const shopAboutRoute      = createRoute({ getParentRoute: () => rootRoute, path: "/shop/about",      component: ShopAboutPage      });
 const shopSlugAboutRoute  = createRoute({ getParentRoute: () => rootRoute, path: "/shop/$storeSlug/about", component: ShopAboutPage });
+const shopProductRoute    = createRoute({ getParentRoute: () => rootRoute, path: "/shop/$storeSlug/product/$productId", component: ShopProductPage });
 const checkoutRoute       = createRoute({ getParentRoute: () => rootRoute, path: "/checkout",        component: CheckoutPage       });
 const trackRoute          = createRoute({ getParentRoute: () => rootRoute, path: "/track",           component: TrackPage          });
+const paymentSuccessRoute = createRoute({ getParentRoute: () => rootRoute, path: "/payment/success", component: () => <PaymentResultPage type="success" /> });
+const paymentFailRoute    = createRoute({ getParentRoute: () => rootRoute, path: "/payment/fail",    component: () => <PaymentResultPage type="fail" />    });
+const paymentCancelRoute  = createRoute({ getParentRoute: () => rootRoute, path: "/payment/cancel",  component: () => <PaymentResultPage type="cancel" />  });
 
 // ── Customer routes ───────────────────────────────────────────────────────────
 const customerLoginRoute   = createRoute({ getParentRoute: () => rootRoute, path: "/customer/login",   component: CustomerLoginPage   });
@@ -101,8 +107,12 @@ export const routeTree = rootRoute.addChildren([
   shopSlugRoute,
   shopAboutRoute,
   shopSlugAboutRoute,
+  shopProductRoute,
   checkoutRoute,
   trackRoute,
+  paymentSuccessRoute,
+  paymentFailRoute,
+  paymentCancelRoute,
 
   // Customer
   customerLoginRoute,

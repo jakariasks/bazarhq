@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { clearCart, getCart, getCartTotals, syncCartPrices } from "@/lib/cart";
+import { trackStoreEvent } from "@/lib/analytics-tracker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -336,6 +337,44 @@ export default function CheckoutPage() {
       if (error) throw error;
 
       const createdOrderId = data?.order_id || publicOrderId;
+
+      await trackStoreEvent({
+        storeSlug: subdomain,
+        storeId: store.id,
+        eventType: "order_completed",
+        path: window.location.pathname,
+        metadata: { order_id: createdOrderId, total, payment_method: paymentMethod },
+      });
+
+      if (paymentMethod === "ssl") {
+        const { data: sslData, error: sslError } = await supabase.functions.invoke("sslcommerz-initiate", {
+          body: {
+            order_id: createdOrderId,
+            store_id: store.id,
+            subdomain,
+            customer: {
+              name: delivery.full_name.trim(),
+              email: delivery.email || customer.email || "customer@example.com",
+              phone: delivery.phone.trim(),
+              address: delivery.address,
+              district: delivery.district,
+            },
+          },
+        });
+
+        if (sslError) throw sslError;
+        if (sslData?.gateway_url) {
+          clearCart(store.id);
+          setCartVersion((value) => value + 1);
+          window.location.href = sslData.gateway_url;
+          return;
+        }
+      }
+
+      await supabase.functions.invoke("process-notification-queue", {
+        body: { store_id: store.id, limit: 10 },
+      }).catch(() => null);
+
       clearCart(store.id);
       setOrderId(createdOrderId);
       setCartVersion((value) => value + 1);
@@ -560,6 +599,9 @@ export default function CheckoutPage() {
                       )}
                       {paymentMethod === method.id && method.id === "cod" && (
                         <p className="text-xs text-[var(--muted-foreground)] mt-1">Pay in cash when the order is delivered.</p>
+                      )}
+                      {paymentMethod === method.id && method.id === "ssl" && (
+                        <p className="text-xs text-[var(--muted-foreground)] mt-1">You will be redirected to SSLCommerz secure payment gateway after placing the order.</p>
                       )}
                     </div>
                   </label>

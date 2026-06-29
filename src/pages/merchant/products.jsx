@@ -1,4 +1,4 @@
-import { Plus, Search, X, Package, Loader2, Trash2, Pencil, Image as ImageIcon, Tag, Copy, Download, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Search, X, Package, Loader2, Trash2, Pencil, Image as ImageIcon, Tag, Copy, Download, AlertTriangle, ChevronDown, ChevronUp, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -27,6 +27,8 @@ export default function ProductsPage() {
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
   const [lowStockThreshold, setLowStockThreshold] = useState(5)
+  const csvInputRef = useRef(null)
+  const [importing, setImporting] = useState(false)
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products', store?.id],
@@ -75,6 +77,108 @@ export default function ProductsPage() {
     qc.invalidateQueries({ queryKey: ['products', store?.id] })
   }
 
+  const parseCSV = (text) => {
+    const rows = []
+    let current = ''
+    let row = []
+    let inQuotes = false
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i]
+      const next = text[i + 1]
+      if (char === '"' && inQuotes && next === '"') { current += '"'; i++; continue }
+      if (char === '"') { inQuotes = !inQuotes; continue }
+      if (char === ',' && !inQuotes) { row.push(current.trim()); current = ''; continue }
+      if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && next === '\n') i++
+        row.push(current.trim())
+        if (row.some(Boolean)) rows.push(row)
+        row = []; current = ''
+        continue
+      }
+      current += char
+    }
+    row.push(current.trim())
+    if (row.some(Boolean)) rows.push(row)
+    return rows
+  }
+
+  const importCSV = async (file) => {
+    if (!file || !store) return
+    if (!file.name.toLowerCase().endsWith('.csv')) { toast.error('Please upload a CSV file'); return }
+    setImporting(true)
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      const userId = authData.user?.id
+      if (!userId) throw new Error('You must be signed in')
+
+      const text = await file.text()
+      const rows = parseCSV(text)
+      if (rows.length < 2) throw new Error('CSV needs a header row and at least one product row')
+
+      const headers = rows[0].map(h => h.toLowerCase().replace(/\s+/g, '_'))
+      const findIndex = (...names) => names.map(n => headers.indexOf(n)).find(i => i >= 0) ?? -1
+      const idx = {
+        title: findIndex('title', 'name', 'product_name'),
+        category: findIndex('category'),
+        price: findIndex('price', 'base_price'),
+        compare: findIndex('compare_at', 'compare_at_price', 'old_price'),
+        stock: findIndex('stock', 'quantity', 'qty'),
+        status: findIndex('status'),
+        description: findIndex('description', 'details'),
+        image: findIndex('image', 'image_url', 'thumbnail'),
+        tags: findIndex('tags'),
+      }
+      if (idx.title < 0 || idx.price < 0) throw new Error('Required columns: title and price')
+
+      const errors = []
+      const productsToInsert = []
+      rows.slice(1).forEach((row, i) => {
+        const line = i + 2
+        const title = row[idx.title]?.trim()
+        const price = Number(row[idx.price])
+        const stock = idx.stock >= 0 ? Number(row[idx.stock] || 0) : 0
+        if (!title) { errors.push(`Line ${line}: title missing`); return }
+        if (!Number.isFinite(price) || price < 0) { errors.push(`Line ${line}: invalid price`); return }
+        if (!Number.isFinite(stock) || stock < 0) { errors.push(`Line ${line}: invalid stock`); return }
+        const image = idx.image >= 0 && row[idx.image] ? row[idx.image].trim() : ''
+        const status = idx.status >= 0 && ['draft','published','archived'].includes((row[idx.status] || '').toLowerCase()) ? row[idx.status].toLowerCase() : 'draft'
+        productsToInsert.push({
+          owner_id: userId,
+          store_id: store.id,
+          title,
+          slug: slugify(title) + `-${Date.now().toString(36)}-${i}`,
+          category: idx.category >= 0 ? row[idx.category] || null : null,
+          description: idx.description >= 0 ? row[idx.description] || null : null,
+          price,
+          compare_at_price: idx.compare >= 0 && row[idx.compare] ? Number(row[idx.compare]) : null,
+          stock,
+          status,
+          images: image ? [image] : [],
+          tags: idx.tags >= 0 && row[idx.tags] ? row[idx.tags].split('|').map(t => t.trim()).filter(Boolean) : null,
+        })
+      })
+
+      if (errors.length) {
+        toast.error(`CSV has ${errors.length} problem(s). First: ${errors[0]}`)
+        setImporting(false)
+        return
+      }
+      if (!productsToInsert.length) throw new Error('No valid products found')
+      if (productsToInsert.length > 500) throw new Error('Maximum 500 products per CSV import')
+
+      const { error } = await supabase.from('products').insert(productsToInsert)
+      if (error) throw error
+      toast.success(`Imported ${productsToInsert.length} product${productsToInsert.length === 1 ? '' : 's'}`)
+      qc.invalidateQueries({ queryKey: ['products', store.id] })
+      qc.invalidateQueries({ queryKey: ['product-count', store.id] })
+    } catch (error) {
+      toast.error(error.message || 'CSV import failed')
+    } finally {
+      setImporting(false)
+      if (csvInputRef.current) csvInputRef.current.value = ''
+    }
+  }
+
   // CSV Export — SRS M4
   const exportCSV = () => {
     if (!products.length) { toast.error('No products to export'); return }
@@ -111,7 +215,11 @@ export default function ProductsPage() {
             {products.length} products · {products.filter(p=>p.status==='published').length} published
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => importCSV(event.target.files?.[0])} />
+          <Button variant="outline" onClick={() => csvInputRef.current?.click()} disabled={importing} className="gap-2">
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Import CSV
+          </Button>
           <Button variant="outline" onClick={exportCSV} className="gap-2"><Download className="h-4 w-4" />Export CSV</Button>
           <Button onClick={openNew} className="bg-gradient-primary shadow-glow gap-2"><Plus className="h-4 w-4" />Add product</Button>
         </div>

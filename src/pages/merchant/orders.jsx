@@ -99,6 +99,7 @@ export default function OrdersPage() {
     const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', order.id)
     if (error) { toast.error(error.message); setUpdating(false); return }
     await supabase.from('order_timeline').insert({ order_id: order.id, status: newStatus, note: `Order ${newStatus}` })
+    await supabase.functions.invoke('process-notification-queue', { body: { store_id: store?.id, limit: 10 } }).catch(() => null)
     toast.success(`Order marked as ${newStatus}`)
     qc.invalidateQueries({ queryKey: ['orders', store?.id] })
     if (selectedOrder?.id === order.id) setSelectedOrder(prev => ({ ...prev, status: newStatus }))
@@ -111,6 +112,7 @@ export default function OrdersPage() {
     const { error } = await supabase.from('orders').update({ status: 'cancelled' }).eq('id', selectedOrder.id)
     if (error) { toast.error(error.message); setUpdating(false); return }
     await supabase.from('order_timeline').insert({ order_id: selectedOrder.id, status: 'cancelled', note: cancelReason.trim() })
+    await supabase.functions.invoke('process-notification-queue', { body: { store_id: store?.id, limit: 10 } }).catch(() => null)
     toast.success('Order cancelled')
     qc.invalidateQueries({ queryKey: ['orders', store?.id] })
     setCancelOpen(false)
@@ -122,6 +124,7 @@ export default function OrdersPage() {
   const updatePaymentStatus = async (order, payStatus) => {
     const { error } = await supabase.from('orders').update({ payment_status: payStatus }).eq('id', order.id)
     if (error) { toast.error(error.message); return }
+    await supabase.functions.invoke('process-notification-queue', { body: { store_id: store?.id, limit: 10 } }).catch(() => null)
     toast.success(`Payment marked as ${payStatus}`)
     qc.invalidateQueries({ queryKey: ['orders', store?.id] })
     if (selectedOrder?.id === order.id) setSelectedOrder(prev => ({ ...prev, payment_status: payStatus }))

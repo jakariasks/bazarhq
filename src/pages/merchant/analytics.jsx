@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, ShoppingCart, Package, Users,
-  Download, Calendar, BarChart3, ArrowUpRight, ArrowDownRight,
+  Download, Calendar, BarChart3, ArrowUpRight, ArrowDownRight, Eye, Percent,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -56,6 +56,22 @@ export default function AnalyticsPage() {
     },
   })
 
+  const { data: events = [] } = useQuery({
+    queryKey: ['analytics-events', store?.id, period],
+    enabled: !!store,
+    queryFn: async () => {
+      const { start } = dateRange(parseInt(period, 10))
+      const { data, error } = await supabase
+        .from('analytics_events')
+        .select('event_type, session_id, created_at, product_id')
+        .eq('store_id', store.id)
+        .gte('created_at', start.toISOString())
+      if (error) return []
+      return data ?? []
+    },
+    staleTime: 1000 * 60 * 3,
+  })
+
   const days = parseInt(period, 10)
   const { start } = dateRange(days)
 
@@ -76,6 +92,9 @@ export default function AnalyticsPage() {
   const revenueChange = prevRevenue === 0 ? null : Math.round(((revenue - prevRevenue) / prevRevenue) * 100)
 
   const avgOrderValue = periodOrders.length ? Math.round(revenue / periodOrders.length) : 0
+  const uniqueVisitors = new Set(events.map(event => event.session_id).filter(Boolean)).size
+  const productViews = events.filter(event => event.event_type === 'product_view').length
+  const conversionRate = uniqueVisitors ? Math.round((periodOrders.length / uniqueVisitors) * 1000) / 10 : 0
 
   // 30-day daily revenue chart
   const dailyRevenue = useMemo(() => {
@@ -188,14 +207,16 @@ export default function AnalyticsPage() {
         <>
           {/* KPI cards */}
           {isLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[0,1,2,3].map(i=><Skeleton key={i} className="h-28 rounded-2xl"/>)}</div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">{[0,1,2,3,4,5].map(i=><Skeleton key={i} className="h-28 rounded-2xl"/>)}</div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
               {[
                 { label: 'Revenue', value: `${symbol} ${revenue.toLocaleString()}`, change: revenueChange, icon: TrendingUp, color: 'from-violet-500 to-purple-600' },
                 { label: 'Orders', value: periodOrders.length, sub: `${orders.filter(o=>o.status==='pending').length} pending`, icon: ShoppingCart, color: 'from-blue-500 to-cyan-600' },
                 { label: 'Avg Order Value', value: `${symbol} ${avgOrderValue.toLocaleString()}`, icon: Package, color: 'from-emerald-500 to-teal-600' },
                 { label: 'Products', value: products.filter(p=>p.status==='published').length, sub: `${products.length} total`, icon: Users, color: 'from-amber-500 to-orange-600' },
+                { label: 'Visitors', value: uniqueVisitors, sub: `${productViews} product views`, icon: Eye, color: 'from-fuchsia-500 to-pink-600' },
+                { label: 'Conversion', value: `${conversionRate}%`, sub: 'orders / visitors', icon: Percent, color: 'from-sky-500 to-blue-600' },
               ].map(s => (
                 <div key={s.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                   <div className="flex items-center justify-between mb-3">

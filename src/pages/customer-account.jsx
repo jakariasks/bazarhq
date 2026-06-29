@@ -17,8 +17,10 @@ import {
   Settings,
   Star,
   Trash2,
+  FileDown,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { openInvoicePdf } from "@/lib/invoice";
 
 const STATUS_COLORS = {
   pending: "bg-yellow-100 text-yellow-700",
@@ -132,7 +134,7 @@ function OrdersTab({ customerId, customerEmail }) {
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-[var(--border)]">
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
             <Link
               to="/track"
               search={{ store: order.stores?.subdomain, order: order.order_id, phone: order.customer_phone || "" }}
@@ -140,6 +142,13 @@ function OrdersTab({ customerId, customerEmail }) {
             >
               Track order
             </Link>
+            <button
+              type="button"
+              onClick={() => openInvoicePdf(order, order.stores || {})}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[var(--primary)] hover:underline"
+            >
+              <FileDown className="h-3.5 w-3.5" /> Invoice
+            </button>
           </div>
         </div>
       ))}

@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, Search, Bell, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, PlusCircle, Store as StoreIcon, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, Search, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, PlusCircle, Store as StoreIcon, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { previewThemes, themeCssVars, getTheme, DEFAULT_THEME_ID } from '@/lib/preview-themes'
 import { toast } from 'sonner'
 import { StoreSwitcher } from '@/components/store-switcher'
+import { NotificationCenter } from '@/components/notification-center'
 import { useCurrentStore } from '@/lib/use-current-store'
 
 const nav = [
@@ -195,7 +196,7 @@ function MerchantLayout() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button variant="ghost" size="icon"><Bell className="h-5 w-5" /></Button>
+            <NotificationCenter />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-primary text-sm font-semibold text-primary-foreground">{initial}</button>

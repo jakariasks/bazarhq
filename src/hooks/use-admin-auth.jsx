@@ -1,245 +1,123 @@
-// src/hooks/use-admin-auth.jsx
-// BazarHQ Super Admin Auth
-// Fixes: admin_users 406/no-row errors, email normalization, clearer dev errors,
-// role/session separation, and stale Supabase session conflicts.
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { callAdminFunction, clearAdminSession, getStoredAdminSession, saveAdminSession } from '@/lib/admin-session'
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-
-const ADMIN_SESSION_KEY = "bazarhq_admin_session";
-const SESSION_MAX_MS = 8 * 60 * 60 * 1000; // 8 hours
-const INACTIVITY_MAX_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_FAILED = 3;
-const LOCKOUT_MINUTES = 30;
-
-const AdminAuthContext = createContext(null);
-
-function normalizeEmail(email) {
-  return String(email || "").trim().toLowerCase();
-}
-
-function getStoredSession() {
-  try {
-    const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveSession(data) {
-  sessionStorage.setItem(
-    ADMIN_SESSION_KEY,
-    JSON.stringify({
-      ...data,
-      loginAt: Date.now(),
-      lastActiveAt: Date.now(),
-    }),
-  );
-}
-
-function clearSession() {
-  sessionStorage.removeItem(ADMIN_SESSION_KEY);
-}
+const AdminAuthContext = createContext(null)
 
 export function AdminAuthProvider({ children }) {
-  const [admin, setAdmin] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const inactivityTimer = useRef(null);
+  const [admin, setAdmin] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-
-    inactivityTimer.current = setTimeout(() => {
-      clearSession();
-      setAdmin(null);
-      window.location.href = "/superadmin/login?reason=inactive";
-    }, INACTIVITY_MAX_MS);
-
-    const session = getStoredSession();
-    if (session) {
-      sessionStorage.setItem(
-        ADMIN_SESSION_KEY,
-        JSON.stringify({ ...session, lastActiveAt: Date.now() }),
-      );
+  const refreshSession = useCallback(async () => {
+    const stored = getStoredAdminSession()
+    if (!stored?.token) {
+      clearAdminSession()
+      setAdmin(null)
+      setLoading(false)
+      return null
     }
-  }, []);
+
+    try {
+      const data = await callAdminFunction('admin-verify-session')
+      const next = { ...stored, admin: data.admin, expires_at: data.session?.expires_at, idle_expires_at: data.session?.idle_expires_at }
+      saveAdminSession(next)
+      setAdmin(data.admin)
+      setLoading(false)
+      return data.admin
+    } catch {
+      clearAdminSession()
+      setAdmin(null)
+      setLoading(false)
+      return null
+    }
+  }, [])
 
   useEffect(() => {
-    const session = getStoredSession();
-
-    if (session) {
-      const now = Date.now();
-      const expired = now - session.loginAt > SESSION_MAX_MS;
-      const inactive = now - session.lastActiveAt > INACTIVITY_MAX_MS;
-
-      if (expired || inactive) {
-        clearSession();
-      } else {
-        setAdmin({ id: session.id, email: session.email, role: session.role });
-        resetInactivityTimer();
-      }
-    }
-
-    setLoading(false);
-  }, [resetInactivityTimer]);
+    refreshSession()
+  }, [refreshSession])
 
   useEffect(() => {
-    if (!admin) return undefined;
+    if (!admin) return undefined
+    const interval = window.setInterval(() => refreshSession(), 5 * 60 * 1000)
+    return () => window.clearInterval(interval)
+  }, [admin, refreshSession])
 
-    const events = ["mousedown", "keydown", "touchstart", "scroll"];
-    events.forEach((eventName) => window.addEventListener(eventName, resetInactivityTimer));
-
-    return () => {
-      events.forEach((eventName) => window.removeEventListener(eventName, resetInactivityTimer));
-    };
-  }, [admin, resetInactivityTimer]);
-
-  const writeAuditLog = useCallback(async (action, details = {}, targetType = null, targetId = null) => {
-    const session = getStoredSession();
-    if (!session) return;
-
-    await supabase.from("admin_audit_log").insert({
-      admin_id: session.id,
-      admin_email: session.email,
-      action,
-      target_type: targetType,
-      target_id: targetId ? String(targetId) : null,
-      details,
-      ip_address: "browser-client",
-    });
-  }, []);
-
-  async function verifyCredentials(rawEmail, password) {
-    const email = normalizeEmail(rawEmail);
-
-    if (!email || !password) {
-      throw new Error("Enter admin email and password.");
-    }
-
-    // maybeSingle avoids the browser console 406 error when no row is visible/found.
-    const { data: adminUser, error: adminError } = await supabase
-      .from("admin_users")
-      .select("id, email, role, totp_enabled, totp_secret, failed_attempts, locked_until, allowed_ips")
-      .ilike("email", email)
-      .maybeSingle();
-
-    if (adminError) {
-      throw new Error(
-        `Admin lookup failed. Run supabase-superadmin-login-fix.sql first. Details: ${adminError.message}`,
-      );
-    }
-
-    if (!adminUser) {
-      throw new Error(
-        `Admin email not found in admin_users: ${email}. Run supabase-superadmin-login-fix.sql first.`,
-      );
-    }
-
-    if (adminUser.locked_until && new Date(adminUser.locked_until) > new Date()) {
-      const mins = Math.ceil((new Date(adminUser.locked_until).getTime() - Date.now()) / 60000);
-      throw new Error(`Account locked. Try again in ${mins} minute(s).`);
-    }
-
-    // Avoid merchant/customer Supabase sessions affecting admin password verification.
-    await supabase.auth.signOut();
-
-    const { error: authError } = await supabase.auth.signInWithPassword({
+  async function login(email, password, totpCode = '', captchaToken = '', challengeToken = '') {
+    const data = await callAdminFunction('admin-login', {
       email,
       password,
-    });
+      totpCode,
+      captchaToken,
+      challengeToken,
+    })
 
-    if (authError) {
-      const newCount = (adminUser.failed_attempts || 0) + 1;
-      const update = { failed_attempts: newCount };
-
-      if (newCount >= MAX_FAILED) {
-        update.failed_attempts = 0;
-        update.locked_until = new Date(Date.now() + LOCKOUT_MINUTES * 60000).toISOString();
-      }
-
-      await supabase.from("admin_users").update(update).eq("id", adminUser.id);
-
-      if (/email.*confirm/i.test(authError.message || "")) {
-        throw new Error("Admin Auth user exists but email is not confirmed. Confirm it in Supabase Authentication → Users.");
-      }
-
-      throw new Error(
-        "Invalid password or Supabase Auth user missing. Create the same email in Supabase Authentication → Users with Auto Confirm ON.",
-      );
+    if (data.requiresTOTP) {
+      return { requiresTOTP: true, challengeToken: data.challengeToken }
     }
 
-    await supabase.from("admin_users").update({ failed_attempts: 0, locked_until: null }).eq("id", adminUser.id);
+    if (data.session?.token && data.admin) {
+      saveAdminSession({ token: data.session.token, admin: data.admin, expires_at: data.session.expires_at, idle_expires_at: data.session.idle_expires_at })
+      setAdmin(data.admin)
+      return { success: true }
+    }
 
-    // Admin panel uses its own sessionStorage session after password verification.
-    await supabase.auth.signOut();
-
-    return { ...adminUser, email };
+    throw new Error('Admin login did not return a valid session.')
   }
 
-  async function verifyTOTP(adminUser, code) {
-    if (!adminUser.totp_enabled) return true;
-
-    if (!/^\d{6}$/.test(String(code || ""))) {
-      throw new Error("Invalid 2FA code. Enter 6 digits.");
-    }
-
-    // Development placeholder. Replace with server-side TOTP verification in production.
-    return true;
-  }
-
-  async function login(email, password, totpCode = null) {
-    const adminUser = await verifyCredentials(email, password);
-
-    if (adminUser.totp_enabled) {
-      if (!totpCode) return { requiresTOTP: true, adminUser };
-      await verifyTOTP(adminUser, totpCode);
-    }
-
-    const sessionData = {
-      id: adminUser.id,
-      email: adminUser.email,
-      role: adminUser.role,
-    };
-
-    saveSession(sessionData);
-    setAdmin(sessionData);
-
-    await supabase
-      .from("admin_users")
-      .update({ last_login_at: new Date().toISOString() })
-      .eq("id", adminUser.id);
-
-    await writeAuditLog("login.success", { email: adminUser.email });
-    resetInactivityTimer();
-
-    return { success: true };
+  async function completeTOTPLogin(challengeToken, totpCode) {
+    return login('', '', totpCode, '', challengeToken)
   }
 
   async function logout() {
-    await writeAuditLog("logout");
-    clearSession();
-    setAdmin(null);
-
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    try { await callAdminFunction('admin-logout') } catch { /* ignore */ }
+    clearAdminSession()
+    setAdmin(null)
   }
 
-  const value = {
+  async function writeAuditLog(action, details = {}, targetType = null, targetId = null) {
+    try {
+      await callAdminFunction('admin-audit', { action, details, target_type: targetType, target_id: targetId })
+    } catch {
+      // best effort only
+    }
+  }
+
+  const value = useMemo(() => ({
     admin,
     loading,
     isLoggedIn: !!admin,
-    isFullAccess: admin?.role === "full_access",
     login,
+    completeTOTPLogin,
     logout,
     writeAuditLog,
-    resetInactivityTimer,
-  };
+    refreshSession,
+    hasRole: (roles) => {
+      const list = Array.isArray(roles) ? roles : [roles]
+      return !!admin && list.includes(admin.role)
+    },
+  }), [admin, loading, refreshSession])
 
-  return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>;
+  return <AdminAuthContext.Provider value={value}>{children}</AdminAuthContext.Provider>
 }
 
 export function useAdminAuth() {
-  const ctx = useContext(AdminAuthContext);
-  if (!ctx) throw new Error("useAdminAuth must be within AdminAuthProvider");
-  return ctx;
+  const context = useContext(AdminAuthContext)
+  if (!context) throw new Error('useAdminAuth must be used inside AdminAuthProvider')
+  return context
+}
+
+export function AdminGuard({ children }) {
+  const { isLoggedIn, loading } = useAdminAuth()
+
+  useEffect(() => {
+    if (!loading && !isLoggedIn) {
+      window.location.href = '/superadmin/login'
+    }
+  }, [loading, isLoggedIn])
+
+  if (loading) {
+    return <div className="min-h-screen bg-slate-950 text-white grid place-items-center">Checking admin session...</div>
+  }
+
+  if (!isLoggedIn) return null
+  return children
 }

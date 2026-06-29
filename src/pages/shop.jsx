@@ -261,7 +261,7 @@ function ProductImage({ product, className = "" }) {
   );
 }
 
-function ProductCard({ product, currency, storeId, onView, onCartChange, onOpenCart }) {
+function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChange, onOpenCart }) {
   const [adding, setAdding] = useState(false);
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState("");
@@ -273,6 +273,7 @@ function ProductCard({ product, currency, storeId, onView, onCartChange, onOpenC
   const compareAt = toNumber(product.compare_at_price, 0);
   const discount = getDiscount(product);
   const requiresVariant = hasVariants(product);
+  const productParam = String(product.slug || product.id);
 
   async function handleAddToCart(event) {
     event.stopPropagation();
@@ -368,21 +369,31 @@ function ProductCard({ product, currency, storeId, onView, onCartChange, onOpenC
           >
             {outOfStock ? "Out of stock" : requiresVariant ? "Choose option" : flash ? "Added" : adding ? "Adding..." : "Add to cart"}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="rounded-xl transition duration-300 hover:-translate-y-0.5 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)]"
-            onClick={() => onView(product)}
-          >
-            View
-          </Button>
+          {storeSlug ? (
+            <Link
+              to="/shop/$storeSlug/product/$productId"
+              params={{ storeSlug, productId: productParam }}
+              className="inline-flex h-9 items-center justify-center rounded-xl border border-input bg-background px-3 text-sm font-medium transition duration-300 hover:-translate-y-0.5 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)]"
+            >
+              Details
+            </Link>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-xl transition duration-300 hover:-translate-y-0.5 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)]"
+              onClick={() => onView(product)}
+            >
+              Details
+            </Button>
+          )}
         </div>
       </div>
     </article>
   );
 }
 
-function ProductRail({ title, products, currency, storeId, onView, onCartChange, onOpenCart }) {
+function ProductRail({ title, products, currency, storeId, storeSlug, onView, onCartChange, onOpenCart }) {
   if (!products.length) return null;
 
   return (
@@ -399,6 +410,7 @@ function ProductRail({ title, products, currency, storeId, onView, onCartChange,
               product={product}
               currency={currency}
               storeId={storeId}
+              storeSlug={storeSlug}
               onView={onView}
               onCartChange={onCartChange}
               onOpenCart={onOpenCart}
@@ -1006,6 +1018,14 @@ export default function ShopPage() {
     loadStorefront();
   }, [subdomain]);
 
+
+  useEffect(() => {
+    if (status !== "ok" || !store?.id || !subdomain) return;
+    import("@/lib/analytics-tracker").then(({ trackStoreEvent }) => {
+      trackStoreEvent({ storeSlug: subdomain, storeId: store.id, eventType: "page_view", path: window.location.pathname });
+    });
+  }, [status, store?.id, subdomain]);
+
   const refreshCartCount = useCallback(() => {
     if (!store?.id) return;
     const { itemCount } = getCartTotals(store.id);
@@ -1403,6 +1423,7 @@ export default function ShopPage() {
             products={collections.featured}
             currency={currency}
             storeId={store.id}
+            storeSlug={subdomain}
             onView={setViewProduct}
             onCartChange={refreshCartCount}
             onOpenCart={() => setCartOpen(true)}
@@ -1459,6 +1480,7 @@ export default function ShopPage() {
                         product={product}
                         currency={currency}
                         storeId={store.id}
+                        storeSlug={subdomain}
                         onView={setViewProduct}
                         onCartChange={refreshCartCount}
                         onOpenCart={() => setCartOpen(true)}
