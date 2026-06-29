@@ -4,7 +4,7 @@ import { ArrowLeft, CheckCircle2, Minus, Package, Plus, ShieldCheck, ShoppingCar
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/integrations/supabase/client'
 import { addToCart, getCartTotals } from '@/lib/cart'
-import { getThemeCssVars } from '@/lib/theme-system'
+import { getStoreTheme, getThemeCssVars, themeDataAttributes } from '@/lib/theme-system'
 import { trackStoreEvent } from '@/lib/analytics-tracker'
 
 function toNumber(value, fallback = 0) {
@@ -175,7 +175,9 @@ export default function ShopProductPage() {
   const lowStock = stock > 0 && stock <= 5
   const outOfStock = stock <= 0
   const discount = getDiscount(product)
+  const activeTheme = getStoreTheme(store)
   const vars = getThemeCssVars(store)
+  const themeAttrs = themeDataAttributes(activeTheme)
   const deliveryLabel = getProductDeliveryLabel(product, store)
 
   function addSelectedToCart() {
@@ -204,7 +206,15 @@ export default function ShopProductPage() {
   if (status !== 'ok') return <EmptyState title="Product not found" message="This product is unavailable, unpublished, or the shop is offline." />
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950" style={vars}>
+    <div className="min-h-screen bg-slate-50 text-slate-950" style={vars} {...themeAttrs}>
+      <style>{`
+        [data-theme-font] { font-family: var(--shop-font-family); background: var(--shop-page-bg); }
+        [data-theme-button] button, [data-theme-button] a { border-radius: var(--shop-button-radius) !important; }
+        [data-theme-radius] .shop-product-card, [data-theme-radius] .shop-product-image { border-radius: var(--shop-card-radius) !important; }
+        [data-theme-card="flat"] .shop-product-card { box-shadow: none !important; }
+        [data-theme-nav="dark"] header { background: rgba(2,6,23,.92) !important; color: white !important; border-color: rgba(255,255,255,.10) !important; }
+        [data-theme-bg="dark"] { color: white; }
+      `}</style>
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-3 font-black">
@@ -224,9 +234,9 @@ export default function ShopProductPage() {
 
         <section className="grid gap-8 lg:grid-cols-[1.05fr_.95fr]">
           <div className="space-y-4">
-            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div className="shop-product-card overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
               {images[selectedImage] ? (
-                <img src={images[selectedImage]} alt={product.title} className="aspect-square w-full object-contain p-6" />
+                <img src={images[selectedImage]} alt={product.title} className="shop-product-image aspect-square w-full object-contain p-6" />
               ) : (
                 <div className="flex aspect-square items-center justify-center text-slate-300"><Package className="h-20 w-20" /></div>
               )}
@@ -242,7 +252,7 @@ export default function ShopProductPage() {
             )}
           </div>
 
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <div className="shop-product-card rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{product.category || 'General'}</span>
               {discount > 0 && <span className="rounded-full bg-rose-500 px-3 py-1 text-xs font-black text-white">-{discount}%</span>}

@@ -9,7 +9,7 @@ import {
   updateQty,
 } from "@/lib/cart";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
-import { getThemeCssVars } from "@/lib/theme-system";
+import { getStoreTheme, getThemeCssVars, themeDataAttributes } from "@/lib/theme-system";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -300,7 +300,7 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
   }
 
   return (
-    <article className="group shop-hover-lift overflow-hidden rounded-[1.45rem] border border-slate-200/80 bg-white shadow-sm transition-all duration-500 hover:border-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-slate-950">
+    <article className="group shop-hover-lift shop-themed-card overflow-hidden rounded-[1.45rem] border border-slate-200/80 bg-white shadow-sm transition-all duration-500 hover:border-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-slate-950">
       <div className="relative">
         <button type="button" className="block w-full text-left" onClick={() => onView(product)}>
           <ProductImage product={product} className="aspect-[4/3]" />
@@ -423,57 +423,53 @@ function ProductRail({ title, products, currency, storeId, storeSlug, onView, on
 }
 
 function HeroSlider({ slides, activeSlide, setActiveSlide, shopName, className = "" }) {
-  const safeSlides = slides.length ? slides : [{ image: null, title: shopName, eyebrow: "Featured collection", subtitle: "Clean shopping, trusted checkout" }];
+  const safeSlides = slides.length
+    ? slides
+    : [{ image: null, title: shopName, eyebrow: "Store highlights", subtitle: "Shop with confidence" }];
   const activeIndex = activeSlide % safeSlides.length;
-  const active = safeSlides[activeIndex];
 
   return (
-    <div className={`shop-scroll-reveal relative overflow-hidden rounded-[2rem] border border-white/50 bg-gradient-to-br from-white/30 via-[var(--shop-primary-soft)] to-white/10 p-2 shadow-2xl shadow-[var(--shop-primary-ring)] backdrop-blur-xl transition duration-500 hover:-translate-y-1 hover:shadow-[0_30px_80px_var(--shop-primary-ring)] dark:border-white/10 dark:from-white/10 dark:via-white/5 dark:to-white/0 ${className}`}>
-      <div className="relative aspect-[16/7] min-h-[200px] overflow-hidden rounded-[1.45rem] bg-slate-100 sm:min-h-[230px] lg:min-h-[250px] dark:bg-slate-900">
-        {safeSlides.map((slide, index) => (
-          <div
-            key={`${slide.image || "slide"}-${index}`}
-            className={`absolute inset-0 transition-all duration-700 ease-out ${activeIndex === index ? "opacity-100 scale-100" : "opacity-0 scale-105"}`}
-          >
-            {slide.image ? (
-              <>
-                <img src={slide.image} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-2xl" />
-                <div className="absolute inset-0 bg-gradient-to-br from-white/85 via-white/50 to-[var(--shop-primary-soft)] dark:from-slate-950/80 dark:via-slate-950/50" />
-                <img
-                  src={slide.image}
-                  alt={`${shopName} banner ${index + 1}`}
-                  className="relative z-10 h-full w-full object-contain p-4 transition duration-700 ease-out"
-                />
-              </>
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[var(--shop-primary-soft)] to-slate-100 text-[var(--shop-primary)] dark:to-slate-900">
-                <ShoppingBag className="h-20 w-20" />
-              </div>
-            )}
-            <div className="absolute inset-x-0 bottom-0 z-20 h-32 bg-gradient-to-t from-slate-950/75 via-slate-950/20 to-transparent" />
-          </div>
-        ))}
+    <div className={`absolute inset-0 overflow-hidden ${className}`} aria-hidden="true">
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,#eef2ff_0%,#f8fafc_42%,#e0e7ff_100%)] dark:bg-[linear-gradient(135deg,#020617_0%,#111827_48%,#020617_100%)]" />
 
-        <div className="absolute bottom-5 left-5 right-5 z-30 max-w-2xl text-white">
-          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-white/80">{active.eyebrow}</p>
-          <h2 className="mt-2 text-xl font-black tracking-tight sm:text-3xl">{active.title}</h2>
-          <p className="mt-2 max-w-xl text-xs leading-5 text-white/80 sm:text-sm">{active.subtitle}</p>
+      {safeSlides.map((slide, index) => (
+        <div
+          key={`${slide.image || "slide"}-${index}`}
+          className={`absolute inset-0 transition-all duration-[1100ms] ease-out ${activeIndex === index ? "opacity-100 scale-100" : "opacity-0 scale-[1.015]"}`}
+        >
+          {slide.image ? (
+            <img
+              src={slide.image}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover opacity-100 transition duration-[1100ms] ease-out"
+              onError={(event) => { event.currentTarget.style.display = "none"; }}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-end pr-20 text-[var(--shop-primary)] opacity-20">
+              <ShoppingBag className="h-40 w-40" />
+            </div>
+          )}
         </div>
+      ))}
 
-        {safeSlides.length > 1 && (
-          <div className="absolute bottom-5 right-5 z-40 flex gap-2 rounded-full bg-white/20 p-1 backdrop-blur">
-            {safeSlides.map((_, index) => (
-              <button
-                key={index}
-                type="button"
-                aria-label={`Show banner ${index + 1}`}
-                onClick={() => setActiveSlide(index)}
-                className={`h-2.5 rounded-full transition-all duration-300 ${activeIndex === index ? "w-7 bg-white" : "w-2.5 bg-white/50 hover:bg-white/80"}`}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Left-side readability layer only: keeps text clear while the right-side banner stays visible. */}
+      <div className="absolute inset-y-0 left-0 w-[58%] bg-[linear-gradient(90deg,rgba(248,250,252,.98)_0%,rgba(248,250,252,.92)_44%,rgba(248,250,252,.52)_74%,transparent_100%)] backdrop-blur-[2px] dark:bg-[linear-gradient(90deg,rgba(2,6,23,.92)_0%,rgba(15,23,42,.78)_48%,rgba(15,23,42,.38)_78%,transparent_100%)]" />
+      <div className="absolute inset-y-0 left-0 w-[48%] bg-[radial-gradient(circle_at_22%_28%,var(--shop-primary-soft),transparent_44%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white/45 via-transparent to-transparent dark:from-slate-950/40" />
+
+      {safeSlides.length > 1 && (
+        <div className="absolute bottom-8 right-8 z-30 flex gap-2 rounded-full bg-slate-950/25 p-1.5 backdrop-blur-xl dark:bg-white/10">
+          {safeSlides.map((_, index) => (
+            <button
+              key={index}
+              type="button"
+              aria-label={`Show banner ${index + 1}`}
+              onClick={() => setActiveSlide(index)}
+              className={`h-2.5 rounded-full transition-all duration-300 ${activeIndex === index ? "w-9 bg-white shadow-sm" : "w-2.5 bg-white/55 hover:bg-white/90"}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1037,7 +1033,9 @@ export default function ShopPage() {
   }, [refreshCartCount]);
 
   const currency = store?.currency || "BDT";
+  const activeTheme = getStoreTheme(store);
   const shopVars = getThemeCssVars(store);
+  const themeAttrs = themeDataAttributes(activeTheme);
 
   const categories = useMemo(() => {
     const counts = new Map();
@@ -1225,7 +1223,7 @@ export default function ShopPage() {
   const heroVisible = store.show_hero !== false;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white" style={shopVars}>
+    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white" style={shopVars} {...themeAttrs}>
       <style>{`
         @keyframes shopFadeUp {
           from { opacity: 0; transform: translateY(18px); }
@@ -1254,9 +1252,43 @@ export default function ShopPage() {
         .shop-scroll-reveal.is-visible { opacity: 1; transform: translateY(0); }
         .shop-hover-lift { transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease; }
         .shop-hover-lift:hover { transform: translateY(-6px); box-shadow: 0 22px 55px rgba(15, 23, 42, 0.12); }
-        .shop-hero-card::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(255,255,255,.65), rgba(255,255,255,.12), var(--shop-primary-ring)); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
-        .shop-hero-shine::after { content: ""; position: absolute; top: -35%; bottom: -35%; width: 38%; left: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent); animation: shopShine 4.8s ease-in-out infinite; pointer-events: none; }
+        .shop-hero-copy { isolation: isolate; }
+        .shop-hero-visual { filter: drop-shadow(0 28px 80px rgba(15,23,42,.13)); }
         .shop-float-soft { animation: shopFloatSoft 6s ease-in-out infinite; }
+        [data-theme-font] { font-family: var(--shop-font-family); background: var(--shop-page-bg); }
+        [data-theme-button] button, [data-theme-button] a, [data-theme-button] .shop-theme-button { border-radius: var(--shop-button-radius) !important; }
+        [data-theme-radius] .shop-hover-lift, [data-theme-radius] .shop-themed-card, [data-theme-radius] .shop-hero-copy, [data-theme-radius] .shop-hero-visual, [data-theme-radius] .shop-product-surface { border-radius: var(--shop-card-radius) !important; }
+        [data-theme-card="flat"] .shop-hover-lift { box-shadow: none !important; border-color: rgba(148,163,184,.28) !important; }
+        [data-theme-card="bordered"] .shop-hover-lift { box-shadow: none !important; border-width: 1.5px !important; }
+        [data-theme-card="shadow"] .shop-hover-lift { box-shadow: 0 18px 50px rgba(15,23,42,.13) !important; }
+        [data-theme-card="glass"] .shop-hover-lift { background: rgba(255,255,255,.72) !important; backdrop-filter: blur(18px); }
+        [data-theme-nav="dark"] header { background: rgba(2,6,23,.92) !important; color: white !important; border-color: rgba(255,255,255,.10) !important; }
+        [data-theme-nav="dark"] header a, [data-theme-nav="dark"] header button, [data-theme-nav="dark"] header span { color: inherit; }
+        [data-theme-nav="minimal"] header { background: transparent !important; border-color: transparent !important; }
+        [data-theme-bg="dark"] { color: white; }
+        [data-theme-bg="dark"] main, [data-theme-bg="dark"] section, [data-theme-bg="dark"] footer { color: white; }
+        [data-theme-bg="dark"] .shop-filter-panel, [data-theme-bg="dark"] .shop-product-surface, [data-theme-bg="dark"] .shop-themed-card { background: rgba(15,23,42,.88) !important; border-color: rgba(255,255,255,.10) !important; }
+        [data-theme-hero="centered"] .shop-hero-grid { display: block !important; max-width: 980px; }
+        [data-theme-hero="centered"] .shop-hero-grid > * { margin-inline: auto; }
+        [data-theme-hero="centered"] .shop-hero-copy { text-align: center; align-items: center; }
+        
+        [data-theme-hero="compact"] .shop-hero-grid { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
+        [data-theme-hero="compact"] .shop-hero-copy, [data-theme-hero="compact"] .shop-hero-slider { min-height: 260px !important; }
+        [data-theme-hero="editorial"] .shop-hero-grid { grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr) !important; }
+        [data-theme-hero="editorial"] .shop-hero-copy { color: white !important; }
+        [data-theme-layout="marketplace"] .shop-main { max-width: 92rem !important; }
+        [data-theme-layout="marketplace"] .shop-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+        @media (min-width: 768px){ [data-theme-layout="marketplace"] .shop-product-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+        @media (min-width: 1280px){ [data-theme-layout="marketplace"] .shop-product-grid, [data-theme-grid="four"] .shop-product-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+        [data-theme-grid="two"] .shop-product-grid { grid-template-columns: repeat(1,minmax(0,1fr)); }
+        @media (min-width: 640px){ [data-theme-grid="two"] .shop-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+        [data-theme-layout="minimal"] .shop-hero-copy { color: var(--shop-text) !important; }
+        [data-theme-layout="minimal"] .shop-hero-copy h1, [data-theme-layout="minimal"] .shop-hero-copy p { color: var(--shop-text) !important; }
+        [data-theme-layout="tech"] .shop-hero-copy h1 { color: white !important; }
+        [data-theme-density="compact"] .shop-main { padding-top: 1.75rem !important; padding-bottom: 1.75rem !important; gap: 2rem !important; }
+        [data-theme-density="spacious"] .shop-main { padding-top: 4.5rem !important; padding-bottom: 4.5rem !important; gap: 5rem !important; }
+        [data-theme-animation="none"] .shop-animate, [data-theme-animation="none"] .shop-scroll-reveal, [data-theme-animation="none"] .shop-float-soft { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; }
+        [data-theme-animation="premium"] .shop-hover-lift:hover { transform: translateY(-9px) scale(1.01); }
         @media (prefers-reduced-motion: reduce) {
           .shop-animate, .shop-drawer-enter, .shop-modal-enter, .shop-float-soft { animation: none !important; }
           .shop-scroll-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
@@ -1333,49 +1365,61 @@ export default function ShopPage() {
       </header>
 
       {heroVisible && (
-        <section className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,var(--shop-primary-soft),transparent_32%),linear-gradient(135deg,#f8fafc_0%,#eef2ff_48%,#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_18%_18%,var(--shop-primary-ring),transparent_32%),linear-gradient(135deg,#020617_0%,#0f172a_52%,#020617_100%)]" />
-          <div className="shop-float-soft absolute -right-28 -top-28 h-72 w-72 rounded-full bg-[var(--shop-primary-ring)] blur-3xl" />
-          <div className="shop-float-soft absolute -bottom-32 -left-24 h-72 w-72 rounded-full bg-[var(--shop-primary-ring)] blur-3xl [animation-delay:1.2s]" />
+        <section className="relative isolate min-h-[520px] w-full overflow-hidden bg-slate-50 dark:bg-slate-950">
+          <HeroSlider
+            slides={heroSlides}
+            activeSlide={activeSlide}
+            setActiveSlide={setActiveSlide}
+            shopName={shopName}
+            className="z-0"
+          />
 
-          <div className="relative mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(280px,4fr)_minmax(0,6fr)] lg:px-8 lg:py-8">
-            <div className="shop-scroll-reveal shop-hero-card shop-hero-shine relative order-1 flex flex-col justify-center overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-slate-900 to-[var(--shop-primary)] p-6 text-white shadow-2xl shadow-[var(--shop-primary-ring)] transition duration-500 hover:-translate-y-1 hover:shadow-[0_32px_90px_var(--shop-primary-ring)]">
-              <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
-              <div className="absolute -bottom-20 -left-16 h-52 w-52 rounded-full bg-white/10 blur-2xl" />
-              <div className="relative z-10">
-                <span className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-white/85 backdrop-blur">
-                  <Sparkles className="h-3.5 w-3.5" /> Brand store
-                </span>
-                <h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">{shopName}</h1>
-                <p className="mt-4 text-sm leading-7 text-white/75">{tagline}</p>
-                <div className="mt-6 grid gap-3">
-                  <Button
-                    className="h-11 rounded-2xl bg-white px-5 font-black text-slate-950 shadow-lg shadow-black/10 transition duration-300 hover:-translate-y-0.5 hover:bg-white/90"
-                    onClick={() => document.getElementById("products")?.scrollIntoView({ behavior: "smooth" })}
-                  >
-                    Shop products <ArrowRight className="h-4 w-4" />
-                  </Button>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Button
-                      className="h-11 rounded-2xl border-white/20 bg-white/10 px-5 font-bold text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
-                      variant="outline"
-                      onClick={() => setCartOpen(true)}
-                    >
-                      View cart
-                    </Button>
-                    <Button
-                      className="h-11 rounded-2xl border-white/20 bg-white/10 px-5 font-bold text-white backdrop-blur transition hover:-translate-y-0.5 hover:bg-white/15"
-                      variant="outline"
-                      onClick={() => navigate({ to: aboutPath })}
-                    >
-                      About
-                    </Button>
-                  </div>
-                </div>
+          <div className="shop-float-soft absolute -left-24 top-20 z-0 h-72 w-72 rounded-full bg-[var(--shop-primary-ring)] blur-3xl opacity-55" />
+          <div className="shop-float-soft absolute right-16 top-8 z-0 h-64 w-64 rounded-full bg-white/55 blur-3xl opacity-60 [animation-delay:1.2s]" />
+
+          <div className="relative z-10 mx-auto flex min-h-[520px] w-full max-w-[1500px] items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20 2xl:px-24">
+            <div className="shop-scroll-reveal max-w-2xl">
+              <span className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-[var(--shop-primary)] shadow-[0_16px_45px_rgba(15,23,42,.08)] backdrop-blur-xl dark:bg-white/12 dark:text-white/90">
+                <Sparkles className="h-3.5 w-3.5" /> Digital shop
+              </span>
+
+              <h1 className="max-w-3xl text-5xl font-black leading-[0.95] tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-7xl dark:text-white">
+                {shopName}
+              </h1>
+
+              <p className="mt-6 max-w-xl text-base font-semibold leading-8 text-slate-600 sm:text-lg dark:text-slate-200">
+                {tagline}
+              </p>
+
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Button
+                  className="h-12 rounded-full bg-[var(--shop-primary)] px-8 font-black text-white shadow-[0_18px_46px_var(--shop-primary-ring)] transition duration-300 hover:-translate-y-0.5 hover:bg-[var(--shop-primary)]/90"
+                  onClick={() => document.getElementById("products")?.scrollIntoView({ behavior: "smooth" })}
+                >
+                  Shop products <ArrowRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  className="h-12 rounded-full bg-white/70 px-8 font-bold text-slate-950 shadow-[0_14px_35px_rgba(15,23,42,.06)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white/90 dark:bg-white/12 dark:text-white dark:hover:bg-white/18"
+                  variant="ghost"
+                  onClick={() => setCartOpen(true)}
+                >
+                  View cart
+                </Button>
+                <Button
+                  className="h-12 rounded-full bg-transparent px-5 font-bold text-slate-600 transition hover:-translate-y-0.5 hover:bg-white/45 hover:text-[var(--shop-primary)] dark:text-slate-200 dark:hover:bg-white/10"
+                  variant="ghost"
+                  onClick={() => navigate({ to: aboutPath })}
+                >
+                  About
+                </Button>
+              </div>
+
+              <div className="mt-8 flex flex-wrap gap-x-5 gap-y-3 text-xs font-bold text-slate-600 dark:text-slate-200/90">
+                <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-[var(--shop-primary)]" /> Secure checkout</span>
+                <span className="inline-flex items-center gap-1.5"><Truck className="h-4 w-4 text-[var(--shop-primary)]" /> Local delivery</span>
+                <span className="inline-flex items-center gap-1.5"><ShoppingBag className="h-4 w-4 text-[var(--shop-primary)]" /> Curated products</span>
               </div>
             </div>
-
-            <HeroSlider slides={heroSlides} activeSlide={activeSlide} setActiveSlide={setActiveSlide} shopName={shopName} className="order-2" />
           </div>
         </section>
       )}
@@ -1408,7 +1452,7 @@ export default function ShopPage() {
         </div>
       </section>
 
-      <main className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:px-6 lg:px-8">
+      <main className="shop-main mx-auto max-w-7xl space-y-12 px-4 py-10 sm:px-6 lg:px-8">
         <div id="featured">
           <ProductRail
             title="Featured products"
@@ -1456,7 +1500,7 @@ export default function ShopPage() {
 
             <div>
               {filtered.length === 0 ? (
-                <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-12 text-center dark:border-white/10 dark:bg-slate-950">
+                <div className="shop-product-surface rounded-[2rem] border border-dashed border-slate-300 bg-white p-12 text-center dark:border-white/10 dark:bg-slate-950">
                   <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--shop-primary-soft)] text-[var(--shop-primary)]">
                     <Search className="h-8 w-8" />
                   </div>
@@ -1465,7 +1509,7 @@ export default function ShopPage() {
                   <Button className="mt-5 rounded-xl" variant="outline" onClick={clearFilters}>Reset search</Button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="shop-product-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {filtered.map((product, index) => (
                     <div key={product.id} className="shop-animate" style={{ animationDelay: `${Math.min(index, 8) * 55}ms` }}>
                       <ProductCard

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
-import { getTheme, themeCssVars } from "@/lib/preview-themes";
+import { getStoreTheme, getThemeCssVars, themeDataAttributes } from "@/lib/theme-system";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -47,28 +47,6 @@ function getSubdomain(routeSlug) {
 function clampText(text, fallback = "") {
   if (typeof text !== "string") return fallback;
   return text.trim() || fallback;
-}
-
-function hexToRgb(hex) {
-  if (typeof hex !== "string") return null;
-  const cleaned = hex.replace("#", "").trim();
-  if (![3, 6].includes(cleaned.length)) return null;
-  const value = cleaned.length === 3
-    ? cleaned.split("").map((char) => char + char).join("")
-    : cleaned;
-  const number = Number.parseInt(value, 16);
-  if (Number.isNaN(number)) return null;
-  return {
-    r: (number >> 16) & 255,
-    g: (number >> 8) & 255,
-    b: number & 255,
-  };
-}
-
-function rgba(hex, alpha) {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return `rgba(79, 70, 229, ${alpha})`;
-  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
 function EmptyState({ title, message }) {
@@ -115,17 +93,6 @@ export default function ShopAboutPage() {
       }
 
       setStore(data);
-
-      const accountStatus = data.account_status || "active";
-      if (accountStatus === "suspended") {
-        setStatus("suspended");
-        return;
-      }
-      if (accountStatus === "deleted") {
-        setStatus("deleted");
-        return;
-      }
-
       setStatus(data.storefront_published ? "ok" : "unpublished");
     }
 
@@ -151,23 +118,9 @@ export default function ShopAboutPage() {
     return <EmptyState title="Shop is currently unavailable" message="The merchant has temporarily unpublished this storefront. Please check again later." />;
   }
 
-  if (status === "suspended") {
-    return <EmptyState title="This shop is suspended" message="This merchant account has been suspended by BazarHQ, so the about page is temporarily unavailable." />;
-  }
-
-  if (status === "deleted") {
-    return <EmptyState title="This shop is no longer available" message="This storefront has been removed from BazarHQ." />;
-  }
-
-  const theme = getTheme(store?.theme_id);
-  const themeVars = themeCssVars(theme);
-  const primaryColor = store?.brand_color || theme.swatch || "#4f46e5";
-  const shopVars = {
-    ...themeVars,
-    "--shop-primary": primaryColor,
-    "--shop-primary-soft": rgba(primaryColor, 0.12),
-    "--shop-primary-ring": rgba(primaryColor, 0.24),
-  };
+  const activeTheme = getStoreTheme(store);
+  const shopVars = getThemeCssVars(store);
+  const themeAttrs = themeDataAttributes(activeTheme);
 
   const shopName = clampText(store.shop_name, "BazarHQ Store");
   const tagline = clampText(store.tagline, "A trusted online shop powered by BazarHQ.");
@@ -181,7 +134,13 @@ export default function ShopAboutPage() {
   const currentAboutPath = subdomain ? `/shop/${encodeURIComponent(subdomain)}/about` : "/shop/about";
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white" style={shopVars}>
+    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white" style={shopVars} {...themeAttrs}>
+      <style>{`
+        [data-theme-font] { font-family: var(--shop-font-family); background: var(--shop-page-bg); }
+        [data-theme-button] button, [data-theme-button] a { border-radius: var(--shop-button-radius) !important; }
+        [data-theme-radius] .shop-about-card, [data-theme-radius] .shop-about-image { border-radius: var(--shop-card-radius) !important; }
+        [data-theme-nav="dark"] header { background: rgba(2,6,23,.92) !important; color: white !important; border-color: rgba(255,255,255,.10) !important; }
+      `}</style>
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/90">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
           <Link to={currentShopPath} className="flex min-w-0 items-center gap-3">
@@ -227,8 +186,8 @@ export default function ShopAboutPage() {
             </Link>
 
             <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-              <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-white/5">
-                <div className="relative aspect-[4/3] overflow-hidden rounded-[1.5rem] bg-slate-100 dark:bg-slate-900">
+              <div className="shop-about-card overflow-hidden rounded-[2rem] border border-white/70 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-white/5">
+                <div className="shop-about-image relative aspect-[4/3] overflow-hidden rounded-[1.5rem] bg-slate-100 dark:bg-slate-900">
                   {aboutImage ? (
                     <img src={aboutImage} alt={aboutTitle} className="h-full w-full object-cover" />
                   ) : (
