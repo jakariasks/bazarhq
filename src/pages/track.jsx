@@ -37,10 +37,9 @@ function formatDate(iso) {
 export default function TrackPage() {
   const search = useSearch({ strict: false })
 
-  // Pre-fill from URL params. Accept both old and new names for backward compatibility.
-  const initialStoreSlug = search?.store || search?.shop || ''
-  const initialOrderId = search?.order || search?.order_id || ''
-  const [orderId, setOrderId] = useState(initialOrderId)
+  // Pre-fill from URL params (coming from order success page)
+  const [storeSlug, setStoreSlug] = useState(search?.store || search?.shop || '')
+  const [orderId, setOrderId] = useState(search?.order || search?.order_id || '')
   const [phone, setPhone] = useState(search?.phone || '')
   const [loading, setLoading] = useState(false)
   const [order, setOrder] = useState(null)
@@ -49,14 +48,12 @@ export default function TrackPage() {
   const [error, setError] = useState('')
   const [searched, setSearched] = useState(false)
 
-  // Auto-search when an order ID and phone number are passed from checkout/account.
+  // Auto-search if all params provided from URL
   useEffect(() => {
-    if (initialOrderId && search?.phone) {
+    if ((search?.order || search?.order_id) && search?.phone && (search?.store || search?.shop)) {
       handleSearch()
     }
-    // Run once on page load only; input state is initialized from URL above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // eslint-disable-line
 
   const handleSearch = async () => {
     const oid = orderId.trim()
@@ -78,7 +75,7 @@ export default function TrackPage() {
 
     if (orderError || !orderData) {
       setLoading(false)
-      setError('Order not found. Please check your Order ID and phone number.')
+      setError('Order not found.')
       return
     }
 
@@ -87,9 +84,16 @@ export default function TrackPage() {
     const inputPhone = ph
     if (!storedPhone.endsWith(inputPhone.slice(-10)) && !inputPhone.endsWith(storedPhone.slice(-10))) {
       setLoading(false)
-      setError('Order not found. Please check your Order ID and phone number.')
+      setError('Order not found.')
       return
     }
+
+    // Load timeline
+    const { data: timelineData } = await supabase
+      .from('order_timeline')
+      .select('*')
+      .eq('order_id', orderData.id)
+      .order('created_at', { ascending: true })
 
     // Load store
     const { data: storeData } = await supabase
@@ -97,19 +101,6 @@ export default function TrackPage() {
       .select('shop_name, logo_url, brand_color, phone, contact_email, whatsapp_number, subdomain')
       .eq('id', orderData.store_id)
       .maybeSingle()
-
-    if (initialStoreSlug && storeData?.subdomain && storeData.subdomain !== initialStoreSlug) {
-      setLoading(false)
-      setError('Order not found for this shop.')
-      return
-    }
-
-    // Timeline is stored against the internal orders.id UUID.
-    const { data: timelineData } = await supabase
-      .from('order_timeline')
-      .select('*')
-      .eq('order_id', orderData.id)
-      .order('created_at', { ascending: true })
 
     setOrder(orderData)
     setTimeline(timelineData ?? [])
@@ -121,6 +112,10 @@ export default function TrackPage() {
   const symbol = '৳'
   const currentStepIdx = order ? getStepIndex(order.status) : -1
   const isCancelled = order?.status === 'cancelled'
+  const deliveredAt = timeline.find((entry) => entry.status === 'delivered')?.created_at || order?.updated_at || order?.created_at
+  const latestTimelineAt = timeline.length ? timeline[timeline.length - 1]?.created_at : order?.updated_at || order?.created_at
+  const isArchived = order?.status === 'delivered' && deliveredAt && (Date.now() - new Date(deliveredAt).getTime()) > 90 * 24 * 60 * 60 * 1000
+  const noRecentUpdate = order && !['delivered', 'cancelled'].includes(order.status) && latestTimelineAt && (Date.now() - new Date(latestTimelineAt).getTime()) > 48 * 60 * 60 * 1000
 
   const items = Array.isArray(order?.items) ? order.items : []
   const total = order?.total ?? 0
@@ -130,11 +125,7 @@ export default function TrackPage() {
       {/* Header */}
       <header className="sticky top-0 z-20 border-b border-border bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4">
-          <Link
-            to="/shop"
-            search={store?.subdomain || initialStoreSlug ? { store: store?.subdomain || initialStoreSlug } : {}}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
+          <Link to={storeSlug ? `/shop/${storeSlug}` : '/shop'} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" /> Shop
           </Link>
           <div className="flex items-center gap-2">
@@ -239,8 +230,36 @@ export default function TrackPage() {
                 </div>
               </div>
 
+              {isArchived && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700">
+                  <div className="flex items-start gap-3">
+                    <Clock className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
+                    <div>
+                      <p className="font-semibold">This order is archived</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Delivered orders older than 90 days no longer show live tracking updates. The order summary remains visible for reference.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {noRecentUpdate && !isArchived && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+                  <div className="flex items-start gap-3">
+                    <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="font-semibold">No recent status change</p>
+                      <p className="mt-1 text-xs text-amber-700">
+                        There has been no status update for more than 48 hours. The latest confirmed status is still shown below.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Timeline */}
-              {!isCancelled ? (
+              {!isCancelled && !isArchived ? (
                 <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
                   <h3 className="mb-5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Order Progress</h3>
                   <div className="relative">
@@ -286,7 +305,7 @@ export default function TrackPage() {
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : isCancelled ? (
                 <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
@@ -300,7 +319,7 @@ export default function TrackPage() {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Order items */}
               <div className="rounded-2xl border border-border bg-white shadow-sm overflow-hidden">

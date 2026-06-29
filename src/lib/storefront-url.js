@@ -1,9 +1,7 @@
 // src/lib/storefront-url.js
-// Central storefront URL helper.
-// Vercel/free prototype URL format:
-//   /shop/merchant-subdomain
-// Legacy query URLs such as /shop?store=merchant-subdomain still work in shop.jsx.
-// Real wildcard subdomains require a custom domain and wildcard DNS in Vercel.
+// Central storefront URL helper for local, Vercel, and future wildcard-domain storefronts.
+// Preferred prototype route: /shop/:subdomain, for example /shop/jakaria-shop
+// Legacy query route /shop?store=jakaria-shop is still supported by shop.jsx.
 
 const DEFAULT_SHOP_PATH = '/shop'
 
@@ -15,7 +13,13 @@ export function cleanStoreSlug(value) {
     .replace(/\/.*$/, '')
     .replace(/\.bazarhq\.com$/, '')
     .replace(/\.vercel\.app$/, '')
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
+
+// Backward-compatible alias used by some older files.
+export const cleanSlug = cleanStoreSlug
 
 function getRuntimeHost() {
   if (typeof window === 'undefined') return ''
@@ -69,13 +73,19 @@ export function getStorefrontPath(subdomain, path = DEFAULT_SHOP_PATH) {
   if (pathname === '/shop' || pathname === '/shop/') return `/shop/${encoded}${query}`
   if (pathname === '/shop/about' || pathname === '/shop/about/') return `/shop/${encoded}/about${query}`
 
-  // Allows future paths such as /shop/$storeSlug/campaigns.
-  if (pathname.includes('$storeSlug')) return `${pathname.replace('$storeSlug', encoded)}${query}`
+  if (pathname.includes('$storeSlug')) {
+    return `${pathname.replace('$storeSlug', encoded)}${query}`
+  }
 
-  // Safe fallback for unknown shop paths.
-  const suffix = pathname.startsWith('/shop/') ? pathname.replace(/^\/shop\/?/, '') : pathname.replace(/^\//, '')
+  const suffix = pathname.startsWith('/shop/')
+    ? pathname.replace(/^\/shop\/?/, '')
+    : pathname.replace(/^\//, '')
+
   return suffix ? `/shop/${encoded}/${suffix}${query}` : `/shop/${encoded}${query}`
 }
+
+// Newer merchant theme page imports this name.
+export const buildStorefrontPath = getStorefrontPath
 
 export function getStorefrontUrl(subdomain, options = {}) {
   const { path = DEFAULT_SHOP_PATH, absolute = false } = options
@@ -94,6 +104,9 @@ export function getStorefrontUrl(subdomain, options = {}) {
   if (absolute && origin) return `${origin}${relativePath}`
   return relativePath
 }
+
+// Backward-compatible alias if any file imports this name later.
+export const buildStorefrontUrl = getStorefrontUrl
 
 export function getStorefrontLabel(subdomain, options = {}) {
   const { path = DEFAULT_SHOP_PATH } = options

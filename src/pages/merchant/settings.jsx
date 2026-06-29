@@ -43,6 +43,11 @@ function padHeroUrls(value) {
   return list.slice(0, 4)
 }
 
+function toNonNegativeNumber(value, fallback = 0) {
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 ? number : fallback
+}
+
 const EMPTY = {
   shop_name:'', business_category:'', tagline:'', description:'',
   contact_email:'', phone:'', whatsapp_number:'', website_url:'',
@@ -51,7 +56,12 @@ const EMPTY = {
   hero_title:'', hero_subtitle:'', hero_banner_urls:['','','',''],
   about_title:'', about_image_url:'', about_mission:'',
   offer_enabled:true, offer_badge:'', offer_title:'', offer_subtitle:'', offer_button_text:'', offer_image_url:'',
+  delivery_charge_dhaka: 60, delivery_charge_outside_dhaka: 120, free_delivery_min_amount: 0,
+  return_policy: 'Return or exchange requests must be discussed with the merchant within 3 days of delivery. Items should be unused and in original condition unless they arrived damaged or incorrect.',
+  shipping_policy: 'Delivery time and charge depend on destination, courier availability, and product type. Customers will see the final delivery charge before placing the order.',
+  payment_policy: 'Cash on Delivery remains pending until collection. Mobile banking payments require a valid transaction ID and remain pending until merchant verification.',
 }
+
 
 const NOTIF_DEFAULTS = {
   new_order: true, low_stock: true, order_status: true,
@@ -121,6 +131,12 @@ export default function SettingsPage() {
         offer_subtitle: store.offer_subtitle ?? '',
         offer_button_text: store.offer_button_text ?? '',
         offer_image_url: store.offer_image_url ?? '',
+        delivery_charge_dhaka: store.delivery_charge_dhaka ?? 60,
+        delivery_charge_outside_dhaka: store.delivery_charge_outside_dhaka ?? 120,
+        free_delivery_min_amount: store.free_delivery_min_amount ?? 0,
+        return_policy: store.return_policy || EMPTY.return_policy,
+        shipping_policy: store.shipping_policy || EMPTY.shipping_policy,
+        payment_policy: store.payment_policy || EMPTY.payment_policy,
       })
       setLogoUrl(store.logo_url ?? null)
       setBannerUrl(store.banner_url ?? null)
@@ -209,6 +225,12 @@ export default function SettingsPage() {
       offer_subtitle: form.offer_subtitle || null,
       offer_button_text: form.offer_button_text || null,
       offer_image_url: form.offer_image_url || null,
+      delivery_charge_dhaka: toNonNegativeNumber(form.delivery_charge_dhaka, 60),
+      delivery_charge_outside_dhaka: toNonNegativeNumber(form.delivery_charge_outside_dhaka, 120),
+      free_delivery_min_amount: toNonNegativeNumber(form.free_delivery_min_amount, 0),
+      return_policy: form.return_policy || EMPTY.return_policy,
+      shipping_policy: form.shipping_policy || EMPTY.shipping_policy,
+      payment_policy: form.payment_policy || EMPTY.payment_policy,
     }).eq('id', store.id)
     setSaving(false)
     if (error) { toast.error(error.message); return }
@@ -375,6 +397,67 @@ export default function SettingsPage() {
                   </Select>
                 </Field>
                 <Field label="City"><Input value={form.city} onChange={e=>set('city',e.target.value)} placeholder="Dhaka"/></Field>
+              </Sec>
+
+              <Sec title="Delivery charges">
+                <Field label="Inside Dhaka delivery charge">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.delivery_charge_dhaka}
+                    onChange={e=>set('delivery_charge_dhaka', e.target.value)}
+                    placeholder="60"
+                  />
+                </Field>
+                <Field label="Outside Dhaka delivery charge">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.delivery_charge_outside_dhaka}
+                    onChange={e=>set('delivery_charge_outside_dhaka', e.target.value)}
+                    placeholder="120"
+                  />
+                </Field>
+                <Field label="Free delivery minimum" hint="Optional" className="sm:col-span-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.free_delivery_min_amount}
+                    onChange={e=>set('free_delivery_min_amount', e.target.value)}
+                    placeholder="0"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Set 0 to disable free delivery. Example: 2000 means orders from BDT 2,000 get free delivery.</p>
+                </Field>
+              </Sec>
+
+              <Sec title="Store policies">
+                <Field label="Return policy" className="sm:col-span-2" hint={`${form.return_policy?.length || 0}/700`}>
+                  <Textarea
+                    value={form.return_policy || ''}
+                    onChange={e=>set('return_policy', e.target.value)}
+                    rows={4}
+                    maxLength={700}
+                    placeholder="Write your return or exchange policy"
+                  />
+                </Field>
+                <Field label="Shipping policy" className="sm:col-span-2" hint={`${form.shipping_policy?.length || 0}/700`}>
+                  <Textarea
+                    value={form.shipping_policy || ''}
+                    onChange={e=>set('shipping_policy', e.target.value)}
+                    rows={4}
+                    maxLength={700}
+                    placeholder="Write your delivery time, courier, and delivery charge policy"
+                  />
+                </Field>
+                <Field label="Payment policy" className="sm:col-span-2" hint={`${form.payment_policy?.length || 0}/700`}>
+                  <Textarea
+                    value={form.payment_policy || ''}
+                    onChange={e=>set('payment_policy', e.target.value)}
+                    rows={4}
+                    maxLength={700}
+                    placeholder="Write your COD, mobile banking, and online payment policy"
+                  />
+                </Field>
               </Sec>
 
               <Sec title="Storefront hero & slideshow">

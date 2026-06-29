@@ -4,7 +4,7 @@ import { ArrowLeft, CheckCircle2, Minus, Package, Plus, ShieldCheck, ShoppingCar
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/integrations/supabase/client'
 import { addToCart, getCartTotals } from '@/lib/cart'
-import { getTheme, themeCssVars } from '@/lib/preview-themes'
+import { getThemeCssVars } from '@/lib/theme-system'
 import { trackStoreEvent } from '@/lib/analytics-tracker'
 
 function toNumber(value, fallback = 0) {
@@ -69,6 +69,20 @@ function getDiscount(product) {
   const compareAt = toNumber(product?.compare_at_price, 0)
   if (!price || compareAt <= price) return 0
   return Math.round((1 - price / compareAt) * 100)
+}
+
+
+function getProductDeliveryLabel(product, store) {
+  const mode = product?.delivery_charge_mode || 'store_default'
+  if (mode === 'free') return 'Free delivery for this product'
+  if (mode === 'custom') {
+    const dhaka = toNumber(product?.delivery_charge_dhaka, 0)
+    const outside = toNumber(product?.delivery_charge_outside_dhaka, 0)
+    return `Delivery: Dhaka ${money(dhaka, store?.currency || 'BDT')} · Outside ${money(outside, store?.currency || 'BDT')}`
+  }
+  const dhaka = toNumber(store?.delivery_charge_dhaka, 60)
+  const outside = toNumber(store?.delivery_charge_outside_dhaka, 120)
+  return `Delivery: Dhaka ${money(dhaka, store?.currency || 'BDT')} · Outside ${money(outside, store?.currency || 'BDT')}`
 }
 
 function ProductSkeleton() {
@@ -161,9 +175,8 @@ export default function ShopProductPage() {
   const lowStock = stock > 0 && stock <= 5
   const outOfStock = stock <= 0
   const discount = getDiscount(product)
-  const theme = getTheme(store?.theme_id)
-  const primary = store?.brand_color || theme.swatch || '#4f46e5'
-  const vars = { ...themeCssVars(theme), '--shop-primary': primary }
+  const vars = getThemeCssVars(store)
+  const deliveryLabel = getProductDeliveryLabel(product, store)
 
   function addSelectedToCart() {
     if (!store?.id || !product) return
@@ -239,6 +252,10 @@ export default function ShopProductPage() {
             <div className="mt-4 flex items-end gap-3">
               <p className="text-3xl font-black text-[var(--shop-primary)]">{money(price, currency)}</p>
               {toNumber(product.compare_at_price, 0) > price && <p className="pb-1 text-sm font-semibold text-slate-400 line-through">{money(product.compare_at_price, currency)}</p>}
+            </div>
+
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600">
+              <Truck className="h-4 w-4 text-[var(--shop-primary)]" /> {deliveryLabel}
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">

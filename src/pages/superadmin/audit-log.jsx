@@ -1,257 +1,73 @@
-// src/pages/superadmin/audit-log.jsx
-// A3 SRS: Immutable audit log — search, filter by action/admin/date, read-only
-import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Input }    from "@/components/ui/input";
-import {
-  ShieldAlert, Search, ChevronDown, ChevronUp,
-  RefreshCw, Filter,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from 'react'
+import { Download, Filter, Search, ShieldCheck } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/client'
+import { downloadCSV, formatDate, statusClass } from '@/lib/superadmin-utils'
 
-const ACTION_COLORS = {
-  "login.success":        "text-emerald-400 bg-emerald-900/20 border-emerald-900",
-  "login.lockout":        "text-red-400    bg-red-900/20    border-red-900",
-  "logout":               "text-gray-400   bg-gray-800      border-gray-700",
-  "merchant.suspend":     "text-red-400    bg-red-900/20    border-red-900",
-  "merchant.reinstate":   "text-emerald-400 bg-emerald-900/20 border-emerald-900",
-  "merchant.delete":      "text-red-500    bg-red-950/30    border-red-900",
-  "announcement.send":    "text-blue-400   bg-blue-900/20   border-blue-900",
-  "announcement.cancel":  "text-amber-400  bg-amber-900/20  border-amber-900",
-  "content.submit_for_approval": "text-amber-400 bg-amber-900/20 border-amber-900",
-  "content.approve":      "text-emerald-400 bg-emerald-900/20 border-emerald-900",
-  "theme.activate":       "text-violet-400 bg-violet-900/20 border-violet-900",
-  "theme.deactivate":     "text-gray-400   bg-gray-800      border-gray-700",
-  "theme.set_default":    "text-violet-400 bg-violet-900/20 border-violet-900",
-};
-
-const ACTION_LABELS = {
-  "login.success":              "Login Success",
-  "login.lockout":              "Account Locked",
-  "logout":                     "Logout",
-  "merchant.suspend":           "Merchant Suspended",
-  "merchant.reinstate":         "Merchant Reinstated",
-  "merchant.delete":            "Merchant Deleted",
-  "announcement.send":          "Announcement Sent",
-  "announcement.cancel":        "Announcement Cancelled",
-  "content.submit_for_approval":"Content Submitted",
-  "content.approve":            "Content Approved",
-  "content.discard_pending":    "Pending Content Discarded",
-  "theme.activate":             "Theme Activated",
-  "theme.deactivate":           "Theme Deactivated",
-  "theme.set_default":          "Default Theme Set",
-};
-
-function fmt(d) {
-  return new Date(d).toLocaleString("en-GB", {
-    day:"numeric", month:"short", year:"numeric",
-    hour:"2-digit", minute:"2-digit", second:"2-digit",
-  });
-}
-
-function LogRow({ entry }) {
-  const [expanded, setExpanded] = useState(false);
-  const colorClass = ACTION_COLORS[entry.action] || "text-gray-400 bg-gray-800 border-gray-700";
-  const label      = ACTION_LABELS[entry.action] || entry.action;
-  const hasDetails = entry.details && Object.keys(entry.details).length > 0;
-
-  return (
-    <div className="border-b border-gray-800 last:border-0">
-      <div
-        className={`flex items-center gap-3 px-5 py-3.5 hover:bg-gray-800/40 transition-colors ${hasDetails ? "cursor-pointer" : ""}`}
-        onClick={() => hasDetails && setExpanded(v => !v)}
-      >
-        {/* Action badge */}
-        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ${colorClass}`}>
-          {label}
-        </span>
-
-        {/* Admin */}
-        <span className="text-sm text-gray-300 truncate hidden sm:block min-w-0 flex-1">
-          {entry.admin_email || "—"}
-        </span>
-
-        {/* Target */}
-        {entry.target_id && (
-          <span className="text-xs text-gray-600 font-mono truncate hidden lg:block max-w-[120px]">
-            {entry.target_id.slice(0, 12)}…
-          </span>
-        )}
-
-        {/* IP */}
-        <span className="text-xs text-gray-600 font-mono shrink-0 hidden md:block">
-          {entry.ip_address || "—"}
-        </span>
-
-        {/* Time */}
-        <span className="text-xs text-gray-500 shrink-0">
-          {fmt(entry.created_at)}
-        </span>
-
-        {hasDetails && (
-          <span className="text-gray-600 shrink-0">
-            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </span>
-        )}
-      </div>
-
-      {/* Expanded details */}
-      {expanded && hasDetails && (
-        <div className="px-5 pb-3">
-          <pre className="text-xs text-gray-400 bg-gray-800 rounded-lg p-3 overflow-x-auto border border-gray-700">
-            {JSON.stringify(entry.details, null, 2)}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function AuditLogPage() {
-  const [logs,    setLogs]    = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [q,       setQ]       = useState("");
-  const [actionFilter, setActionFilter] = useState("all");
-  const [page,    setPage]    = useState(1);
-  const PER_PAGE = 50;
+export default function SuperAdminAuditLog() {
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
+  const [action, setAction] = useState('all')
+  const [target, setTarget] = useState('all')
+  const [selected, setSelected] = useState(null)
 
   async function load() {
-    setLoading(true);
-    const { data } = await supabase
-      .from("admin_audit_log")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    setLogs(data || []);
-    setLoading(false);
+    setLoading(true)
+    const { data } = await supabase.from('admin_audit_log').select('*').order('created_at', { ascending: false }).limit(500)
+    setLogs(data || [])
+    setLoading(false)
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load() }, [])
 
-  // Unique actions for filter dropdown
-  const uniqueActions = useMemo(() => {
-    const acts = [...new Set(logs.map(l => l.action))].sort();
-    return acts;
-  }, [logs]);
+  const actions = useMemo(() => ['all', ...new Set(logs.map((l) => l.action).filter(Boolean))], [logs])
+  const targets = useMemo(() => ['all', ...new Set(logs.map((l) => l.target_type).filter(Boolean))], [logs])
 
-  // Filter
-  const filtered = useMemo(() => {
-    let list = [...logs];
-    if (q.trim()) {
-      const lq = q.toLowerCase();
-      list = list.filter(l =>
-        l.admin_email?.toLowerCase().includes(lq) ||
-        l.action?.toLowerCase().includes(lq) ||
-        l.target_id?.toLowerCase().includes(lq) ||
-        l.ip_address?.includes(lq)
-      );
-    }
-    if (actionFilter !== "all") list = list.filter(l => l.action === actionFilter);
-    return list;
-  }, [logs, q, actionFilter]);
+  const filtered = useMemo(() => logs.filter((log) => {
+    const text = `${log.action || ''} ${log.admin_email || ''} ${log.target_type || ''} ${log.target_id || ''} ${JSON.stringify(log.details || {})}`.toLowerCase()
+    return (!query || text.includes(query.toLowerCase())) && (action === 'all' || log.action === action) && (target === 'all' || log.target_type === target)
+  }), [logs, query, action, target])
 
-  const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
+  function exportLogs() {
+    downloadCSV('bazarhq-admin-audit-log.csv', filtered.map((log) => ({
+      action: log.action,
+      admin_email: log.admin_email,
+      admin_id: log.admin_id,
+      target_type: log.target_type,
+      target_id: log.target_id,
+      ip_address: log.ip_address,
+      user_agent: log.user_agent,
+      created_at: log.created_at,
+      details: JSON.stringify(log.details || {}),
+    })))
+  }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Audit Log</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            Immutable record of all admin actions · Read-only
-          </p>
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-sm font-bold uppercase tracking-[0.24em] text-violet-300">Security</p><h1 className="mt-2 text-3xl font-black">Audit Log</h1><p className="mt-2 text-slate-400">Trace admin login, platform actions, merchant changes, content approvals, and announcements.</p></div><button onClick={exportLogs} className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold"><Download className="inline h-4 w-4" /> Export CSV</button></div>
+
+      <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+        <div className="grid gap-3 lg:grid-cols-[1fr_240px_240px]">
+          <label className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search action, admin, target, details..." className="w-full rounded-2xl border border-white/10 bg-slate-950 py-3 pl-11 pr-4 text-sm text-white outline-none" /></label>
+          <select value={action} onChange={(e) => setAction(e.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white"><option value="all">All actions</option>{actions.filter((x) => x !== 'all').map((x) => <option key={x} value={x}>{x}</option>)}</select>
+          <select value={target} onChange={(e) => setTarget(e.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white"><option value="all">All targets</option>{targets.filter((x) => x !== 'all').map((x) => <option key={x} value={x}>{x}</option>)}</select>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 border border-gray-700 px-3 py-1.5 rounded-lg transition-colors"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
-        </button>
-      </div>
+      </section>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-          <input
-            value={q}
-            onChange={(e) => { setQ(e.target.value); setPage(1); }}
-            placeholder="Search by email, action, IP…"
-            className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-violet-500"
-          />
+      <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-black">{filtered.length} audit records</h2><Filter className="h-5 w-5 text-slate-500" /></div>
+        <div className="overflow-hidden rounded-2xl border border-white/10">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-white/[0.04] text-xs uppercase text-slate-500"><tr><th className="p-3">Action</th><th className="p-3">Admin</th><th className="p-3">Target</th><th className="p-3">IP</th><th className="p-3">Time</th><th className="p-3">Details</th></tr></thead>
+            <tbody className="divide-y divide-white/10">
+              {loading ? <tr><td colSpan="6" className="p-8 text-center text-slate-400">Loading audit logs...</td></tr> : filtered.map((log) => <tr key={log.id} className="hover:bg-white/[0.03]"><td className="p-3"><span className={`rounded-full border px-2 py-1 text-xs font-bold ${statusClass(log.action?.includes('fail') ? 'error' : 'active')}`}>{log.action || 'action'}</span></td><td className="p-3"><p className="font-semibold">{log.admin_email || 'Admin'}</p><p className="text-xs text-slate-500">{log.admin_id || '—'}</p></td><td className="p-3"><p>{log.target_type || 'platform'}</p><p className="max-w-40 truncate text-xs text-slate-500">{log.target_id || '—'}</p></td><td className="p-3 text-slate-400">{log.ip_address || '—'}</td><td className="p-3 text-slate-400">{formatDate(log.created_at)}</td><td className="p-3"><button onClick={() => setSelected(log)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold">View</button></td></tr>)}
+              {!loading && !filtered.length ? <tr><td colSpan="6" className="p-8 text-center text-slate-400"><ShieldCheck className="mx-auto mb-3 h-8 w-8" /> No audit logs match your filters.</td></tr> : null}
+            </tbody>
+          </table>
         </div>
-        <select
-          value={actionFilter}
-          onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
-          className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
-        >
-          <option value="all">All Actions</option>
-          {uniqueActions.map(a => (
-            <option key={a} value={a}>{ACTION_LABELS[a] || a}</option>
-          ))}
-        </select>
-      </div>
+      </section>
 
-      {/* Stats bar */}
-      <div className="flex gap-4 text-xs text-gray-500">
-        <span>{logs.length} total entries</span>
-        {filtered.length !== logs.length && <span>{filtered.length} matching</span>}
-      </div>
-
-      {/* Log table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        {/* Column headers */}
-        <div className="grid grid-cols-[180px_1fr_100px_120px_20px] gap-3 px-5 py-3 border-b border-gray-800 text-xs font-semibold text-gray-600 uppercase tracking-wide hidden sm:grid">
-          <span>Action</span>
-          <span>Admin</span>
-          <span className="hidden md:block">IP</span>
-          <span>Timestamp</span>
-          <span />
-        </div>
-
-        {loading ? (
-          <div className="py-12 text-center text-gray-500 text-sm">Loading audit log…</div>
-        ) : paginated.length === 0 ? (
-          <div className="py-12 text-center">
-            <ShieldAlert className="h-10 w-10 text-gray-700 mx-auto mb-3" />
-            <p className="text-gray-500 text-sm">No log entries found</p>
-          </div>
-        ) : (
-          paginated.map(entry => <LogRow key={entry.id} entry={entry} />)
-        )}
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-gray-400">
-          <p>
-            Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE, filtered.length)} of {filtered.length}
-          </p>
-          <div className="flex gap-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(p => p-1)}
-              className="px-3 py-1 border border-gray-700 rounded-lg disabled:opacity-40 hover:border-gray-500 transition-colors"
-            >
-              Prev
-            </button>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p+1)}
-              className="px-3 py-1 border border-gray-700 rounded-lg disabled:opacity-40 hover:border-gray-500 transition-colors"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="text-xs text-gray-700 text-center">
-        Audit log entries are immutable — no modification or deletion is possible.
-        Retained for minimum 2 years per SRS A3 requirements.
-      </div>
+      {selected ? <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"><div className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl"><div className="mb-4 flex items-start justify-between"><div><h3 className="text-xl font-black">Audit detail</h3><p className="text-sm text-slate-400">{formatDate(selected.created_at)}</p></div><button onClick={() => setSelected(null)} className="rounded-full border border-white/10 px-3 py-1 text-sm">Close</button></div><pre className="overflow-auto rounded-2xl bg-black/40 p-4 text-xs text-slate-200">{JSON.stringify(selected, null, 2)}</pre></div></div> : null}
     </div>
-  );
+  )
 }

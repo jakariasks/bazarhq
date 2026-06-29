@@ -1,4 +1,4 @@
-import { Plus, Search, X, Package, Loader2, Trash2, Pencil, Image as ImageIcon, Tag, Copy, Download, AlertTriangle, ChevronDown, ChevronUp, Upload } from 'lucide-react'
+import { Plus, Search, X, Package, Loader2, Trash2, Pencil, Image as ImageIcon, Tag, Copy, Download, AlertTriangle, ChevronDown, ChevronUp, Upload, Truck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -17,6 +17,22 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { slugify } from '@/lib/utils'
 import { getCategoriesForType } from '@/lib/shop-categories'
+
+function normalizeDeliveryMode(value) {
+  return ['store_default', 'free', 'custom'].includes(value) ? value : 'store_default'
+}
+
+function productDeliveryLabel(product) {
+  const mode = normalizeDeliveryMode(product?.delivery_charge_mode)
+  if (mode === 'free') return 'Free delivery'
+  if (mode === 'custom') {
+    const inside = Number(product?.delivery_charge_dhaka ?? 0)
+    const outside = Number(product?.delivery_charge_outside_dhaka ?? 0)
+    return `Delivery: Dhaka ৳${inside.toLocaleString()} / Outside ৳${outside.toLocaleString()}`
+  }
+  return 'Store default delivery'
+}
+
 
 export default function ProductsPage() {
   const { store } = useCurrentStore()
@@ -127,6 +143,9 @@ export default function ProductsPage() {
         description: findIndex('description', 'details'),
         image: findIndex('image', 'image_url', 'thumbnail'),
         tags: findIndex('tags'),
+        deliveryMode: findIndex('delivery_mode', 'delivery_charge_mode', 'delivery'),
+        deliveryDhaka: findIndex('delivery_dhaka', 'delivery_charge_dhaka', 'dhaka_delivery'),
+        deliveryOutside: findIndex('delivery_outside_dhaka', 'delivery_charge_outside_dhaka', 'outside_dhaka_delivery'),
       }
       if (idx.title < 0 || idx.price < 0) throw new Error('Required columns: title and price')
 
@@ -142,6 +161,13 @@ export default function ProductsPage() {
         if (!Number.isFinite(stock) || stock < 0) { errors.push(`Line ${line}: invalid stock`); return }
         const image = idx.image >= 0 && row[idx.image] ? row[idx.image].trim() : ''
         const status = idx.status >= 0 && ['draft','published','archived'].includes((row[idx.status] || '').toLowerCase()) ? row[idx.status].toLowerCase() : 'draft'
+        const deliveryMode = idx.deliveryMode >= 0 ? normalizeDeliveryMode((row[idx.deliveryMode] || '').toLowerCase().trim()) : 'store_default'
+        const deliveryDhaka = idx.deliveryDhaka >= 0 && row[idx.deliveryDhaka] ? Number(row[idx.deliveryDhaka]) : null
+        const deliveryOutside = idx.deliveryOutside >= 0 && row[idx.deliveryOutside] ? Number(row[idx.deliveryOutside]) : null
+        if (deliveryMode === 'custom') {
+          if (!Number.isFinite(deliveryDhaka) || deliveryDhaka < 0) { errors.push(`Line ${line}: invalid Dhaka delivery charge`); return }
+          if (!Number.isFinite(deliveryOutside) || deliveryOutside < 0) { errors.push(`Line ${line}: invalid outside Dhaka delivery charge`); return }
+        }
         productsToInsert.push({
           owner_id: userId,
           store_id: store.id,
@@ -155,6 +181,9 @@ export default function ProductsPage() {
           status,
           images: image ? [image] : [],
           tags: idx.tags >= 0 && row[idx.tags] ? row[idx.tags].split('|').map(t => t.trim()).filter(Boolean) : null,
+          delivery_charge_mode: deliveryMode,
+          delivery_charge_dhaka: deliveryMode === 'custom' ? deliveryDhaka : null,
+          delivery_charge_outside_dhaka: deliveryMode === 'custom' ? deliveryOutside : null,
         })
       })
 
@@ -182,12 +211,15 @@ export default function ProductsPage() {
   // CSV Export — SRS M4
   const exportCSV = () => {
     if (!products.length) { toast.error('No products to export'); return }
-    const headers = ['Title','Category','Price','Compare At','Stock','Status','Description']
+    const headers = ['Title','Category','Price','Compare At','Stock','Status','Delivery Mode','Dhaka Delivery','Outside Dhaka Delivery','Description']
     const rows = products.map(p => [
       `"${(p.title||'').replace(/"/g,'""')}"`,
       `"${p.category||''}"`,
       p.price, p.compare_at_price||'',
       p.stock, p.status,
+      p.delivery_charge_mode || 'store_default',
+      p.delivery_charge_dhaka ?? '',
+      p.delivery_charge_outside_dhaka ?? '',
       `"${(p.description||'').replace(/"/g,'""').replace(/\n/g,' ')}"`,
     ])
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
@@ -315,6 +347,9 @@ export default function ProductsPage() {
                     {' · '}Stock: {p.stock ?? 0}
                     {Array.isArray(p.variants) && p.variants.length > 0 && <span className="ml-1">· {p.variants.length} variant{p.variants.length!==1?'s':''}</span>}
                   </div>
+                  <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    <Truck className="h-3 w-3" /> {productDeliveryLabel(p)}
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(p)} title="Edit"><Pencil className="h-4 w-4"/></Button>
@@ -343,6 +378,9 @@ function ProductDialog({ open, onOpenChange, product, store }) {
   const [price, setPrice] = useState('')
   const [compareAt, setCompareAt] = useState('')
   const [stock, setStock] = useState('0')
+  const [deliveryMode, setDeliveryMode] = useState('store_default')
+  const [deliveryDhaka, setDeliveryDhaka] = useState('')
+  const [deliveryOutside, setDeliveryOutside] = useState('')
   const [status, setStatus] = useState('draft')
   const [category, setCategory] = useState('')
   const [tags, setTags] = useState([])
@@ -370,6 +408,9 @@ function ProductDialog({ open, onOpenChange, product, store }) {
       setPrice(String(product.price ?? ''))
       setCompareAt(product.compare_at_price != null ? String(product.compare_at_price) : '')
       setStock(String(product.stock ?? 0))
+      setDeliveryMode(normalizeDeliveryMode(product.delivery_charge_mode))
+      setDeliveryDhaka(product.delivery_charge_dhaka != null ? String(product.delivery_charge_dhaka) : '')
+      setDeliveryOutside(product.delivery_charge_outside_dhaka != null ? String(product.delivery_charge_outside_dhaka) : '')
       setStatus(product.status ?? 'draft')
       setCategory(product.category ?? '')
       setTags(product.tags ?? [])
@@ -382,7 +423,7 @@ function ProductDialog({ open, onOpenChange, product, store }) {
       setHasVariants(vts.length > 0)
     } else {
       setTitle(''); setDescription(''); setPrice(''); setCompareAt('')
-      setStock('0'); setStatus('draft'); setCategory(''); setTags([])
+      setStock('0'); setDeliveryMode('store_default'); setDeliveryDhaka(''); setDeliveryOutside(''); setStatus('draft'); setCategory(''); setTags([])
       setImages([]); setPrimaryImg(0); setVariantTypes([]); setVariants([]); setHasVariants(false)
     }
   }, [product, open])
@@ -455,6 +496,12 @@ function ProductDialog({ open, onOpenChange, product, store }) {
     const priceNum = Number(price || 0)
     if (isNaN(priceNum) || priceNum < 0) { toast.error('Invalid price'); return }
     const compareNum = compareAt ? Number(compareAt) : null
+    const deliveryDhakaNum = deliveryDhaka === '' ? null : Number(deliveryDhaka)
+    const deliveryOutsideNum = deliveryOutside === '' ? null : Number(deliveryOutside)
+    if (deliveryMode === 'custom') {
+      if (!Number.isFinite(deliveryDhakaNum) || deliveryDhakaNum < 0) { toast.error('Enter a valid Dhaka delivery charge'); return }
+      if (!Number.isFinite(deliveryOutsideNum) || deliveryOutsideNum < 0) { toast.error('Enter a valid outside Dhaka delivery charge'); return }
+    }
     const stockNum = hasVariants ? variants.reduce((s, v) => s + parseInt(v.stock||0, 10), 0) : parseInt(stock||'0', 10)
     setSaving(true)
 
@@ -472,6 +519,9 @@ function ProductDialog({ open, onOpenChange, product, store }) {
       has_variants: hasVariants,
       variant_types: hasVariants ? variantTypes : [],
       variants: hasVariants ? variants : [],
+      delivery_charge_mode: deliveryMode,
+      delivery_charge_dhaka: deliveryMode === 'custom' ? deliveryDhakaNum : null,
+      delivery_charge_outside_dhaka: deliveryMode === 'custom' ? deliveryOutsideNum : null,
     }
 
     const res = product
@@ -583,6 +633,37 @@ function ProductDialog({ open, onOpenChange, product, store }) {
               <div className="grid gap-2">
                 <Label>Stock</Label>
                 <Input type="number" min={0} value={stock} onChange={e=>setStock(e.target.value)}/>
+              </div>
+            )}
+          </div>
+
+          {/* Delivery charge per product */}
+          <div className="rounded-xl border border-border bg-muted/20 p-4">
+            <div className="mb-3 flex items-start gap-2">
+              <Truck className="mt-0.5 h-4 w-4 text-primary" />
+              <div>
+                <Label className="text-sm font-semibold">Product delivery charge</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Set free delivery or a custom delivery charge for this product. Custom charge overrides store default at checkout.</p>
+              </div>
+            </div>
+            <Select value={deliveryMode} onValueChange={setDeliveryMode}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="store_default">Use store default delivery charge</SelectItem>
+                <SelectItem value="free">Free delivery for this product</SelectItem>
+                <SelectItem value="custom">Custom delivery charge for this product</SelectItem>
+              </SelectContent>
+            </Select>
+            {deliveryMode === 'custom' && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>Inside Dhaka (৳)</Label>
+                  <Input type="number" min={0} step="1" value={deliveryDhaka} onChange={e=>setDeliveryDhaka(e.target.value)} placeholder="e.g. 60" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Outside Dhaka (৳)</Label>
+                  <Input type="number" min={0} step="1" value={deliveryOutside} onChange={e=>setDeliveryOutside(e.target.value)} placeholder="e.g. 120" />
+                </div>
               </div>
             )}
           </div>

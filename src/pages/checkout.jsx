@@ -5,11 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { clearCart, getCart, getCartTotals, syncCartPrices } from "@/lib/cart";
 import { trackStoreEvent } from "@/lib/analytics-tracker";
+import { getPolicyText } from "@/lib/shop-policies";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, Info, Loader2, ShieldCheck, X } from "lucide-react";
 
 const DISTRICTS = [
   "Dhaka", "Chattogram", "Sylhet", "Rajshahi", "Khulna", "Barishal", "Rangpur", "Mymensingh",
@@ -84,8 +85,12 @@ export default function CheckoutPage() {
   const [orderId, setOrderId] = useState(null);
   const [deliveryErrors, setDeliveryErrors] = useState({});
   const [paymentError, setPaymentError] = useState("");
+  const [policyAccepted, setPolicyAccepted] = useState(false);
+  const [priceChangesAccepted, setPriceChangesAccepted] = useState(false);
   const [availableMethods, setAvailableMethods] = useState([]);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [productDeliveryRules, setProductDeliveryRules] = useState({});
+  const [dialog, setDialog] = useState(null);
 
   const [delivery, setDelivery] = useState({
     full_name: "",
@@ -109,7 +114,7 @@ export default function CheckoutPage() {
     async function loadStore() {
       const { data, error } = await supabase
         .from("stores")
-        .select("id, shop_name, subdomain, return_policy, shipping_policy, logo_url")
+        .select("id, shop_name, subdomain, return_policy, shipping_policy, payment_policy, logo_url, delivery_charge_dhaka, delivery_charge_outside_dhaka, free_delivery_min_amount")
         .eq("subdomain", subdomain)
         .maybeSingle();
 
@@ -138,12 +143,24 @@ export default function CheckoutPage() {
 
     supabase
       .from("products")
-      .select("id, price, stock, variants, has_variants")
+      .select("id, price, stock, variants, has_variants, delivery_charge_mode, delivery_charge_dhaka, delivery_charge_outside_dhaka")
       .in("id", productIds)
       .then(({ data }) => {
         if (data?.length) {
+          const deliveryRules = {};
+          data.forEach((product) => {
+            deliveryRules[product.id] = {
+              mode: product.delivery_charge_mode || "store_default",
+              dhaka: product.delivery_charge_dhaka,
+              outsideDhaka: product.delivery_charge_outside_dhaka,
+            };
+          });
+          setProductDeliveryRules(deliveryRules);
           const changed = syncCartPrices(store.id, data);
-          if (changed.length) setPriceChanges(changed);
+          if (changed.length) {
+            setPriceChanges(changed);
+            setPriceChangesAccepted(false);
+          }
         }
 
         if (getCart(store.id).items.length === 0) {
@@ -183,10 +200,50 @@ export default function CheckoutPage() {
     }));
   }, [profile, customer]);
 
-  const { subtotal, total, items } = useMemo(
+  const { subtotal, items } = useMemo(
     () => getCartTotals(store?.id || "", 0),
     [store?.id, cartVersion]
   );
+
+  const isDhakaDelivery = delivery.district.trim().toLowerCase() === "dhaka";
+  const storeDefaultDeliveryCharge = isDhakaDelivery
+    ? Number(store?.delivery_charge_dhaka ?? 60)
+    : Number(store?.delivery_charge_outside_dhaka ?? 120);
+  const freeDeliveryMin = Number(store?.free_delivery_min_amount ?? 0);
+  const productDeliveryBreakdown = useMemo(() => {
+    if (!delivery.district) return [];
+    return items.map((item) => {
+      const rule = productDeliveryRules[item.productId] || {};
+      const mode = rule.mode || "store_default";
+      let amount = Math.max(0, Number(storeDefaultDeliveryCharge || 0));
+      let label = "Store default";
+
+      if (mode === "free") {
+        amount = 0;
+        label = "Free delivery offer";
+      } else if (mode === "custom") {
+        const customAmount = isDhakaDelivery ? rule.dhaka : rule.outsideDhaka;
+        amount = Math.max(0, Number(customAmount ?? storeDefaultDeliveryCharge ?? 0));
+        label = "Product delivery charge";
+      }
+
+      return {
+        key: item.key,
+        title: item.title,
+        amount,
+        label,
+      };
+    });
+  }, [delivery.district, items, productDeliveryRules, storeDefaultDeliveryCharge, isDhakaDelivery]);
+  const deliveryCharge = delivery.district
+    ? (freeDeliveryMin > 0 && subtotal >= freeDeliveryMin
+        ? 0
+        : productDeliveryBreakdown.reduce((max, item) => Math.max(max, item.amount), 0))
+    : 0;
+  const deliveryZoneLabel = !delivery.district
+    ? "Select district"
+    : isDhakaDelivery ? "Inside Dhaka" : "Outside Dhaka";
+  const total = subtotal + deliveryCharge;
 
   useEffect(() => {
     if (!store?.id) return;
@@ -287,7 +344,20 @@ export default function CheckoutPage() {
   }
 
   function handleStep2Next() {
+    if (priceChanges.length > 0 && !priceChangesAccepted) {
+      setPaymentError("Please accept the updated cart prices before reviewing the order.");
+      return;
+    }
     if (validatePayment()) setStep(3);
+  }
+
+
+  function openDialog(title, message, type = "info") {
+    setDialog({ title, message, type });
+  }
+
+  function closeDialog() {
+    setDialog(null);
   }
 
   async function placeOrder() {
@@ -299,7 +369,17 @@ export default function CheckoutPage() {
     }
 
     if (!store || items.length === 0) {
-      alert("Your cart is empty or the shop did not load correctly.");
+      openDialog("Cart unavailable", "Your cart is empty or the shop did not load correctly.", "warning");
+      return;
+    }
+
+    if (priceChanges.length > 0 && !priceChangesAccepted) {
+      openDialog("Price update required", "Please accept the updated cart prices before placing the order.", "warning");
+      return;
+    }
+
+    if (!policyAccepted) {
+      openDialog("Policy review required", "Please review and accept the shop policies before placing the order.", "warning");
       return;
     }
 
@@ -343,7 +423,7 @@ export default function CheckoutPage() {
         storeId: store.id,
         eventType: "order_completed",
         path: window.location.pathname,
-        metadata: { order_id: createdOrderId, total, payment_method: paymentMethod },
+        metadata: { order_id: createdOrderId, subtotal, delivery_charge: deliveryCharge, total, payment_method: paymentMethod },
       });
 
       if (paymentMethod === "ssl") {
@@ -364,25 +444,19 @@ export default function CheckoutPage() {
 
         if (sslError) throw sslError;
         if (sslData?.gateway_url) {
-          clearCart(store.id);
-          setCartVersion((value) => value + 1);
           window.location.href = sslData.gateway_url;
           return;
         }
       }
 
-      await supabase.functions.invoke("process-notification-queue", {
-        body: { store_id: store.id, limit: 10 },
-      }).catch(() => null);
-
       clearCart(store.id);
       setOrderId(createdOrderId);
       setCartVersion((value) => value + 1);
     } catch (err) {
-      alert(
-        "Could not place the order: " +
-        (err.message || "Unknown error") +
-        "\n\nMake sure supabase-order-rpc-fix.sql has been run in Supabase SQL Editor."
+      openDialog(
+        "Could not place order",
+        `${err.message || "Unknown error"}\n\nMake sure the latest order RPC and notification SQL files have been run in Supabase SQL Editor.`,
+        "error"
       );
     } finally {
       setPlacing(false);
@@ -459,6 +533,15 @@ export default function CheckoutPage() {
                 <li key={change.key}>{change.title}: {money(change.oldPrice)} to {money(change.newPrice)}</li>
               ))}
             </ul>
+            <Button
+              type="button"
+              size="sm"
+              variant={priceChangesAccepted ? "outline" : "default"}
+              className="mt-3"
+              onClick={() => setPriceChangesAccepted(true)}
+            >
+              {priceChangesAccepted ? "Updated prices accepted" : "Accept updated prices"}
+            </Button>
           </div>
         )}
 
@@ -539,6 +622,22 @@ export default function CheckoutPage() {
                   {DISTRICTS.map((district) => <option key={district} value={district}>{district}</option>)}
                 </select>
                 {deliveryErrors.district && <p className="text-xs text-red-500 mt-1">{deliveryErrors.district}</p>}
+                {delivery.district && (
+                  <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--muted)]/30 px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-[var(--muted-foreground)]">Delivery charge · {deliveryZoneLabel}</span>
+                      <span className="font-semibold">{deliveryCharge === 0 ? "Free" : money(deliveryCharge)}</span>
+                    </div>
+                    {freeDeliveryMin > 0 && deliveryCharge > 0 && (
+                      <p className="mt-1 text-xs text-[var(--muted-foreground)]">Free delivery from {money(freeDeliveryMin)} order value.</p>
+                    )}
+                    {productDeliveryBreakdown.length > 0 && (
+                      <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                        Delivery is calculated from the highest applicable product delivery charge in this cart.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -644,13 +743,23 @@ export default function CheckoutPage() {
                   <span>{money(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-[var(--muted-foreground)]">Delivery</span>
-                  <span className="text-green-600">Set by merchant</span>
+                  <span className="text-[var(--muted-foreground)]">Delivery · {deliveryZoneLabel}</span>
+                  <span className={deliveryCharge === 0 ? "text-green-600" : ""}>{deliveryCharge === 0 ? "Free" : money(deliveryCharge)}</span>
                 </div>
+                {productDeliveryBreakdown.length > 0 && (
+                  <div className="rounded-lg bg-[var(--background)]/70 p-2 text-[11px] text-[var(--muted-foreground)] space-y-1">
+                    {productDeliveryBreakdown.map((row) => (
+                      <div key={row.key} className="flex justify-between gap-3">
+                        <span className="truncate">{row.title} · {row.label}</span>
+                        <span className="whitespace-nowrap">{row.amount === 0 ? "Free" : money(row.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-bold">
                   <span>Total</span>
-                  <span>{money(subtotal)}+</span>
+                  <span>{money(total)}</span>
                 </div>
               </div>
             </div>
@@ -670,15 +779,35 @@ export default function CheckoutPage() {
               {txnId && <p className="text-xs text-[var(--muted-foreground)]">Transaction ID: {txnId}</p>}
             </div>
 
-            {(store?.return_policy || store?.shipping_policy) && (
-              <div className="text-xs text-[var(--muted-foreground)] text-center space-y-1">
-                <p>Please review the shop policies before placing your order.</p>
-                <div className="flex justify-center gap-4">
-                  {store.return_policy && <button type="button" className="text-[var(--primary)] hover:underline" onClick={() => alert(store.return_policy)}>Return policy</button>}
-                  {store.shipping_policy && <button type="button" className="text-[var(--primary)] hover:underline" onClick={() => alert(store.shipping_policy)}>Shipping policy</button>}
-                </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/20 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-[var(--primary)]" />
+                <h3 className="text-sm font-semibold">Shop policies</h3>
               </div>
-            )}
+              <p className="mb-3 text-xs text-[var(--muted-foreground)]">
+                Review the shop policies before placing your order.
+              </p>
+              <div className="grid gap-2 text-xs sm:grid-cols-3">
+                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => openDialog("Return policy", getPolicyText(store, "return"), "info")}>
+                  Return policy
+                </button>
+                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => openDialog("Shipping policy", getPolicyText(store, "shipping"), "info")}>
+                  Shipping policy
+                </button>
+                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => openDialog("Payment policy", getPolicyText(store, "payment"), "info")}>
+                  Payment policy
+                </button>
+              </div>
+              <label className="mt-4 flex items-start gap-2 text-xs text-[var(--muted-foreground)]">
+                <input
+                  type="checkbox"
+                  checked={policyAccepted}
+                  onChange={(event) => setPolicyAccepted(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>I have reviewed and agree to this shop's order, payment, return, and delivery policies.</span>
+              </label>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
@@ -693,6 +822,54 @@ export default function CheckoutPage() {
           </div>
         )}
       </div>
+
+      {dialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeDialog();
+          }}
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-4 p-5 sm:p-6">
+              <div className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                dialog.type === "error"
+                  ? "bg-red-50 text-red-600"
+                  : dialog.type === "warning"
+                    ? "bg-amber-50 text-amber-600"
+                    : "bg-[var(--primary)]/10 text-[var(--primary)]"
+              }`}>
+                {dialog.type === "error" || dialog.type === "warning" ? (
+                  <AlertTriangle className="h-5 w-5" />
+                ) : (
+                  <Info className="h-5 w-5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-bold text-[var(--foreground)]">{dialog.title}</h3>
+                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--muted-foreground)]">
+                  {dialog.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDialog}
+                className="rounded-full p-2 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                aria-label="Close dialog"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex justify-end border-t border-[var(--border)] bg-[var(--muted)]/20 px-5 py-4 sm:px-6">
+              <Button type="button" onClick={closeDialog} className="rounded-xl px-6">
+                Got it
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

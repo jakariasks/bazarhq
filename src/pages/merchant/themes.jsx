@@ -1,282 +1,301 @@
-import { Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { Check, Eye, Loader2, Type, Layout, FileText, Megaphone } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Eye, Loader2, Palette, Save, Sparkles, Upload, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
 import { supabase } from '@/integrations/supabase/client'
-import { useAuth } from '@/hooks/use-auth'
-import { useQueryClient } from '@tanstack/react-query'
-import { previewThemes, getTheme, themeCssVars, DEFAULT_THEME_ID } from '@/lib/preview-themes'
 import { useCurrentStore } from '@/lib/use-current-store'
+import {
+  getStoreTheme,
+  mergePlatformThemes,
+  normalizeTheme,
+  themePreviewStyle,
+  themeToStorePatch,
+} from '@/lib/theme-system'
+import { buildStorefrontPath } from '@/lib/storefront-url'
 
-// SRS M3: min 3 font options
-const FONTS = [
-  { id: 'inter',    name: 'Inter',      sample: 'Modern & clean', css: '"Inter", sans-serif' },
-  { id: 'poppins',  name: 'Poppins',    sample: 'Friendly & round', css: '"Poppins", sans-serif' },
-  { id: 'lora',     name: 'Lora',       sample: 'Elegant & serif', css: '"Lora", serif' },
-  { id: 'roboto',   name: 'Roboto',     sample: 'Professional', css: '"Roboto", sans-serif' },
-  { id: 'nunito',   name: 'Nunito',     sample: 'Warm & approachable', css: '"Nunito", sans-serif' },
-]
+function Field({ label, children }) {
+  return (
+    <label className="space-y-2">
+      <span className="text-xs font-bold text-slate-600">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function ColorInput({ label, value, onChange }) {
+  return (
+    <Field label={label}>
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+        <input
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 w-12 cursor-pointer rounded-xl border-0 bg-transparent p-0"
+        />
+        <Input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 border-0 bg-slate-50 font-mono text-sm focus-visible:ring-0"
+          placeholder="#635bff"
+        />
+      </div>
+    </Field>
+  )
+}
+
+function ThemeCard({ theme, selected, onSelect }) {
+  const normalized = normalizeTheme(theme)
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(normalized)}
+      className={`group rounded-[1.35rem] border p-3 text-left transition duration-300 hover:-translate-y-1 hover:shadow-xl ${
+        selected ? 'border-[var(--theme-primary)] bg-white shadow-lg shadow-slate-200' : 'border-slate-200 bg-white/80 hover:border-slate-300'
+      }`}
+      style={themePreviewStyle(normalized)}
+    >
+      <div className="relative overflow-hidden rounded-2xl border border-white/60 bg-slate-100 p-3">
+        <div className="absolute inset-0 opacity-90" style={{ background: `linear-gradient(135deg, ${normalized.primary_color}, ${normalized.accent_color})` }} />
+        <div className="relative space-y-3">
+          <div className="h-3 w-14 rounded-full bg-white/80" />
+          <div className="h-16 rounded-2xl bg-white/20 ring-1 ring-white/35" />
+          <div className="grid grid-cols-3 gap-2">
+            <span className="h-8 rounded-xl bg-white/60" />
+            <span className="h-8 rounded-xl bg-white/35" />
+            <span className="h-8 rounded-xl bg-white/35" />
+          </div>
+        </div>
+        {selected && (
+          <span className="absolute right-2 top-2 rounded-full bg-white px-2 py-1 text-[10px] font-black text-[var(--theme-primary)] shadow-sm">
+            Active
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black text-slate-950">{normalized.name}</h3>
+          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{normalized.description}</p>
+        </div>
+        {normalized.is_default && <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">Default</span>}
+      </div>
+    </button>
+  )
+}
+
+function LivePreview({ store, draft }) {
+  const shopName = store?.shop_name || 'Your shop'
+  return (
+    <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm" style={themePreviewStyle(draft)}>
+      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+        <div className="flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full bg-rose-400" />
+          <span className="h-3 w-3 rounded-full bg-amber-400" />
+          <span className="h-3 w-3 rounded-full bg-emerald-400" />
+        </div>
+        <span className="text-xs font-semibold text-slate-400">{store?.subdomain || 'store'}.bazarhq.com</span>
+      </div>
+      <div className="p-5">
+        <div className="overflow-hidden rounded-[1.4rem] p-6 text-white" style={{ background: `linear-gradient(135deg, ${draft.primary_color}, ${draft.accent_color})` }}>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-white/80">Welcome to</p>
+          <h2 className="mt-2 text-3xl font-black tracking-tight">{shopName}</h2>
+          <p className="mt-2 max-w-md text-sm text-white/85">{store?.tagline || 'Discover quality products with a smooth checkout experience.'}</p>
+          <button type="button" className="mt-5 rounded-full bg-white px-5 py-2 text-xs font-black" style={{ color: draft.primary_color }}>
+            Shop now
+          </button>
+        </div>
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+              <div className="h-20 rounded-xl" style={{ background: item === 0 ? `${draft.primary_color}22` : item === 1 ? `${draft.accent_color}22` : `${draft.secondary_color}22` }} />
+              <div className="mt-3 h-2 w-3/4 rounded-full bg-slate-200" />
+              <div className="mt-2 h-2 w-1/2 rounded-full" style={{ background: draft.primary_color }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ThemesPage() {
-  const { user } = useAuth()
-  const { store, isLoading } = useCurrentStore()
   const qc = useQueryClient()
-
-  const [themeId, setThemeId] = useState(DEFAULT_THEME_ID)
-  const [color, setColor] = useState('#6366f1')
-  const [fontId, setFontId] = useState('inter')
+  const { store, isLoading } = useCurrentStore()
+  const [selected, setSelected] = useState(null)
+  const [draft, setDraft] = useState(null)
   const [saving, setSaving] = useState(false)
 
-  // Section toggles — SRS M3
-  const [showHero, setShowHero] = useState(true)
-  const [showFeatured, setShowFeatured] = useState(true)
-  const [showAbout, setShowAbout] = useState(false)
-  const [showAnnouncement, setShowAnnouncement] = useState(false)
-  const [announceText, setAnnounceText] = useState('')
-  const [tagline, setTagline] = useState('')
+  const platformThemes = useQuery({
+    queryKey: ['platform-themes-active'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('platform_themes')
+        .select('id, name, slug, description, primary_color, secondary_color, accent_color, is_active, is_default, updated_at')
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('name', { ascending: true })
 
-  // Policies — SRS M3
-  const [returnPolicy, setReturnPolicy] = useState('')
-  const [shippingPolicy, setShippingPolicy] = useState('')
+      if (error) {
+        console.warn('Platform themes could not be loaded. Using built-in themes.', error.message)
+        return []
+      }
+      return data || []
+    },
+    staleTime: 30_000,
+  })
 
-  // About section — SRS M3
-  const [aboutText, setAboutText] = useState('')
+  const themes = useMemo(() => mergePlatformThemes(platformThemes.data || []), [platformThemes.data])
 
   useEffect(() => {
-    if (!store) return
-    setThemeId(store.theme_id ?? DEFAULT_THEME_ID)
-    setColor(store.brand_color ?? '#6366f1')
-    setFontId(store.font_id ?? 'inter')
-    setShowHero(store.show_hero ?? true)
-    setShowFeatured(store.show_featured ?? true)
-    setShowAbout(store.show_about ?? false)
-    setShowAnnouncement(store.announcement_enabled ?? false)
-    setAnnounceText(store.announcement_text ?? '')
-    setTagline(store.tagline ?? '')
-    setReturnPolicy(store.return_policy ?? '')
-    setShippingPolicy(store.shipping_policy ?? '')
-    setAboutText(store.about_text ?? '')
-  }, [store])
+    if (!store || !themes.length) return
+    const current = getStoreTheme(store, themes)
+    setSelected(current.slug)
+    setDraft(current)
+  }, [store, themes])
 
-  const activeTheme = getTheme(themeId)
-  const activeFont = FONTS.find(f => f.id === fontId) ?? FONTS[0]
-
-  const save = async () => {
-    if (!store) return
-    if (!/^#[0-9a-fA-F]{6}$/.test(color)) { toast.error('Invalid color — use hex like #4F46E5'); return }
-    setSaving(true)
-    const { error } = await supabase.from('stores').update({
-      theme_id: themeId, brand_color: color, font_id: fontId,
-      show_hero: showHero, show_featured: showFeatured, show_about: showAbout,
-      announcement_enabled: showAnnouncement,
-      announcement_text: announceText.trim() || null,
-      tagline: tagline.slice(0, 100) || null,
-      return_policy: returnPolicy.trim() || null,
-      shipping_policy: shippingPolicy.trim() || null,
-      about_text: aboutText.trim() || null,
-    }).eq('id', store.id)
-    setSaving(false)
-    if (error) { toast.error(error.message); return }
-    toast.success('Theme saved ✓')
-    qc.invalidateQueries({ queryKey: ['stores', user?.id] })
+  function selectTheme(theme) {
+    const normalized = normalizeTheme(theme)
+    setSelected(normalized.slug)
+    setDraft(normalized)
   }
 
+  async function saveTheme() {
+    if (!store?.id || !draft) return
+    setSaving(true)
+
+    const { error } = await supabase.rpc('apply_store_theme', {
+      p_store_id: store.id,
+      p_theme_slug: draft.slug,
+      p_primary_color: draft.primary_color,
+      p_secondary_color: draft.secondary_color,
+      p_accent_color: draft.accent_color,
+    })
+
+    if (error) {
+      const patch = themeToStorePatch(draft)
+      const fallback = await supabase
+        .from('stores')
+        .update(patch)
+        .eq('id', store.id)
+        .eq('owner_id', store.owner_id)
+
+      if (fallback.error) {
+        setSaving(false)
+        toast.error(fallback.error.message || error.message || 'Could not save theme')
+        return
+      }
+    }
+
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['stores'] }),
+      qc.invalidateQueries({ queryKey: ['current-store-id'] }),
+      qc.invalidateQueries({ queryKey: ['shop-profile'] }),
+      qc.invalidateQueries({ queryKey: ['publish-status'] }),
+      qc.invalidateQueries({ queryKey: ['platform-themes-active'] }),
+    ])
+
+    try {
+      localStorage.setItem(`bazarhq_theme_refresh_${store.subdomain}`, String(Date.now()))
+    } catch {}
+
+    setSaving(false)
+    toast.success('Theme applied to your live storefront')
+  }
+
+  if (isLoading) {
+    return <div className="p-8 text-sm text-slate-500">Loading theme settings...</div>
+  }
+
+  if (!store) {
+    return (
+      <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-white p-8 text-center">
+        <Palette className="mx-auto h-10 w-10 text-slate-300" />
+        <h1 className="mt-4 text-2xl font-black">No active store found</h1>
+        <p className="mt-2 text-sm text-slate-500">Create a store first, then choose a storefront theme.</p>
+      </div>
+    )
+  }
+
+  const openPath = buildStorefrontPath(store.subdomain)
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6 p-6 lg:p-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Themes & Customisation</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Design your storefront — no code needed</p>
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-indigo-600">
+            <Wand2 className="h-4 w-4" /> Storefront design
+          </p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Themes & Customisation</h1>
+          <p className="mt-1 text-sm text-slate-500">Choose a theme and apply it directly to your live storefront.</p>
         </div>
-        <Button onClick={save} disabled={saving || isLoading || !store} className="bg-gradient-primary">
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save changes
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="rounded-2xl" asChild>
+            <a href={openPath} target="_blank" rel="noreferrer">
+              <Eye className="mr-2 h-4 w-4" /> Open storefront
+            </a>
+          </Button>
+          <Button className="rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={saveTheme} disabled={saving || !draft}>
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save changes
+          </Button>
+        </div>
       </div>
 
-      {isLoading || !store ? (
-        <Skeleton className="h-96 w-full rounded-2xl" />
-      ) : (
-        <Tabs defaultValue="design">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
-            <TabsTrigger value="design">Design</TabsTrigger>
-            <TabsTrigger value="sections">Sections</TabsTrigger>
-            <TabsTrigger value="content">Content</TabsTrigger>
-            <TabsTrigger value="policies">Policies</TabsTrigger>
-          </TabsList>
-
-          {/* ── DESIGN TAB ── */}
-          <TabsContent value="design" className="mt-4">
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="space-y-5 lg:col-span-1">
-                {/* Theme picker */}
-                <div className="rounded-2xl border border-border bg-card p-5">
-                  <h2 className="mb-4 text-base font-semibold">Theme</h2>
-                  <div className="grid grid-cols-2 gap-3">
-                    {previewThemes.map((t) => (
-                      <button key={t.id} onClick={() => setThemeId(t.id)}
-                        className={`relative overflow-hidden rounded-xl border-2 p-3 text-left transition-all ${themeId === t.id ? 'border-primary shadow-glow' : 'border-border hover:border-primary/50'}`}>
-                        <div className="mb-2 h-14 rounded-lg" style={{ background: `linear-gradient(135deg, ${t.swatch}, ${t.swatch}99)` }} />
-                        <div className="text-xs font-semibold">{t.name}</div>
-                        {themeId === t.id && <div className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-3 w-3" /></div>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Brand color */}
-                <div className="rounded-2xl border border-border bg-card p-5">
-                  <h2 className="mb-4 text-base font-semibold">Brand color</h2>
-                  <div className="flex items-center gap-3">
-                    <input type="color" value={color} onChange={e => setColor(e.target.value)} className="h-10 w-14 cursor-pointer rounded-lg border border-border bg-transparent" />
-                    <Input value={color} onChange={e => setColor(e.target.value)} className="font-mono" maxLength={7} />
-                  </div>
-                </div>
-
-                {/* Font selector — SRS M3 */}
-                <div className="rounded-2xl border border-border bg-card p-5">
-                  <h2 className="mb-4 text-base font-semibold"><Type className="inline mr-1.5 h-4 w-4" />Font style</h2>
-                  <div className="space-y-2">
-                    {FONTS.map(f => (
-                      <button key={f.id} onClick={() => setFontId(f.id)}
-                        className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-all ${fontId === f.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
-                        <div>
-                          <p className="text-sm font-semibold" style={{ fontFamily: f.css }}>{f.name}</p>
-                          <p className="text-xs text-muted-foreground">{f.sample}</p>
-                        </div>
-                        {fontId === f.id && <Check className="h-4 w-4 text-primary" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Live preview */}
-              <div className="lg:col-span-2">
-                <div className="sticky top-24">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-base font-semibold">Live preview</h2>
-                    <Link to="/shop"><Button variant="outline" size="sm"><Eye className="mr-1.5 h-4 w-4" /> Open storefront</Button></Link>
-                  </div>
-                  <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-elegant" style={themeCssVars(activeTheme)}>
-                    <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2">
-                      <div className="flex gap-1.5"><div className="h-2.5 w-2.5 rounded-full bg-red-400" /><div className="h-2.5 w-2.5 rounded-full bg-yellow-400" /><div className="h-2.5 w-2.5 rounded-full bg-green-400" /></div>
-                      <div className="mx-auto rounded-md bg-background px-3 py-1 text-xs text-muted-foreground">{store?.subdomain || 'your-shop'}.bazarhq.com</div>
-                    </div>
-                    {showAnnouncement && announceText && (
-                      <div className="px-4 py-2 text-center text-xs font-medium text-white" style={{ background: color }}>{announceText}</div>
-                    )}
-                    <div className="p-5" style={{ fontFamily: activeFont.css }}>
-                      {showHero && (
-                        <div className="mb-4 rounded-xl p-6 text-white" style={{ background: `linear-gradient(135deg, ${color}, ${color}99)` }}>
-                          <p className="text-xs uppercase tracking-wider opacity-80">Welcome to</p>
-                          <h3 className="mt-1 text-2xl font-bold">{store?.shop_name || 'Your shop'}</h3>
-                          {tagline && <p className="mt-1 text-sm opacity-90">{tagline}</p>}
-                          <button className="mt-3 rounded-full bg-white px-4 py-1.5 text-xs font-semibold" style={{ color }}>Shop now</button>
-                        </div>
-                      )}
-                      {showFeatured && (
-                        <div className="mb-4">
-                          <p className="mb-2 text-sm font-semibold">Featured Products</p>
-                          <div className="grid grid-cols-3 gap-2">
-                            {[0,1,2].map(i => <div key={i}><div className="aspect-square rounded-lg bg-muted" /><div className="mt-1 h-2.5 w-2/3 rounded bg-muted" /><div className="mt-1 h-2.5 w-1/3 rounded bg-muted" /></div>)}
-                          </div>
-                        </div>
-                      )}
-                      {showAbout && aboutText && (
-                        <div className="mb-4 rounded-xl border border-border p-3">
-                          <p className="text-xs font-semibold mb-1">About us</p>
-                          <p className="text-xs text-muted-foreground line-clamp-3">{aboutText}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+      <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+        <section className="space-y-5 rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-black text-slate-950">Available themes</h2>
+              <p className="mt-1 text-xs text-slate-500">Super Admin themes appear here automatically when active.</p>
             </div>
-          </TabsContent>
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">{themes.length} themes</span>
+          </div>
 
-          {/* ── SECTIONS TAB — SRS M3 ── */}
-          <TabsContent value="sections" className="mt-4">
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <h2 className="mb-1 text-base font-semibold"><Layout className="inline mr-1.5 h-4 w-4" />Homepage sections</h2>
-              <p className="mb-5 text-sm text-muted-foreground">Toggle sections on/off. Changes reflect on your storefront within 5 seconds.</p>
-              <div className="space-y-1 divide-y divide-border">
-                {[
-                  { label: 'Hero banner', desc: 'Full-width welcome banner at the top', checked: showHero, onChange: setShowHero },
-                  { label: 'Featured products', desc: 'Showcase selected products on the homepage', checked: showFeatured, onChange: setShowFeatured },
-                  { label: 'About us section', desc: 'Tell your brand story', checked: showAbout, onChange: setShowAbout },
-                  { label: 'Announcement bar', desc: 'Show a banner message (e.g. free delivery)', checked: showAnnouncement, onChange: setShowAnnouncement },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center justify-between gap-4 py-4">
-                    <div>
-                      <p className="text-sm font-medium">{s.label}</p>
-                      <p className="text-xs text-muted-foreground">{s.desc}</p>
-                    </div>
-                    <Switch checked={s.checked} onCheckedChange={s.onChange} />
-                  </div>
-                ))}
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+            {themes.map((theme) => (
+              <ThemeCard key={theme.slug} theme={theme} selected={selected === theme.slug} onSelect={selectTheme} />
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-black text-slate-950">Live preview</h2>
+                <p className="mt-1 text-xs text-slate-500">This preview updates before saving. Save to update the real storefront.</p>
               </div>
-              {showAnnouncement && (
-                <div className="mt-4 rounded-xl border border-border bg-muted/30 p-4">
-                  <Label className="mb-2 block text-sm font-medium">Announcement text <span className="text-muted-foreground font-normal text-xs">({announceText.length}/140)</span></Label>
-                  <Input value={announceText} onChange={e => setAnnounceText(e.target.value.slice(0,140))} placeholder="Free delivery in Dhaka over ৳ 2000 🎉" />
-                </div>
+              {draft && (
+                <span className="rounded-full px-3 py-1 text-xs font-black text-white" style={{ backgroundColor: draft.primary_color }}>
+                  {draft.name}
+                </span>
               )}
             </div>
-            <div className="mt-4 rounded-2xl border border-border bg-card p-5">
-              <h2 className="mb-1 text-base font-semibold">Shop tagline</h2>
-              <p className="mb-3 text-sm text-muted-foreground">Shows under your shop name (max 100 characters)</p>
-              <Input value={tagline} onChange={e => setTagline(e.target.value.slice(0,100))} placeholder="Premium leather goods, handcrafted in Dhaka" maxLength={100} />
-              <p className="mt-1 text-xs text-muted-foreground">{tagline.length}/100</p>
-            </div>
-          </TabsContent>
+            {draft && <LivePreview store={store} draft={draft} />}
+          </div>
 
-          {/* ── CONTENT TAB ── */}
-          <TabsContent value="content" className="mt-4">
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <h2 className="mb-1 text-base font-semibold">About us</h2>
-              <p className="mb-3 text-sm text-muted-foreground">Tell your brand story. Shown in the About section on your storefront.</p>
-              <Textarea value={aboutText} onChange={e => setAboutText(e.target.value)} rows={6}
-                placeholder="We started in 2018 making premium leather goods by hand in Dhaka. Every product is crafted with care and built to last…" maxLength={1000} />
-              <p className="mt-1 text-xs text-muted-foreground">{aboutText.length}/1000</p>
+          {draft && (
+            <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-5 flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-indigo-500" />
+                <div>
+                  <h2 className="text-base font-black text-slate-950">Customize selected theme</h2>
+                  <p className="text-xs text-slate-500">Fine-tune colors without changing the theme layout.</p>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <ColorInput label="Primary color" value={draft.primary_color} onChange={(value) => setDraft((prev) => normalizeTheme({ ...prev, primary_color: value }))} />
+                <ColorInput label="Secondary color" value={draft.secondary_color} onChange={(value) => setDraft((prev) => normalizeTheme({ ...prev, secondary_color: value }))} />
+                <ColorInput label="Accent color" value={draft.accent_color} onChange={(value) => setDraft((prev) => normalizeTheme({ ...prev, accent_color: value }))} />
+              </div>
+              <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-500">
+                <Upload className="mb-2 h-4 w-4 text-slate-400" />
+                New platform themes should be created from <strong>Super Admin → Themes</strong>. Once active, merchants can select them here.
+              </div>
             </div>
-          </TabsContent>
-
-          {/* ── POLICIES TAB — SRS M3 ── */}
-          <TabsContent value="policies" className="mt-4 space-y-4">
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <h2 className="mb-1 flex items-center gap-2 text-base font-semibold"><FileText className="h-4 w-4" />Return policy</h2>
-              <p className="mb-3 text-sm text-muted-foreground">Displayed on product pages and at checkout. Be clear about returns & exchanges.</p>
-              <Textarea value={returnPolicy} onChange={e => setReturnPolicy(e.target.value)} rows={6}
-                placeholder="Items can be returned within 7 days of delivery if unused and in original packaging. To initiate a return, contact us via WhatsApp…" maxLength={2000} />
-              <p className="mt-1 text-xs text-muted-foreground">{returnPolicy.length}/2000</p>
-            </div>
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <h2 className="mb-1 flex items-center gap-2 text-base font-semibold"><FileText className="h-4 w-4" />Shipping policy</h2>
-              <p className="mb-3 text-sm text-muted-foreground">Let customers know your delivery timelines and areas.</p>
-              <Textarea value={shippingPolicy} onChange={e => setShippingPolicy(e.target.value)} rows={6}
-                placeholder="We deliver across Bangladesh. Dhaka: 1-2 days. Outside Dhaka: 3-5 days. Free delivery on orders above ৳ 2000…" maxLength={2000} />
-              <p className="mt-1 text-xs text-muted-foreground">{shippingPolicy.length}/2000</p>
-            </div>
-            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-700">
-              <Megaphone className="mb-1 inline h-4 w-4 mr-1" />
-              These policies appear as links on your checkout page under "Review Order". Keep them clear and honest.
-            </div>
-          </TabsContent>
-        </Tabs>
-      )}
-
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={saving || !store} className="bg-gradient-primary shadow-glow px-8">
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save all changes
-        </Button>
+          )}
+        </section>
       </div>
     </div>
   )

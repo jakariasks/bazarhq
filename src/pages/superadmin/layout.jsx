@@ -1,145 +1,112 @@
-// src/pages/superadmin/layout.jsx  — REPLACE your existing superadmin/layout.jsx
-// Added: System Health nav item + auto inactivity check
-import { useEffect, useState } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { useAdminAuth } from "@/hooks/use-admin-auth";
-import {
-  LayoutDashboard, Users, BarChart3, Palette,
-  Megaphone, FileText, ShieldAlert, LogOut,
-  Menu, X, Shield, Activity,
-} from "lucide-react";
+import { useEffect } from 'react'
+import { Outlet } from '@tanstack/react-router'
+import { Activity, BarChart3, Bell, FileText, Gauge, LogOut, Megaphone, Palette, Shield, Store, TerminalSquare } from 'lucide-react'
+import { AdminGuard, useAdminAuth } from '@/hooks/use-admin-auth'
 
-const NAV = [
-  { to: "/superadmin",               label: "Dashboard",     icon: LayoutDashboard, exact: true },
-  { to: "/superadmin/merchants",     label: "Merchants",     icon: Users            },
-  { to: "/superadmin/analytics",     label: "Analytics",     icon: BarChart3        },
-  { to: "/superadmin/system-health", label: "System Health", icon: Activity         },
-  { to: "/superadmin/themes",        label: "Themes",        icon: Palette          },
-  { to: "/superadmin/announcements", label: "Announcements", icon: Megaphone        },
-  { to: "/superadmin/content",       label: "Content",       icon: FileText         },
-  { to: "/superadmin/audit-log",     label: "Audit Log",     icon: ShieldAlert      },
-];
+const navItems = [
+  { href: '/superadmin', label: 'Dashboard', icon: Gauge },
+  { href: '/superadmin/merchants', label: 'Merchants', icon: Store },
+  { href: '/superadmin/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/superadmin/system-health', label: 'System Health', icon: Activity },
+  { href: '/superadmin/themes', label: 'Themes', icon: Palette },
+  { href: '/superadmin/announcements', label: 'Announcements', icon: Megaphone },
+  { href: '/superadmin/content', label: 'Content & Policies', icon: FileText },
+  { href: '/superadmin/audit-log', label: 'Audit Log', icon: TerminalSquare },
+]
 
-function AdminGuard({ children }) {
-  const { isLoggedIn, loading } = useAdminAuth();
-  const navigate = useNavigate();
+function AdminShell() {
+  const { admin, logout, refreshSession } = useAdminAuth()
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/superadmin'
 
   useEffect(() => {
-    if (!loading && !isLoggedIn) navigate({ to: "/superadmin/login" });
-  }, [loading, isLoggedIn, navigate]);
+    const onFocus = () => refreshSession?.()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refreshSession])
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Loading…</p>
+  return (
+    <div className="min-h-screen bg-[#070b16] text-white">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-white/10 bg-[#080d1b]/95 backdrop-blur-xl lg:block">
+        <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-600 shadow-lg shadow-violet-950/40">
+            <Shield className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-lg font-black tracking-tight">BazarHQ</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-violet-300">Super Admin</p>
+          </div>
+        </div>
+
+        <nav className="space-y-1 px-4 py-5">
+          {navItems.map((item) => {
+            const active = pathname === item.href || (item.href !== '/superadmin' && pathname.startsWith(item.href))
+            const Icon = item.icon
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  active ? 'bg-violet-600/20 text-violet-100 ring-1 ring-violet-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </a>
+            )
+          })}
+        </nav>
+
+        <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 p-5">
+          <div className="mb-4 rounded-2xl bg-white/[0.04] p-4">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-violet-600 font-bold">{admin?.email?.[0]?.toUpperCase() || 'A'}</div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{admin?.email || 'Admin'}</p>
+                <p className="text-xs capitalize text-slate-400">{admin?.role?.replaceAll('_', ' ') || 'Full access'}</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={logout} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white">
+            <LogOut className="h-4 w-4" /> Sign out
+          </button>
+        </div>
+      </aside>
+
+      <div className="lg:pl-72">
+        <header className="sticky top-0 z-20 border-b border-white/10 bg-[#070b16]/80 backdrop-blur-xl">
+          <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 lg:hidden">
+              <div className="grid h-10 w-10 place-items-center rounded-2xl bg-violet-600"><Shield className="h-5 w-5" /></div>
+              <div>
+                <p className="font-black">BazarHQ Admin</p>
+                <p className="text-xs text-slate-400">Platform control center</p>
+              </div>
+            </div>
+            <div className="hidden lg:block">
+              <p className="text-sm font-medium text-slate-400">Platform control center</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="hidden rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-200 sm:inline-flex">Production monitor</span>
+              <button className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-300 hover:text-white"><Bell className="h-4 w-4" /></button>
+            </div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto px-4 pb-3 lg:hidden">
+            {navItems.map((item) => <a key={item.href} href={item.href} className="whitespace-nowrap rounded-full border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300">{item.label}</a>)}
+          </div>
+        </header>
+
+        <main className="min-h-[calc(100vh-4rem)] p-4 sm:p-6 lg:p-8">
+          <Outlet />
+        </main>
       </div>
-    );
-  }
-  if (!isLoggedIn) return null;
-  return children;
+    </div>
+  )
 }
 
 export default function SuperAdminLayout() {
-  const { admin, logout, resetInactivityTimer } = useAdminAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-
-  // Reset inactivity on every navigation
-  useEffect(() => { resetInactivityTimer?.(); }, [location.pathname]);
-
-  const isActive = (to, exact) =>
-    exact ? location.pathname === to : location.pathname.startsWith(to);
-
-  async function handleLogout() {
-    await logout();
-    navigate({ to: "/superadmin/login" });
-  }
-
   return (
     <AdminGuard>
-      <div className="flex min-h-screen bg-gray-950 text-gray-100">
-
-        {/* Mobile overlay */}
-        {open && (
-          <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setOpen(false)} />
-        )}
-
-        {/* Sidebar */}
-        <aside className={`fixed inset-y-0 left-0 z-40 w-60 bg-gray-900 border-r border-gray-800 flex flex-col transform transition-transform lg:static lg:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
-
-          {/* Logo */}
-          <div className="h-16 flex items-center justify-between px-5 border-b border-gray-800 shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
-                <Shield className="h-4 w-4 text-white" />
-              </div>
-              <div>
-                <p className="font-bold text-sm text-white leading-tight">BazarHQ</p>
-                <p className="text-[10px] text-violet-400 leading-tight">Super Admin</p>
-              </div>
-            </div>
-            <button className="lg:hidden text-gray-400 hover:text-gray-200" onClick={() => setOpen(false)}>
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Nav */}
-          <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            {NAV.map(({ to, label, icon: Icon, exact }) => (
-              <Link
-                key={to}
-                to={to}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                  isActive(to, exact)
-                    ? "bg-violet-600/20 text-violet-300 font-medium"
-                    : "text-gray-400 hover:text-gray-100 hover:bg-gray-800"
-                }`}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </Link>
-            ))}
-          </nav>
-
-          {/* Admin info + logout */}
-          <div className="border-t border-gray-800 p-4 shrink-0">
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-8 h-8 rounded-full bg-violet-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                {admin?.email?.[0]?.toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-gray-200 truncate">{admin?.email}</p>
-                <p className="text-[10px] text-gray-500 capitalize">
-                  {admin?.role?.replace(/_/g, " ")}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
-            >
-              <LogOut className="h-4 w-4" /> Sign Out
-            </button>
-          </div>
-        </aside>
-
-        {/* Main */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Mobile header */}
-          <header className="h-14 border-b border-gray-800 bg-gray-900/80 backdrop-blur flex items-center px-4 gap-3 lg:hidden sticky top-0 z-20">
-            <button onClick={() => setOpen(true)} className="text-gray-400 hover:text-gray-200">
-              <Menu className="h-5 w-5" />
-            </button>
-            <span className="font-semibold text-sm text-white">BazarHQ Admin</span>
-          </header>
-
-          <main className="flex-1 p-5 lg:p-7 overflow-y-auto">
-            <Outlet />
-          </main>
-        </div>
-      </div>
+      <AdminShell />
     </AdminGuard>
-  );
+  )
 }

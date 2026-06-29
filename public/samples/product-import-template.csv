@@ -1,3 +1,4 @@
-title,category,price,compare_at_price,stock,status,description,image_url,tags
-Premium Leather Wallet,Wallets,1250,1500,25,published,Full grain leather wallet,https://example.com/wallet.jpg,leather|wallet|gift
-Classic Belt,Belts,900,1100,18,draft,Genuine leather belt,https://example.com/belt.jpg,leather|belt
+title,description,category,price,compare_at_price,stock,status,tags,delivery_mode,delivery_dhaka,delivery_outside_dhaka
+Demo Product,Demo description,General,500,650,20,published,new|featured,store_default,,
+Free Delivery Product,Free delivery offer product,General,900,1100,10,published,offer,free,,
+Custom Delivery Product,Heavy item with custom delivery,Electronics,3000,3500,5,draft,heavy,custom,100,180

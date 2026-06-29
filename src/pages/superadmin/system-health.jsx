@@ -1,292 +1,148 @@
-// src/pages/superadmin/system-health.jsx
-// A3 SRS: Service status, response time, error rate, error log (last 7 days)
-import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAdminAuth } from "@/hooks/use-admin-auth";
-import {
-  CheckCircle2, XCircle, AlertTriangle,
-  RefreshCw, Activity, Database, Mail,
-  MessageSquare, HardDrive, Globe,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from 'react'
+import { Activity, AlertTriangle, CheckCircle2, Database, Mail, RefreshCw, Server, ShieldCheck, Smartphone, XCircle } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/client'
+import { formatDate, statusClass } from '@/lib/superadmin-utils'
 
-const SERVICES = [
-  { id:"database", label:"Database",       icon: Database,      check: checkDatabase  },
-  { id:"storage",  label:"Storage (CDN)",  icon: HardDrive,     check: checkStorage   },
-  { id:"web",      label:"Web Server",     icon: Globe,         check: checkWeb       },
-  { id:"email",    label:"Email Gateway",  icon: Mail,          check: checkEmail     },
-  { id:"sms",      label:"SMS Gateway",    icon: MessageSquare, check: checkSMS       },
-];
+const checks = [
+  { key: 'database', label: 'Primary Database', icon: Database },
+  { key: 'auth', label: 'Authentication', icon: ShieldCheck },
+  { key: 'storage', label: 'Storage', icon: Server },
+  { key: 'email', label: 'Email Queue', icon: Mail },
+  { key: 'sms', label: 'SMS Queue', icon: Smartphone },
+]
 
-// ── Health check functions ────────────────────────────────────────────────────
-async function checkDatabase() {
-  const start = Date.now();
-  try {
-    const { error } = await supabase.from("stores").select("id").limit(1);
-    if (error) throw error;
-    return { status:"up", responseMs: Date.now() - start };
-  } catch (e) {
-    return { status:"down", error: e.message, responseMs: Date.now() - start };
+function HealthIcon({ status }) {
+  if (status === 'healthy') return <CheckCircle2 className="h-5 w-5 text-emerald-300" />
+  if (status === 'warning') return <AlertTriangle className="h-5 w-5 text-amber-300" />
+  return <XCircle className="h-5 w-5 text-rose-300" />
+}
+
+export default function SuperAdminSystemHealth() {
+  const [running, setRunning] = useState(false)
+  const [health, setHealth] = useState([])
+  const [incidents, setIncidents] = useState([])
+  const [incident, setIncident] = useState({ service: 'web', status: 'warning', message: '' })
+
+  async function loadHistory() {
+    const [healthRes, incidentsRes] = await Promise.all([
+      supabase.from('system_health_log').select('*').order('checked_at', { ascending: false }).limit(100),
+      supabase.from('system_incidents').select('*').order('created_at', { ascending: false }).limit(30),
+    ])
+    setHealth(healthRes.data || [])
+    setIncidents(incidentsRes.data || [])
   }
-}
 
-async function checkStorage() {
-  const start = Date.now();
-  try {
-    const { error } = await supabase.storage.from("shop-branding").list("", { limit: 1 });
-    if (error) throw error;
-    return { status:"up", responseMs: Date.now() - start };
-  } catch (e) {
-    return { status:"down", error: e.message, responseMs: Date.now() - start };
-  }
-}
+  useEffect(() => { loadHistory() }, [])
 
-async function checkWeb() {
-  const start = Date.now();
-  try {
-    await fetch(window.location.origin + "/", { method:"HEAD", cache:"no-store" });
-    return { status:"up", responseMs: Date.now() - start };
-  } catch (e) {
-    return { status:"down", error: e.message, responseMs: Date.now() - start };
-  }
-}
+  async function runChecks() {
+    setRunning(true)
+    const results = []
 
-async function checkEmail() {
-  // We can't actually call the email gateway without sending;
-  // check via a lightweight Supabase edge function ping if available,
-  // otherwise mark as "unknown" and rely on manual check.
-  return { status:"unknown", responseMs: 0, note:"Cannot verify without sending a test email." };
-}
-
-async function checkSMS() {
-  return { status:"unknown", responseMs: 0, note:"Cannot verify without sending a test SMS." };
-}
-
-// ── Status Badge ───────────────────────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const map = {
-    up:      { label:"Operational", color:"text-emerald-400 bg-emerald-900/30 border-emerald-800", icon: CheckCircle2 },
-    down:    { label:"Down",        color:"text-red-400    bg-red-900/30    border-red-800",       icon: XCircle       },
-    degraded:{ label:"Degraded",    color:"text-amber-400  bg-amber-900/30  border-amber-800",     icon: AlertTriangle  },
-    unknown: { label:"Unknown",     color:"text-gray-400   bg-gray-800      border-gray-700",      icon: AlertTriangle  },
-    checking:{ label:"Checking…",   color:"text-gray-400   bg-gray-800      border-gray-700",      icon: RefreshCw      },
-  };
-  const cfg = map[status] || map.unknown;
-  const Icon = cfg.icon;
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium ${cfg.color}`}>
-      <Icon className={`h-3.5 w-3.5 ${status === "checking" ? "animate-spin" : ""}`} />
-      {cfg.label}
-    </span>
-  );
-}
-
-// ── Response time bar ─────────────────────────────────────────────────────────
-function ResponseBar({ ms }) {
-  if (!ms) return null;
-  const color = ms < 200 ? "bg-emerald-500" : ms < 800 ? "bg-amber-500" : "bg-red-500";
-  const width = Math.min(100, (ms / 2000) * 100);
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color}`} style={{ width:`${width}%` }} />
-      </div>
-      <span className="text-xs text-gray-500 shrink-0 w-14 text-right">{ms}ms</span>
-    </div>
-  );
-}
-
-// ── Error Log ─────────────────────────────────────────────────────────────────
-function ErrorLog() {
-  const [logs,    setLogs]    = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      const since = new Date(Date.now() - 7 * 86400000).toISOString();
-      const { data } = await supabase
-        .from("system_health_log")
-        .select("*")
-        .neq("status", "up")
-        .gte("checked_at", since)
-        .order("checked_at", { ascending: false })
-        .limit(100);
-      setLogs(data || []);
-      setLoading(false);
-    })();
-  }, []);
-
-  if (loading) return <p className="text-sm text-gray-500 py-4 text-center">Loading…</p>;
-  if (!logs.length) return (
-    <div className="text-center py-8">
-      <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
-      <p className="text-sm text-gray-500">No errors in the last 7 days</p>
-    </div>
-  );
-
-  return (
-    <div className="divide-y divide-gray-800">
-      {logs.map((log) => (
-        <div key={log.id} className="flex items-start gap-3 py-3">
-          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 mt-0.5 ${
-            log.status === "down"
-              ? "text-red-400 bg-red-900/20 border-red-900"
-              : "text-amber-400 bg-amber-900/20 border-amber-900"
-          }`}>
-            {log.service}
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-300 truncate">{log.error_msg || log.status}</p>
-            <p className="text-xs text-gray-600 mt-0.5">
-              {new Date(log.checked_at).toLocaleString("en-GB", {
-                day:"numeric", month:"short", hour:"2-digit", minute:"2-digit",
-              })}
-              {log.response_ms ? ` · ${log.response_ms}ms` : ""}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Main Page ──────────────────────────────────────────────────────────────────
-export default function SystemHealthPage() {
-  const { writeAuditLog } = useAdminAuth();
-  const [results,  setResults]  = useState({});
-  const [checking, setChecking] = useState(false);
-  const [lastRun,  setLastRun]  = useState(null);
-
-  const runChecks = useCallback(async () => {
-    setChecking(true);
-
-    // Set all to checking
-    const init = {};
-    SERVICES.forEach(s => { init[s.id] = { status:"checking" }; });
-    setResults(init);
-
-    // Run all checks in parallel
-    const checks = await Promise.all(
-      SERVICES.map(async (svc) => {
-        const result = await svc.check();
-        return { id: svc.id, ...result };
-      })
-    );
-
-    const newResults = {};
-    for (const c of checks) {
-      newResults[c.id] = c;
-
-      // Log to DB if not up
-      if (c.status !== "up" && c.status !== "unknown") {
-        await supabase.from("system_health_log").insert({
-          service:     c.id,
-          status:      c.status,
-          response_ms: c.responseMs || null,
-          error_msg:   c.error || null,
-        });
+    async function timed(service, fn) {
+      const started = performance.now()
+      try {
+        const result = await fn()
+        results.push({ service, status: result.status || 'healthy', response_ms: Math.round(performance.now() - started), message: result.message || 'Operational', metadata: result.metadata || {} })
+      } catch (error) {
+        results.push({ service, status: 'down', response_ms: Math.round(performance.now() - started), message: error.message || 'Check failed', metadata: {} })
       }
     }
 
-    setResults(newResults);
-    setLastRun(new Date());
-    setChecking(false);
-  }, []);
+    await timed('database', async () => {
+      const { error, count } = await supabase.from('stores').select('id', { count: 'exact', head: true })
+      if (error) throw error
+      return { message: `Database reachable. ${count || 0} stores indexed.` }
+    })
 
-  useEffect(() => { runChecks(); }, []);
+    await timed('auth', async () => {
+      const { data, error } = await supabase.auth.getSession()
+      if (error) throw error
+      return { message: data?.session ? 'Auth client online. Admin session active.' : 'Auth client online.' }
+    })
 
-  // Overall status
-  const statuses = Object.values(results).map(r => r.status);
-  const allUp    = statuses.every(s => s === "up" || s === "unknown");
-  const anyDown  = statuses.some(s  => s === "down");
-  const overallStatus = anyDown ? "down" : allUp ? "up" : "degraded";
+    await timed('storage', async () => {
+      const { error } = await supabase.storage.from('shop-branding').list('', { limit: 1 })
+      if (error && !String(error.message).toLowerCase().includes('permission')) throw error
+      return { status: error ? 'warning' : 'healthy', message: error ? 'Storage reachable but list permission is restricted.' : 'Storage bucket reachable.' }
+    })
 
-  const overallConfig = {
-    up:      { label:"All Systems Operational", color:"text-emerald-400", bg:"bg-emerald-900/20 border-emerald-800" },
-    down:    { label:"Service Disruption Detected", color:"text-red-400", bg:"bg-red-900/20 border-red-800" },
-    degraded:{ label:"Partial Disruption", color:"text-amber-400", bg:"bg-amber-900/20 border-amber-800" },
-    checking:{ label:"Running checks…", color:"text-gray-400", bg:"bg-gray-800 border-gray-700" },
-  };
-  const overall = overallConfig[checking ? "checking" : overallStatus];
+    await timed('email', async () => {
+      const { error, count } = await supabase.from('email_notification_queue').select('id', { count: 'exact', head: true }).in('status', ['pending', 'failed'])
+      if (error) return { status: 'warning', message: 'Email queue table not configured yet.' }
+      return { status: count > 20 ? 'warning' : 'healthy', message: `${count || 0} pending/failed email notifications.` }
+    })
+
+    await timed('sms', async () => {
+      const { error, count } = await supabase.from('sms_notification_queue').select('id', { count: 'exact', head: true }).in('status', ['pending', 'failed'])
+      if (error) return { status: 'warning', message: 'SMS queue table not configured yet.' }
+      return { status: count > 20 ? 'warning' : 'healthy', message: `${count || 0} pending/failed SMS notifications.` }
+    })
+
+    if (results.length) await supabase.from('system_health_log').insert(results)
+    await loadHistory()
+    setRunning(false)
+  }
+
+  async function createIncident(e) {
+    e.preventDefault()
+    if (!incident.message.trim()) return
+    await supabase.from('system_incidents').insert({ ...incident, status: incident.status, message: incident.message.trim() })
+    setIncident({ service: 'web', status: 'warning', message: '' })
+    await loadHistory()
+  }
+
+  async function resolveIncident(id) {
+    await supabase.from('system_incidents').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', id)
+    await loadHistory()
+  }
+
+  const latestByService = useMemo(() => {
+    const map = new Map()
+    health.forEach((h) => { if (!map.has(h.service)) map.set(h.service, h) })
+    return map
+  }, [health])
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">System Health</h1>
-          {lastRun && (
-            <p className="text-xs text-gray-500 mt-0.5">
-              Last checked: {lastRun.toLocaleTimeString()} · Auto-refreshes every 60s
-            </p>
-          )}
-        </div>
-        <button
-          onClick={runChecks}
-          disabled={checking}
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 border border-gray-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${checking ? "animate-spin" : ""}`} />
-          Run Checks
-        </button>
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div><p className="text-sm font-bold uppercase tracking-[0.24em] text-violet-300">Operations</p><h1 className="mt-2 text-3xl font-black">System Health</h1><p className="mt-2 text-slate-400">Monitor database, auth, storage, email/SMS queues, and incident status.</p></div>
+        <button onClick={runChecks} disabled={running} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${running ? 'animate-spin' : ''}`} /> Run health checks</button>
       </div>
 
-      {/* Overall status banner */}
-      <div className={`flex items-center gap-3 px-5 py-4 rounded-2xl border ${overall.bg}`}>
-        <Activity className={`h-6 w-6 ${overall.color}`} />
-        <div>
-          <p className={`font-semibold ${overall.color}`}>{overall.label}</p>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Checks: database · storage · web server · email gateway · SMS gateway
-          </p>
-        </div>
-      </div>
-
-      {/* Service cards */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {SERVICES.map(({ id, label, icon: Icon }) => {
-          const r = results[id] || { status:"checking" };
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {checks.map((check) => {
+          const row = latestByService.get(check.key)
+          const Icon = check.icon
+          const status = row?.status || 'warning'
           return (
-            <div key={id} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center">
-                    <Icon className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <span className="font-medium text-gray-200 text-sm">{label}</span>
-                </div>
-                <StatusBadge status={r.status} />
-              </div>
-
-              {r.responseMs > 0 && (
-                <div>
-                  <p className="text-xs text-gray-600 mb-1">Response Time</p>
-                  <ResponseBar ms={r.responseMs} />
-                </div>
-              )}
-
-              {r.error && (
-                <p className="text-xs text-red-400 bg-red-900/20 rounded-lg px-3 py-2 border border-red-900 truncate">
-                  {r.error}
-                </p>
-              )}
-
-              {r.note && (
-                <p className="text-xs text-gray-600">{r.note}</p>
-              )}
+            <div key={check.key} className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="mb-4 flex items-center justify-between"><div className="grid h-11 w-11 place-items-center rounded-2xl bg-white/10"><Icon className="h-5 w-5 text-violet-200" /></div><HealthIcon status={status} /></div>
+              <p className="font-black">{check.label}</p>
+              <p className="mt-2 text-sm text-slate-400">{row?.message || 'No check run yet.'}</p>
+              <div className="mt-4 flex items-center justify-between text-xs text-slate-500"><span>{row?.response_ms ? `${row.response_ms}ms` : '—'}</span><span>{formatDate(row?.checked_at)}</span></div>
             </div>
-          );
+          )
         })}
       </div>
 
-      {/* Error log */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-800">
-          <h3 className="font-semibold text-white text-sm">Error Log — Last 7 Days</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Non-operational events recorded during health checks</p>
-        </div>
-        <div className="px-5 py-2">
-          <ErrorLog />
-        </div>
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+          <h2 className="mb-4 text-lg font-black">Create incident</h2>
+          <form onSubmit={createIncident} className="space-y-3">
+            <select value={incident.service} onChange={(e) => setIncident((v) => ({ ...v, service: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white"><option value="web">Web frontend</option><option value="database">Database</option><option value="storage">Storage</option><option value="email">Email</option><option value="sms">SMS</option><option value="payments">Payments</option></select>
+            <select value={incident.status} onChange={(e) => setIncident((v) => ({ ...v, status: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white"><option value="warning">Warning</option><option value="down">Down</option><option value="resolved">Resolved</option></select>
+            <textarea value={incident.message} onChange={(e) => setIncident((v) => ({ ...v, message: e.target.value }))} placeholder="Incident summary..." rows={4} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none" />
+            <button className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold">Save incident</button>
+          </form>
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+          <h2 className="mb-4 text-lg font-black">Incident log</h2>
+          <div className="space-y-3">
+            {incidents.length ? incidents.map((row) => <div key={row.id} className="rounded-2xl border border-white/10 bg-black/20 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-bold capitalize">{row.service}</p><p className="mt-1 text-sm text-slate-400">{row.message}</p><p className="mt-2 text-xs text-slate-500">{formatDate(row.created_at)}</p></div><span className={`rounded-full border px-2 py-1 text-xs font-bold ${statusClass(row.status)}`}>{row.status}</span></div>{row.status !== 'resolved' ? <button onClick={() => resolveIncident(row.id)} className="mt-3 rounded-xl border border-emerald-500/30 px-3 py-2 text-xs font-bold text-emerald-200">Mark resolved</button> : null}</div>) : <p className="text-sm text-slate-400">No incidents recorded.</p>}
+          </div>
+        </section>
       </div>
     </div>
-  );
+  )
 }

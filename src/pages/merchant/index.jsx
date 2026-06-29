@@ -33,7 +33,8 @@ export default function DashboardPage() {
       const revenue = all.filter(o => o.status !== 'cancelled').reduce((s, o) => s + Number(o.total || 0), 0)
       const todayOrders = all.filter(o => new Date(o.created_at).toDateString() === today).length
       const pending = all.filter(o => o.status === 'pending').length
-      return { total: all.length, revenue, todayOrders, pending }
+      const stalePending = all.filter(o => o.status === 'pending' && Date.now() - new Date(o.created_at).getTime() > 48 * 60 * 60 * 1000).length
+      return { total: all.length, revenue, todayOrders, pending, stalePending }
     },
   })
 
@@ -113,6 +114,25 @@ export default function DashboardPage() {
           </motion.div>
         ))}
       </div>
+
+      {/* Pending orders alert */}
+      {(orderStats?.stalePending || 0) > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100">
+            <Bell className="h-5 w-5 text-red-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-800">
+              {orderStats.stalePending} pending order{orderStats.stalePending !== 1 ? 's' : ''} need attention
+            </p>
+            <p className="text-xs text-red-600">These orders have been pending for more than 48 hours.</p>
+          </div>
+          <Link to="/merchant/orders">
+            <Button size="sm" className="shrink-0 bg-red-600 text-white hover:bg-red-700">Review now <ChevronRight className="ml-1 h-3.5 w-3.5" /></Button>
+          </Link>
+        </motion.div>
+      )}
 
       {/* Pending orders alert */}
       {(orderStats?.pending || 0) > 0 && (

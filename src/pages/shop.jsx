@@ -9,7 +9,7 @@ import {
   updateQty,
 } from "@/lib/cart";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
-import { getTheme, themeCssVars } from "@/lib/preview-themes";
+import { getThemeCssVars } from "@/lib/theme-system";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -1037,15 +1037,7 @@ export default function ShopPage() {
   }, [refreshCartCount]);
 
   const currency = store?.currency || "BDT";
-  const theme = getTheme(store?.theme_id);
-  const themeVars = themeCssVars(theme);
-  const primaryColor = store?.brand_color || theme.swatch || "#4f46e5";
-  const shopVars = {
-    ...themeVars,
-    "--shop-primary": primaryColor,
-    "--shop-primary-soft": rgba(primaryColor, 0.12),
-    "--shop-primary-ring": rgba(primaryColor, 0.24),
-  };
+  const shopVars = getThemeCssVars(store);
 
   const categories = useMemo(() => {
     const counts = new Map();

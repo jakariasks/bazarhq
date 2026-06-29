@@ -1,367 +1,110 @@
-// src/pages/superadmin/themes.jsx
-// A4 SRS: Theme list, activate/deactivate, set default, preview
-
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, Palette, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { supabase } from '@/integrations/supabase/client'
-import { useAdminAuth } from '@/hooks/use-admin-auth'
-import { Button } from '@/components/ui/button'
-import { Eye, Check, X, Palette, AlertCircle } from 'lucide-react'
+import { formatDate, statusClass } from '@/lib/superadmin-utils'
 
-// Built-in themes from the merchant theme system
-const BUILTIN_THEMES = [
-  { id: 'indigo', name: 'Indigo', swatch: '#4F46E5', primary: 'oklch(0.54 0.22 277)' },
-  { id: 'emerald', name: 'Emerald', swatch: '#10B981', primary: 'oklch(0.60 0.17 158)' },
-  { id: 'rose', name: 'Rose', swatch: '#F43F5E', primary: 'oklch(0.62 0.22 18)' },
-  { id: 'amber', name: 'Amber', swatch: '#F59E0B', primary: 'oklch(0.74 0.17 70)' },
-  { id: 'violet', name: 'Violet', swatch: '#8B5CF6', primary: 'oklch(0.58 0.24 300)' },
-  { id: 'slate', name: 'Slate', swatch: '#334155', primary: 'oklch(0.35 0.03 260)' },
-]
+const blankTheme = { name: '', slug: '', description: '', primary_color: '#635bff', secondary_color: '#10b981', accent_color: '#f97316', is_active: true, is_default: false }
 
-const DEFAULT_THEME_CONFIG = {
-  activeThemes: BUILTIN_THEMES.map(t => t.id),
-  defaultTheme: 'indigo',
-}
-
-function ThemeCard({
-  theme,
-  usageCount,
-  isDefault,
-  onSetDefault,
-  onToggle,
-  isActive,
-  isFullAccess,
-}) {
-  const [preview, setPreview] = useState(false)
-
-  return (
-    <>
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-gray-700 transition-colors">
-        {/* Preview swatch */}
-        <div
-          className="h-32 relative cursor-pointer group"
-          style={{
-            background: `linear-gradient(135deg, ${theme.swatch}, ${theme.swatch}88)`,
-          }}
-          onClick={() => setPreview(true)}
-        >
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-            <Eye className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-
-          {isDefault && (
-            <div className="absolute top-2 left-2 bg-white/90 text-gray-900 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-              <Check className="h-3 w-3" />
-              Default
-            </div>
-          )}
-
-          {!isActive && (
-            <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full">
-              Hidden
-            </div>
-          )}
-        </div>
-
-        <div className="p-4">
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <h3 className="font-semibold text-white">{theme.name}</h3>
-
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-                isActive
-                  ? 'border-emerald-800 bg-emerald-900/30 text-emerald-400'
-                  : 'border-gray-700 bg-gray-800 text-gray-500'
-              }`}
-            >
-              {isActive ? 'Active' : 'Hidden'}
-            </span>
-          </div>
-
-          <p className="text-xs text-gray-500 mb-3">
-            {usageCount} merchant{usageCount !== 1 ? 's' : ''} using this theme
-          </p>
-
-          {isFullAccess && (
-            <div className="flex gap-2">
-              {!isDefault && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 border-gray-700 text-gray-300 hover:text-white text-xs"
-                  onClick={() => onSetDefault(theme.id)}
-                >
-                  Set Default
-                </Button>
-              )}
-
-              <Button
-                size="sm"
-                variant="outline"
-                className={`flex-1 text-xs ${
-                  isActive
-                    ? 'border-red-800 text-red-400 hover:bg-red-900/20'
-                    : 'border-emerald-800 text-emerald-400 hover:bg-emerald-900/20'
-                }`}
-                onClick={() => onToggle(theme.id, !isActive)}
-                disabled={isDefault && isActive}
-              >
-                {isActive ? 'Deactivate' : 'Activate'}
-              </Button>
-            </div>
-          )}
-
-          {isDefault && isActive && (
-            <p className="text-xs text-gray-600 mt-2 text-center">
-              Default theme cannot be deactivated
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Preview Modal */}
-      {preview && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setPreview(false)}
-        >
-          <div
-            className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Fake browser chrome */}
-            <div className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-800 border-b border-gray-700">
-              <div className="w-3 h-3 rounded-full bg-red-500" />
-              <div className="w-3 h-3 rounded-full bg-yellow-500" />
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-
-              <div className="flex-1 bg-gray-700 rounded-md mx-2 px-3 py-0.5 text-xs text-gray-400">
-                myshop.bazarhq.com
-              </div>
-            </div>
-
-            {/* Storefront preview */}
-            <div style={{ '--primary': theme.primary }} className="p-5">
-              <div
-                className="h-20 rounded-xl mb-4 flex items-center justify-center"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.swatch}, ${theme.swatch}99)`,
-                }}
-              >
-                <p className="text-white font-bold text-lg">My Shop</p>
-              </div>
-
-              <p className="text-xs font-semibold text-gray-400 mb-2">
-                Featured Products
-              </p>
-
-              <div className="grid grid-cols-3 gap-2">
-                {[0, 1, 2].map(i => (
-                  <div key={i}>
-                    <div className="aspect-square bg-gray-800 rounded-lg mb-1" />
-                    <div className="h-2 bg-gray-700 rounded w-3/4 mb-1" />
-                    <div
-                      className="h-2 rounded w-1/2"
-                      style={{ backgroundColor: `${theme.swatch}66` }}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                className="mt-4 w-full py-2 rounded-lg text-sm font-semibold text-white"
-                style={{ backgroundColor: theme.swatch }}
-              >
-                Shop Now
-              </button>
-            </div>
-
-            <div className="px-5 pb-4">
-              <Button
-                variant="outline"
-                className="w-full border-gray-700 text-gray-300"
-                onClick={() => setPreview(false)}
-              >
-                <X className="h-4 w-4 mr-2" />
-                Close Preview
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-export default function ThemesPage() {
-  const { writeAuditLog, isFullAccess } = useAdminAuth()
-
-  const [themeConfig, setThemeConfig] = useState(DEFAULT_THEME_CONFIG)
-  const [usageCounts, setUsageCounts] = useState({})
+export default function SuperAdminThemes() {
+  const [themes, setThemes] = useState([])
+  const [stores, setStores] = useState([])
+  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState(blankTheme)
   const [loading, setLoading] = useState(true)
-  const [msg, setMsg] = useState('')
 
   async function load() {
     setLoading(true)
-
-    const { data: stores } = await supabase.from('stores').select('theme_id')
-
-    const counts = {}
-
-    ;(stores || []).forEach(store => {
-      const themeId = store.theme_id || 'indigo'
-      counts[themeId] = (counts[themeId] || 0) + 1
-    })
-
-    setUsageCounts(counts)
-
-    const { data: cfg } = await supabase
-      .from('platform_content')
-      .select('body')
-      .eq('content_type', 'theme_config')
-      .maybeSingle()
-
-    if (cfg?.body) {
-      try {
-        const parsed = JSON.parse(cfg.body)
-
-        setThemeConfig({
-          activeThemes: Array.isArray(parsed.activeThemes)
-            ? parsed.activeThemes
-            : DEFAULT_THEME_CONFIG.activeThemes,
-          defaultTheme: parsed.defaultTheme || DEFAULT_THEME_CONFIG.defaultTheme,
-        })
-      } catch {
-        setThemeConfig(DEFAULT_THEME_CONFIG)
-      }
-    }
-
+    const [themeRes, storeRes] = await Promise.all([
+      supabase.from('platform_themes').select('*').order('is_default', { ascending: false }).order('created_at', { ascending: true }),
+      supabase.from('stores').select('id, theme_id'),
+    ])
+    setThemes(themeRes.data || [])
+    setStores(storeRes.data || [])
     setLoading(false)
   }
 
-  useEffect(() => {
-    load()
-  }, [])
+  useEffect(() => { load() }, [])
 
-  async function saveConfig(newConfig) {
-    await supabase.from('platform_content').upsert(
-      {
-        content_type: 'theme_config',
-        body: JSON.stringify(newConfig),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'content_type' },
-    )
+  const usage = useMemo(() => {
+    const map = new Map()
+    stores.forEach((s) => map.set(s.theme_id || 'emerald', (map.get(s.theme_id || 'emerald') || 0) + 1))
+    return map
+  }, [stores])
+
+  function editTheme(theme) {
+    setEditing(theme?.id || null)
+    setForm(theme ? { ...theme } : blankTheme)
   }
 
-  async function handleSetDefault(themeId) {
-    const activeThemes = themeConfig.activeThemes.includes(themeId)
-      ? themeConfig.activeThemes
-      : [...themeConfig.activeThemes, themeId]
-
-    const newConfig = {
-      ...themeConfig,
-      activeThemes,
-      defaultTheme: themeId,
-    }
-
-    setThemeConfig(newConfig)
-    await saveConfig(newConfig)
-    await writeAuditLog('theme.set_default', { theme: themeId }, 'theme', themeId)
-
-    setMsg(`"${BUILTIN_THEMES.find(t => t.id === themeId)?.name}" set as default theme.`)
-    setTimeout(() => setMsg(''), 3000)
+  async function saveTheme(e) {
+    e.preventDefault()
+    const payload = { ...form, slug: (form.slug || form.name).toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), updated_at: new Date().toISOString() }
+    if (!payload.name || !payload.slug) return alert('Theme name is required')
+    if (payload.is_default) await supabase.from('platform_themes').update({ is_default: false }).neq('id', editing || '00000000-0000-0000-0000-000000000000')
+    if (editing) await supabase.from('platform_themes').update(payload).eq('id', editing)
+    else await supabase.from('platform_themes').insert(payload)
+    setEditing(null)
+    setForm(blankTheme)
+    await load()
   }
 
-  async function handleToggle(themeId, activate) {
-    if (!activate && themeConfig.defaultTheme === themeId) {
-      setMsg('Default theme cannot be deactivated.')
-      setTimeout(() => setMsg(''), 3000)
-      return
-    }
+  async function setDefault(theme) {
+    await supabase.from('platform_themes').update({ is_default: false })
+    await supabase.from('platform_themes').update({ is_default: true, is_active: true }).eq('id', theme.id)
+    await load()
+  }
 
-    if (!activate && (usageCounts[themeId] || 0) > 0) {
-      setMsg(`Cannot deactivate — ${usageCounts[themeId]} merchant(s) are using this theme.`)
-      setTimeout(() => setMsg(''), 4000)
-      return
-    }
+  async function toggleActive(theme) {
+    if (theme.is_default && theme.is_active) return alert('Default theme must remain active.')
+    await supabase.from('platform_themes').update({ is_active: !theme.is_active, updated_at: new Date().toISOString() }).eq('id', theme.id)
+    await load()
+  }
 
-    const activeThemes = activate
-      ? [...new Set([...themeConfig.activeThemes, themeId])]
-      : themeConfig.activeThemes.filter(id => id !== themeId)
-
-    const newConfig = {
-      ...themeConfig,
-      activeThemes,
-    }
-
-    setThemeConfig(newConfig)
-    await saveConfig(newConfig)
-
-    await writeAuditLog(
-      activate ? 'theme.activate' : 'theme.deactivate',
-      { theme: themeId },
-      'theme',
-      themeId,
-    )
-
-    setMsg(
-      `Theme "${BUILTIN_THEMES.find(t => t.id === themeId)?.name}" ${
-        activate ? 'activated' : 'deactivated'
-      }.`,
-    )
-
-    setTimeout(() => setMsg(''), 3000)
+  async function deleteTheme(theme) {
+    if (theme.is_default) return alert('Default theme cannot be deleted.')
+    if ((usage.get(theme.slug) || 0) > 0 || (usage.get(theme.id) || 0) > 0) return alert('This theme is used by merchants. Deactivate it instead of deleting.')
+    if (!confirm(`Delete theme ${theme.name}?`)) return
+    await supabase.from('platform_themes').delete().eq('id', theme.id)
+    await load()
   }
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-white">Theme Management</h1>
-
-        <p className="text-sm text-gray-400 mt-0.5">
-          Control which themes are available to merchants. Preview before making changes.
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div><p className="text-sm font-bold uppercase tracking-[0.24em] text-violet-300">Design system</p><h1 className="mt-2 text-3xl font-black">Theme Management</h1><p className="mt-2 text-slate-400">Create, preview, activate, and protect storefront themes used by merchants.</p></div>
+        <button onClick={() => editTheme(null)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold"><Plus className="h-4 w-4" /> New theme</button>
       </div>
 
-      {msg && (
-        <div className="flex items-center gap-2 bg-violet-900/30 border border-violet-700 text-violet-300 text-sm px-4 py-3 rounded-xl">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {msg}
-        </div>
-      )}
+      <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+        <section className="grid gap-4 md:grid-cols-2">
+          {loading ? <p className="text-slate-400">Loading themes...</p> : themes.map((theme) => {
+            const count = (usage.get(theme.slug) || 0) + (usage.get(theme.id) || 0)
+            return (
+              <div key={theme.id} className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                <div className="mb-5 h-32 overflow-hidden rounded-3xl border border-white/10" style={{ background: `linear-gradient(135deg, ${theme.primary_color}, ${theme.secondary_color})` }}>
+                  <div className="flex h-full items-end justify-between bg-black/20 p-4"><div><p className="text-xl font-black">{theme.name}</p><p className="text-xs text-white/70">{theme.slug}</p></div><Palette className="h-6 w-6" /></div>
+                </div>
+                <div className="flex items-start justify-between gap-4"><div><p className="font-black">{theme.name}</p><p className="mt-1 text-sm text-slate-400">{theme.description || 'No description.'}</p></div><span className={`rounded-full border px-2 py-1 text-xs font-bold ${statusClass(theme.is_active ? 'active' : 'disabled')}`}>{theme.is_active ? 'Active' : 'Disabled'}</span></div>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-400"><span>{count} stores using</span><span>·</span><span>{formatDate(theme.updated_at || theme.created_at)}</span>{theme.is_default ? <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">Default</span> : null}</div>
+                <div className="mt-5 flex flex-wrap gap-2"><button onClick={() => editTheme(theme)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold">Edit</button><button onClick={() => setDefault(theme)} className="rounded-xl border border-emerald-500/30 px-3 py-2 text-xs font-bold text-emerald-200"><Check className="inline h-3 w-3" /> Default</button><button onClick={() => toggleActive(theme)} className="rounded-xl border border-white/10 px-3 py-2 text-xs font-bold">{theme.is_active ? 'Deactivate' : 'Activate'}</button><button onClick={() => deleteTheme(theme)} className="rounded-xl border border-rose-500/30 px-3 py-2 text-xs font-bold text-rose-200"><Trash2 className="inline h-3 w-3" /> Delete</button></div>
+              </div>
+            )
+          })}
+        </section>
 
-      {loading ? (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[0, 1, 2, 3, 4, 5].map(i => (
-            <div
-              key={i}
-              className="h-64 bg-gray-900 border border-gray-800 rounded-2xl animate-pulse"
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {BUILTIN_THEMES.map(theme => (
-            <ThemeCard
-              key={theme.id}
-              theme={theme}
-              usageCount={usageCounts[theme.id] || 0}
-              isDefault={themeConfig.defaultTheme === theme.id}
-              isActive={themeConfig.activeThemes.includes(theme.id)}
-              onSetDefault={handleSetDefault}
-              onToggle={handleToggle}
-              isFullAccess={isFullAccess}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-xs text-gray-500">
-        <Palette className="h-4 w-4 inline mr-1.5 text-gray-600" />
-        Theme changes take effect immediately for new merchants. Existing merchants retain
-        their current selection. To add custom themes, deploy theme assets and register them
-        via the database.
+        <aside className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+          <h2 className="mb-4 text-lg font-black">{editing ? 'Edit theme' : 'Create theme'}</h2>
+          <form onSubmit={saveTheme} className="space-y-4">
+            <label className="block text-sm font-semibold text-slate-300">Name<input value={form.name || ''} onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none" /></label>
+            <label className="block text-sm font-semibold text-slate-300">Slug<input value={form.slug || ''} onChange={(e) => setForm((v) => ({ ...v, slug: e.target.value }))} placeholder="auto-generated" className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none" /></label>
+            <label className="block text-sm font-semibold text-slate-300">Description<textarea value={form.description || ''} onChange={(e) => setForm((v) => ({ ...v, description: e.target.value }))} rows={3} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none" /></label>
+            <div className="grid grid-cols-3 gap-3">{['primary_color', 'secondary_color', 'accent_color'].map((key) => <label key={key} className="text-xs font-semibold capitalize text-slate-400">{key.replace('_color', '')}<input type="color" value={form[key] || '#635bff'} onChange={(e) => setForm((v) => ({ ...v, [key]: e.target.value }))} className="mt-2 h-12 w-full rounded-xl border border-white/10 bg-transparent" /></label>)}</div>
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 p-3 text-sm"><input type="checkbox" checked={!!form.is_active} onChange={(e) => setForm((v) => ({ ...v, is_active: e.target.checked }))} /> Active theme</label>
+            <label className="flex items-center gap-3 rounded-2xl border border-white/10 p-3 text-sm"><input type="checkbox" checked={!!form.is_default} onChange={(e) => setForm((v) => ({ ...v, is_default: e.target.checked }))} /> Set as default</label>
+            <button className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold"><Save className="h-4 w-4" /> Save theme</button>
+            <button type="button" onClick={() => { setEditing(null); setForm(blankTheme) }} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold"><RefreshCw className="h-4 w-4" /> Reset</button>
+          </form>
+        </aside>
       </div>
     </div>
   )
