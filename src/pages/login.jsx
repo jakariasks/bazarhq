@@ -10,6 +10,8 @@ import { Logo } from '@/components/logo'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { AuthCaptcha } from '@/components/auth-captcha'
+import { ResendVerificationCard } from '@/components/resend-verification-card'
+import { isEmailNotConfirmedError } from '@/lib/auth-verification'
 import { validateRealEmail } from '@/lib/email-validation'
 import {
   MERCHANT_OAUTH_INTENT_KEY,
@@ -115,12 +117,14 @@ export default function Login() {
   const [captchaResetKey, setCaptchaResetKey] = useState(0)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [showResend, setShowResend] = useState(false)
 
   useEffect(() => {
     if (user) navigate({ to: '/merchant' })
   }, [user, navigate])
 
   const emailCheck = useMemo(() => validateRealEmail(email), [email])
+  const formReady = emailCheck.ok && password.length > 0 && !!captchaToken
 
   const resetCaptcha = useCallback(() => {
     setCaptchaToken('')
@@ -151,6 +155,7 @@ export default function Login() {
     if (error) {
       setLoading(false)
       resetCaptcha()
+      if (isEmailNotConfirmedError(error)) setShowResend(true)
       toast.error(error.message)
       return
     }
@@ -237,7 +242,9 @@ export default function Login() {
 
           <AuthCaptcha key={captchaResetKey} resetKey={captchaResetKey} onVerify={setCaptchaToken} />
 
-          <Button type="submit" className="h-11 w-full rounded-xl" disabled={loading || googleLoading}>
+          {showResend && <ResendVerificationCard defaultEmail={email} compact />}
+
+          <Button type="submit" className="h-11 w-full rounded-xl" disabled={!formReady || loading || googleLoading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sign in'}
           </Button>
         </form>

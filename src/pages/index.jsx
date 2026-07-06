@@ -162,16 +162,13 @@ async function fetchLandingMetrics() {
 
   if (!productsResult.error) metrics.products = productsResult.count ?? null
 
-  const ordersResult = await supabase
-    .from('orders')
-    .select('id, total_amount, created_at', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .limit(250)
+ const ordersResult = await supabase
+  .from('orders')
+  .select('id', { count: 'exact', head: true })
 
-  if (!ordersResult.error) {
-    metrics.orders = ordersResult.count ?? ordersResult.data?.length ?? null
-    metrics.revenue = (ordersResult.data || []).reduce((sum, order) => sum + Number(order.total_amount || 0), 0)
-  }
+if (!ordersResult.error) {
+  metrics.orders = ordersResult.count ?? 0
+}
 
   return metrics
 }

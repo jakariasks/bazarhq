@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { useQueryClient } from '@tanstack/react-query'
+import { MerchantSecuritySuite } from '@/components/merchant-security-suite'
 
 const CATEGORIES = ['Fashion & Apparel','Electronics','Grocery & Food','Beauty & Personal Care','Home & Living','Books & Stationery','Handmade & Crafts','Sports & Outdoors','Other']
 const CURRENCIES = [{ v:'BDT', l:'BDT — Bangladeshi Taka' },{ v:'USD', l:'USD — US Dollar' },{ v:'EUR', l:'EUR — Euro' }]
@@ -545,102 +546,8 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ── SECURITY TAB ── */}
-        <TabsContent value="security" className="mt-6 space-y-5">
-          {/* Password change — SRS M8 */}
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10"><Key className="h-5 w-5 text-primary"/></div>
-              <div><h3 className="text-base font-semibold">Change password</h3><p className="text-sm text-muted-foreground">Update your login password</p></div>
-            </div>
-            {isGoogleUser ? (
-              <div className="rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                Your account uses Google Sign-in. To change your password, visit your Google account settings.
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Current password" className="sm:col-span-2">
-                  <div className="relative">
-                    <Input type={showPwd.current?'text':'password'} value={currentPwd} onChange={e=>setCurrentPwd(e.target.value)} className="pr-10" autoComplete="current-password"/>
-                    <button type="button" onClick={()=>setShowPwd(s=>({...s,current:!s.current}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
-                      {showPwd.current?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}
-                    </button>
-                  </div>
-                </Field>
-                <Field label="New password">
-                  <div className="relative">
-                    <Input type={showPwd.new?'text':'password'} value={newPwd} onChange={e=>setNewPwd(e.target.value)} className="pr-10" minLength={8} autoComplete="new-password"/>
-                    <button type="button" onClick={()=>setShowPwd(s=>({...s,new:!s.new}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
-                      {showPwd.new?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
-                </Field>
-                <Field label="Confirm new password">
-                  <div className="relative">
-                    <Input type={showPwd.confirm?'text':'password'} value={confirmPwd} onChange={e=>setConfirmPwd(e.target.value)}
-                      className={`pr-10 transition-colors ${pwdMismatch?'border-destructive':pwdMatch?'border-success':''}`} autoComplete="new-password"/>
-                    <button type="button" onClick={()=>setShowPwd(s=>({...s,confirm:!s.confirm}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
-                      {showPwd.confirm?<EyeOff className="h-4 w-4"/>:<Eye className="h-4 w-4"/>}
-                    </button>
-                  </div>
-                  {confirmPwd.length>0&&(
-                    <p className={`flex items-center gap-1 text-xs ${pwdMatch?'text-success':'text-destructive'}`}>
-                      {pwdMatch?<Check className="h-3 w-3"/>:<X className="h-3 w-3"/>}
-                      {pwdMatch?'Passwords match':'Passwords do not match'}
-                    </p>
-                  )}
-                </Field>
-                <div className="sm:col-span-2">
-                  <Button onClick={changePassword} disabled={pwdLoading||!currentPwd||!newPwd||pwdMismatch} className="gap-2">
-                    {pwdLoading?<Loader2 className="h-4 w-4 animate-spin"/>:<Shield className="h-4 w-4"/>}Update password
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 2FA — SRS M8 */}
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success/10"><Shield className="h-5 w-5 text-success"/></div>
-                <div>
-                  <h3 className="text-base font-semibold">Two-factor authentication</h3>
-                  <p className="text-sm text-muted-foreground">Add an extra layer of security using Google Authenticator or Authy (TOTP/RFC 6238)</p>
-                  <Badge variant="secondary" className="mt-2 text-muted-foreground text-xs">Not configured — coming soon</Badge>
-                </div>
-              </div>
-              <Switch disabled/>
-            </div>
-          </div>
-
-          {/* Sessions — SRS M8 */}
-          <div className="rounded-2xl border border-border bg-card">
-            <div className="border-b border-border p-5">
-              <h3 className="text-base font-semibold">Active sessions</h3>
-              <p className="text-sm text-muted-foreground">Devices currently signed into your account</p>
-            </div>
-            <div className="divide-y divide-border">
-              {[
-                { d:'This device', l:'Current session', t:'Active now', current:true, i:Monitor },
-              ].map(s=>(
-                <div key={s.d} className="flex items-center gap-4 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted"><s.i className="h-5 w-5"/></div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2"><span className="text-sm font-medium">{s.d}</span>{s.current&&<Badge variant="secondary" className="text-success text-[10px]">Current</Badge>}</div>
-                    <div className="text-xs text-muted-foreground">{s.l} · {s.t}</div>
-                  </div>
-                  {!s.current&&<Button variant="ghost" size="sm" className="text-destructive"><LogOut className="mr-1 h-4 w-4"/>Revoke</Button>}
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-border px-5 py-3">
-              <Button variant="outline" size="sm" className="gap-2 text-destructive"
-                onClick={async()=>{await signOut();window.location.href='/login'}}>
-                <LogOut className="h-4 w-4"/>Sign out of all devices
-              </Button>
-            </div>
-          </div>
+        <TabsContent value="security" className="mt-6">
+          <MerchantSecuritySuite user={user} />
         </TabsContent>
 
         {/* ── NOTIFICATIONS TAB — SRS M8 ── */}

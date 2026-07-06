@@ -1,0 +1,8 @@
+[functions.process-notification-queue]
+verify_jwt = false
+
+[functions.run-pending-order-reminders]
+verify_jwt = false
+
+[functions.cleanup-deleted-accounts]
+verify_jwt = false

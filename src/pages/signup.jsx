@@ -10,6 +10,7 @@ import { Logo } from '@/components/logo'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { AuthCaptcha } from '@/components/auth-captcha'
+import { ResendVerificationCard } from '@/components/resend-verification-card'
 import { validateRealEmail } from '@/lib/email-validation'
 import {
   MERCHANT_OAUTH_INTENT_KEY,
@@ -78,8 +79,9 @@ export default function Signup() {
   }, [user, navigate])
 
   const emailCheck = useMemo(() => validateRealEmail(email), [email])
-  const passwordStrong = password.length >= 8
+  const passwordStrong = password.length >= 8 && /\d/.test(password)
   const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword
+  const formReady = name.trim().length >= 2 && emailCheck.ok && passwordStrong && passwordsMatch && !!captchaToken
 
   const resetCaptcha = useCallback(() => {
     setCaptchaToken('')
@@ -100,7 +102,7 @@ export default function Signup() {
     }
 
     if (!passwordStrong) {
-      toast.error('Password must be at least 8 characters.')
+      toast.error('Use 8+ characters with at least one number.')
       return
     }
 
@@ -181,6 +183,7 @@ export default function Signup() {
           <CheckCircle2 className="mx-auto h-12 w-12 text-success" />
           <h1 className="mt-5 text-2xl font-bold">Check your email</h1>
           <p className="mt-2 text-sm text-muted-foreground">Verify your account to continue.</p>
+          <div className="mt-5"><ResendVerificationCard defaultEmail={checkEmail} compact /></div>
           <Button className="mt-6 h-11 w-full rounded-xl" onClick={() => navigate({ to: '/login' })}>Go to login</Button>
         </div>
       </AuthShell>
@@ -227,7 +230,7 @@ export default function Signup() {
           <div>
             <Label htmlFor="password">Password</Label>
             <div className="relative mt-1">
-              <Input id="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-11 rounded-xl pr-10" />
+              <Input id="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="8+ chars and a number" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-11 rounded-xl pr-10" />
               <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -246,7 +249,7 @@ export default function Signup() {
 
           <AuthCaptcha key={captchaResetKey} resetKey={captchaResetKey} onVerify={setCaptchaToken} />
 
-          <Button type="submit" className="h-11 w-full rounded-xl" disabled={loading || googleLoading}>
+          <Button type="submit" className="h-11 w-full rounded-xl" disabled={!formReady || loading || googleLoading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create account'}
           </Button>
         </form>

@@ -14,6 +14,7 @@ import { AuthGuard } from '@/components/auth-guard'
 import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/integrations/supabase/client'
 import { fetchMerchantStoreLimit } from '@/lib/store-limit'
+import { clearOnboardingDraft, loadOnboardingDraft, saveOnboardingDraft, syncOnboardingProgress, syncStoreOnboardingProgress } from '@/lib/onboarding-progress'
 
 const RESERVED = new Set(['www','api','app','admin','dashboard','shop','store','checkout','help','support','blog','docs','mail','email','status','about','login','signup','auth','static','assets','cdn','bazarhq'])
 const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,32)
@@ -55,6 +56,25 @@ function CreateStorePage() {
   const reqIdRef = useRef(0)
 
   const suggestedCats = shopType ? CATEGORIES_BY_TYPE[shopType] ?? [] : []
+
+  useEffect(() => {
+    if (!user?.id) return
+    const draft = loadOnboardingDraft(user.id, 'store')
+    if (!draft) return
+    if (draft.step) setStep(draft.step)
+    if (draft.shopName) setShopName(draft.shopName)
+    if (draft.sub) setSub(draft.sub)
+    if (draft.shopType) setShopType(draft.shopType)
+    if (Array.isArray(draft.categories)) setCategories(draft.categories)
+    if (draft.theme) setTheme(draft.theme)
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const progress = { step, shopName, sub, shopType, categories, theme }
+    saveOnboardingDraft(user.id, progress, 'store')
+    syncOnboardingProgress(user.id, progress, `store-step-${step}`).catch(() => {})
+  }, [user?.id, step, shopName, sub, shopType, categories, theme])
 
   useEffect(() => {
     if (!user) return
@@ -125,6 +145,8 @@ function CreateStorePage() {
     }).select('id').single()
     if (error || !data) { setLaunching(false); toast.error(error?.message ?? 'Failed'); return }
     await supabase.from('profiles').update({ current_store_id: data.id }).eq('id', user.id)
+    await syncStoreOnboardingProgress(data.id, { step: 5, shopName, sub, shopType, categories, theme }, 'completed', true).catch(() => {})
+    clearOnboardingDraft(user.id, 'store')
     await qc.invalidateQueries()
     setLaunching(false)
     toast.success('Store created! 🎉')

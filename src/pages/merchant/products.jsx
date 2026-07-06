@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { supabase } from '@/integrations/supabase/client'
+import { isCloudinaryConfigured, uploadProductImageToCloudinary } from '@/lib/cloudinary'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { slugify } from '@/lib/utils'
@@ -464,16 +465,30 @@ function ProductDialog({ open, onOpenChange, product, store }) {
 
   const upload = async file => {
     if (!user) return
-    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB'); return }
+    if (file.size > 2 * 1024 * 1024) { toast.error('Image must be under 2 MB'); return }
     if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) { toast.error('Use PNG, JPG or WEBP'); return }
     setUploading(true)
-    const ext = file.name.split('.').pop() || 'png'
-    const path = `${user.id}/products/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`
-    const { error } = await supabase.storage.from('shop-branding').upload(path, file, { contentType: file.type })
-    if (error) { toast.error(error.message); setUploading(false); return }
-    const { data } = supabase.storage.from('shop-branding').getPublicUrl(path)
-    setImages(arr => [...arr, data.publicUrl])
-    setUploading(false)
+    try {
+      if (isCloudinaryConfigured()) {
+        const uploaded = await uploadProductImageToCloudinary(file, { folder: `${user.id}/products` })
+        setImages(arr => [...arr, uploaded.url])
+        toast.success(`Image compressed and uploaded (${Math.round((uploaded.compressedBytes || uploaded.bytes || 0) / 1024)} KB)`)
+        setUploading(false)
+        return
+      }
+
+      const ext = file.name.split('.').pop() || 'png'
+      const path = `${user.id}/products/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`
+      const { error } = await supabase.storage.from('shop-branding').upload(path, file, { contentType: file.type })
+      if (error) throw error
+      const { data } = supabase.storage.from('shop-branding').getPublicUrl(path)
+      setImages(arr => [...arr, data.publicUrl])
+      toast.info('Uploaded to Supabase Storage. Add Cloudinary env keys to enable compression.')
+    } catch (error) {
+      toast.error(error?.message || 'Image upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
 
   // Reorder images so primary is first
@@ -512,13 +527,22 @@ function ProductDialog({ open, onOpenChange, product, store }) {
       price: priceNum,
       compare_at_price: compareNum,
       stock: stockNum,
+      low_stock_threshold: 5,
       status,
       category: category || null,
       tags: tags.length ? tags : null,
       images: orderedImages,
       has_variants: hasVariants,
       variant_types: hasVariants ? variantTypes : [],
-      variants: hasVariants ? variants : [],
+      variants: hasVariants ? variants.map((variant) => {
+        const variantStock = Math.max(0, parseInt(variant.stock || 0, 10))
+        return {
+          ...variant,
+          stock: String(variantStock),
+          available: variantStock > 0,
+          status: variantStock > 0 ? (variant.status || 'available') : 'unavailable',
+        }
+      }) : [],
       delivery_charge_mode: deliveryMode,
       delivery_charge_dhaka: deliveryMode === 'custom' ? deliveryDhakaNum : null,
       delivery_charge_outside_dhaka: deliveryMode === 'custom' ? deliveryOutsideNum : null,
