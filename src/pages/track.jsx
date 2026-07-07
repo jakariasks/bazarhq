@@ -55,6 +55,19 @@ export default function TrackPage() {
     }
   }, []) // eslint-disable-line
 
+
+  async function refreshLoadedOrder(orderRow) {
+    if (!orderRow?.id) return;
+
+    const [{ data: latestOrder }, { data: latestTimeline }] = await Promise.all([
+      supabase.from('orders').select('*').eq('id', orderRow.id).maybeSingle(),
+      supabase.from('order_timeline').select('*').eq('order_id', orderRow.id).order('created_at', { ascending: true }),
+    ]);
+
+    if (latestOrder) setOrder(latestOrder);
+    if (latestTimeline) setTimeline(latestTimeline);
+  }
+
   const handleSearch = async () => {
     const oid = orderId.trim()
     const ph = phone.replace(/\D/g,'')
@@ -107,6 +120,26 @@ export default function TrackPage() {
     setStore(storeData)
     setLoading(false)
   }
+
+
+  useEffect(() => {
+    if (!order?.id) return undefined;
+
+    const interval = window.setInterval(() => {
+      refreshLoadedOrder(order);
+    }, 8000);
+
+    const channel = supabase
+      .channel(`public-order-tracking-${order.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `id=eq.${order.id}` }, () => refreshLoadedOrder(order))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_timeline', filter: `order_id=eq.${order.id}` }, () => refreshLoadedOrder(order))
+      .subscribe();
+
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [order?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const brandColor = store?.brand_color || '#6366f1'
   const symbol = '৳'

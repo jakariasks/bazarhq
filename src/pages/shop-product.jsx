@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ArrowLeft, CheckCircle2, Minus, Package, Plus, ShieldCheck, ShoppingCart, Star, Truck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, MessageSquare, Minus, Package, Plus, ShieldCheck, ShoppingCart, Star, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/integrations/supabase/client'
 import { addToCart, getCartTotals } from '@/lib/cart'
-import { getStoreTheme, getThemeCssVars, themeDataAttributes } from '@/lib/theme-system'
+import { getTheme, themeCssVars } from '@/lib/preview-themes'
 import { trackStoreEvent } from '@/lib/analytics-tracker'
+import { useCustomerAuth } from '@/hooks/use-customer-auth'
 
 function toNumber(value, fallback = 0) {
   const number = Number(value)
@@ -36,6 +37,40 @@ function parseArrayValue(value) {
     if (Array.isArray(parsed)) return parsed
   } catch {}
   return []
+}
+
+
+function slugifyProductText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function getProductTitle(product) {
+  return product?.title || product?.name || product?.product_name || 'Product'
+}
+
+function productMatchesRoute(product, routeValue) {
+  const value = String(routeValue || '').trim().toLowerCase()
+  if (!value || !product) return false
+
+  const id = String(product.id || '').toLowerCase()
+  const slug = String(product.slug || '').toLowerCase()
+  const sku = String(product.sku || '').toLowerCase()
+  const titleSlug = slugifyProductText(getProductTitle(product))
+  const idPrefix = id ? id.slice(0, 4) : ''
+  const generatedSlug = idPrefix ? `${titleSlug}-${idPrefix}` : titleSlug
+
+  return (
+    value === id ||
+    value === slug ||
+    value === sku ||
+    value === titleSlug ||
+    value === generatedSlug ||
+    Boolean(titleSlug && value.startsWith(`${titleSlug}-`))
+  )
 }
 
 function getVariantId(variant) {
@@ -69,20 +104,6 @@ function getDiscount(product) {
   const compareAt = toNumber(product?.compare_at_price, 0)
   if (!price || compareAt <= price) return 0
   return Math.round((1 - price / compareAt) * 100)
-}
-
-
-function getProductDeliveryLabel(product, store) {
-  const mode = product?.delivery_charge_mode || 'store_default'
-  if (mode === 'free') return 'Free delivery for this product'
-  if (mode === 'custom') {
-    const dhaka = toNumber(product?.delivery_charge_dhaka, 0)
-    const outside = toNumber(product?.delivery_charge_outside_dhaka, 0)
-    return `Delivery: Dhaka ${money(dhaka, store?.currency || 'BDT')} · Outside ${money(outside, store?.currency || 'BDT')}`
-  }
-  const dhaka = toNumber(store?.delivery_charge_dhaka, 60)
-  const outside = toNumber(store?.delivery_charge_outside_dhaka, 120)
-  return `Delivery: Dhaka ${money(dhaka, store?.currency || 'BDT')} · Outside ${money(outside, store?.currency || 'BDT')}`
 }
 
 function ProductSkeleton() {
@@ -123,6 +144,14 @@ export default function ShopProductPage() {
   const [qty, setQty] = useState(1)
   const [message, setMessage] = useState('')
   const [cartCount, setCartCount] = useState(0)
+  const { customer, isLoggedIn } = useCustomerAuth()
+  const [reviews, setReviews] = useState([])
+  const [reviewStats, setReviewStats] = useState({ avg: 0, count: 0 })
+  const [canReview, setCanReview] = useState(false)
+  const [reviewRating, setReviewRating] = useState(5)
+  const [reviewComment, setReviewComment] = useState('')
+  const [reviewMessage, setReviewMessage] = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -138,24 +167,37 @@ export default function ShopProductPage() {
         setStatus('not-found')
         return
       }
-      const { data: productData, error: productError } = await supabase
+      // Product links in older storefront builds could be real IDs, saved slugs,
+      // or generated URL slugs like "computer-262q". Querying only id/slug makes
+      // those generated URLs fail. So we load the store's published products and
+      // resolve the route value safely on the client side.
+      const { data: productRows, error: productError } = await supabase
         .from('products')
         .select('*')
         .eq('store_id', storeData.id)
         .eq('status', 'published')
-        .or(`id.eq.${productId},slug.eq.${productId}`)
-        .maybeSingle()
+
       if (!mounted) return
-      if (productError || !productData) {
+
+      if (productError) {
+        console.warn('[shop-product] product lookup failed:', productError.message)
         setStatus('not-found')
         return
       }
+
+      const productData = (productRows || []).find((row) => productMatchesRoute(row, productId))
+
+      if (!productData) {
+        setStatus('not-found')
+        return
+      }
+
       setStore(storeData)
       setProduct(productData)
       setStatus('ok')
       const variants = normalizeVariants(productData)
       if (variants.length) setSelectedVariantId(variants.find(v => v.stock > 0)?.id || variants[0].id)
-      trackStoreEvent({ storeSlug, storeId: storeData.id, eventType: 'product_view', productId: productData.id, metadata: { title: productData.title } })
+      trackStoreEvent({ storeSlug, storeId: storeData.id, eventType: 'product_view', productId: productData.id, metadata: { title: getProductTitle(productData) } })
     }
     loadProduct()
     return () => { mounted = false }
@@ -166,6 +208,79 @@ export default function ShopProductPage() {
     setCartCount(getCartTotals(store.id).itemCount)
   }, [store?.id])
 
+  useEffect(() => {
+    if (!product?.id) return
+    let mounted = true
+    async function loadReviews() {
+      const { data } = await supabase
+        .from('product_reviews')
+        .select('id, rating, comment, customer_name, created_at')
+        .eq('product_id', product.id)
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false })
+      if (!mounted) return
+      const rows = data || []
+      setReviews(rows)
+      const count = rows.length
+      const avg = count ? rows.reduce((sum, row) => sum + Number(row.rating || 0), 0) / count : 0
+      setReviewStats({ avg, count })
+    }
+    loadReviews()
+    return () => { mounted = false }
+  }, [product?.id])
+
+  useEffect(() => {
+    if (!isLoggedIn || !store?.id || !product?.id) {
+      setCanReview(false)
+      return
+    }
+    supabase.rpc('customer_can_review_product', { p_store_id: store.id, p_product_id: product.id })
+      .then(({ data }) => setCanReview(Boolean(data)))
+  }, [isLoggedIn, store?.id, product?.id])
+
+  async function submitReview() {
+    setReviewMessage('')
+    if (!isLoggedIn || !customer) {
+      setReviewMessage('Please login as a customer to write a review.')
+      return
+    }
+    if (!canReview) {
+      setReviewMessage('Only verified customers who ordered this product can review it.')
+      return
+    }
+    const comment = reviewComment.trim()
+    if (comment.length < 5) {
+      setReviewMessage('Write a short review before submitting.')
+      return
+    }
+    setSubmittingReview(true)
+    const { error } = await supabase.rpc('submit_product_review', {
+      p_store_id: store.id,
+      p_product_id: product.id,
+      p_rating: Number(reviewRating),
+      p_comment: comment,
+    })
+    setSubmittingReview(false)
+    if (error) {
+      setReviewMessage(error.message || 'Review could not be submitted.')
+      return
+    }
+    setReviewMessage('Thanks! Your review has been submitted.')
+    setReviewComment('')
+    const { data } = await supabase
+      .from('product_reviews')
+      .select('id, rating, comment, customer_name, created_at')
+      .eq('product_id', product.id)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+    const rows = data || []
+    setReviews(rows)
+    const count = rows.length
+    const avg = count ? rows.reduce((sum, row) => sum + Number(row.rating || 0), 0) / count : 0
+    setReviewStats({ avg, count })
+  }
+
+
   const variants = useMemo(() => product ? normalizeVariants(product) : [], [product])
   const selectedVariant = variants.find(item => item.id === selectedVariantId) || null
   const images = getImages(product)
@@ -175,10 +290,9 @@ export default function ShopProductPage() {
   const lowStock = stock > 0 && stock <= 5
   const outOfStock = stock <= 0
   const discount = getDiscount(product)
-  const activeTheme = getStoreTheme(store)
-  const vars = getThemeCssVars(store)
-  const themeAttrs = themeDataAttributes(activeTheme)
-  const deliveryLabel = getProductDeliveryLabel(product, store)
+  const theme = getTheme(store?.theme_id)
+  const primary = store?.brand_color || theme.swatch || '#4f46e5'
+  const vars = { ...themeCssVars(theme), '--shop-primary': primary }
 
   function addSelectedToCart() {
     if (!store?.id || !product) return
@@ -206,15 +320,7 @@ export default function ShopProductPage() {
   if (status !== 'ok') return <EmptyState title="Product not found" message="This product is unavailable, unpublished, or the shop is offline." />
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950" style={vars} {...themeAttrs}>
-      <style>{`
-        [data-theme-font] { font-family: var(--shop-font-family); background: var(--shop-page-bg); }
-        [data-theme-button] button, [data-theme-button] a { border-radius: var(--shop-button-radius) !important; }
-        [data-theme-radius] .shop-product-card, [data-theme-radius] .shop-product-image { border-radius: var(--shop-card-radius) !important; }
-        [data-theme-card="flat"] .shop-product-card { box-shadow: none !important; }
-        [data-theme-nav="dark"] header { background: rgba(2,6,23,.92) !important; color: white !important; border-color: rgba(255,255,255,.10) !important; }
-        [data-theme-bg="dark"] { color: white; }
-      `}</style>
+    <div className="min-h-screen bg-slate-50 text-slate-950" style={vars}>
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-3 font-black">
@@ -234,9 +340,9 @@ export default function ShopProductPage() {
 
         <section className="grid gap-8 lg:grid-cols-[1.05fr_.95fr]">
           <div className="space-y-4">
-            <div className="shop-product-card overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
               {images[selectedImage] ? (
-                <img src={images[selectedImage]} alt={product.title} className="shop-product-image aspect-square w-full object-contain p-6" />
+                <img src={images[selectedImage]} alt={getProductTitle(product)} className="aspect-square w-full object-contain p-6" />
               ) : (
                 <div className="flex aspect-square items-center justify-center text-slate-300"><Package className="h-20 w-20" /></div>
               )}
@@ -252,20 +358,16 @@ export default function ShopProductPage() {
             )}
           </div>
 
-          <div className="shop-product-card rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{product.category || 'General'}</span>
               {discount > 0 && <span className="rounded-full bg-rose-500 px-3 py-1 text-xs font-black text-white">-{discount}%</span>}
-              <div className="ml-auto flex items-center gap-1 text-amber-400">{[0,1,2,3,4].map(i => <Star key={i} className="h-4 w-4 fill-current" />)}<span className="ml-1 text-xs font-bold text-slate-500">4.8</span></div>
+              <div className="ml-auto flex items-center gap-1 text-amber-400">{[0,1,2,3,4].map(i => <Star key={i} className={`h-4 w-4 ${i < Math.round(reviewStats.avg || 0) ? 'fill-current' : ''}`} />)}<span className="ml-1 text-xs font-bold text-slate-500">{reviewStats.count ? reviewStats.avg.toFixed(1) : 'New'}</span></div>
             </div>
-            <h1 className="mt-5 text-3xl font-black tracking-tight sm:text-4xl">{product.title}</h1>
+            <h1 className="mt-5 text-3xl font-black tracking-tight sm:text-4xl">{getProductTitle(product)}</h1>
             <div className="mt-4 flex items-end gap-3">
               <p className="text-3xl font-black text-[var(--shop-primary)]">{money(price, currency)}</p>
               {toNumber(product.compare_at_price, 0) > price && <p className="pb-1 text-sm font-semibold text-slate-400 line-through">{money(product.compare_at_price, currency)}</p>}
-            </div>
-
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600">
-              <Truck className="h-4 w-4 text-[var(--shop-primary)]" /> {deliveryLabel}
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">
@@ -307,6 +409,67 @@ export default function ShopProductPage() {
                 <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-xs font-bold text-slate-600">
                   <Icon className="mx-auto mb-2 h-5 w-5 text-[var(--shop-primary)]" /> {label}
                 </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                <MessageSquare className="h-3.5 w-3.5" /> Customer reviews
+              </p>
+              <h2 className="mt-3 text-2xl font-black tracking-tight">Reviews & ratings</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {reviewStats.count ? `${reviewStats.avg.toFixed(1)} average from ${reviewStats.count} review${reviewStats.count > 1 ? 's' : ''}` : 'No reviews yet.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 text-amber-400">
+              {[0,1,2,3,4].map(i => <Star key={i} className={`h-5 w-5 ${i < Math.round(reviewStats.avg || 0) ? 'fill-current' : ''}`} />)}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="font-bold">Write a review</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Only verified customers who ordered this product can submit a review.</p>
+              <div className="mt-4 flex gap-1 text-amber-400">
+                {[1,2,3,4,5].map(value => (
+                  <button key={value} type="button" onClick={() => setReviewRating(value)} className="transition hover:scale-110">
+                    <Star className={`h-6 w-6 ${value <= reviewRating ? 'fill-current' : ''}`} />
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={reviewComment}
+                onChange={(event) => setReviewComment(event.target.value)}
+                rows={4}
+                placeholder="Share your experience with this product..."
+                className="mt-4 w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-[var(--shop-primary)]"
+              />
+              <Button className="mt-3 w-full rounded-2xl bg-[var(--shop-primary)] text-white" onClick={submitReview} disabled={submittingReview}>
+                {submittingReview ? 'Submitting...' : 'Submit review'}
+              </Button>
+              {reviewMessage && <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-600">{reviewMessage}</p>}
+            </div>
+
+            <div className="space-y-3">
+              {reviews.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">No customer review has been added yet.</div>
+              ) : reviews.map((review) => (
+                <article key={review.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">{review.customer_name || 'Verified customer'}</p>
+                      <p className="text-xs text-slate-400">{new Date(review.created_at).toLocaleDateString()}</p>
+                    </div>
+                    <div className="flex gap-0.5 text-amber-400">
+                      {[0,1,2,3,4].map(i => <Star key={i} className={`h-4 w-4 ${i < Number(review.rating || 0) ? 'fill-current' : ''}`} />)}
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">{review.comment}</p>
+                </article>
               ))}
             </div>
           </div>

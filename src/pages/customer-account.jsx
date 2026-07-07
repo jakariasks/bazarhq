@@ -492,7 +492,6 @@ export default function CustomerAccountPage() {
     signOut,
     updateProfile,
     changePassword,
-    deleteAccount,
   } = useCustomerAuth();
 
   const [tab, setTab] = useState("orders");
@@ -509,6 +508,21 @@ export default function CustomerAccountPage() {
         <p className="text-sm text-[var(--muted-foreground)]">Loading account...</p>
       </div>
     );
+  }
+
+
+  async function handleDeleteAccount() {
+    const confirmed = window.confirm("This will delete your customer profile and saved addresses. Your completed order records may remain with merchants for business records. Continue?");
+    if (!confirmed) return;
+
+    const { error } = await supabase.rpc("delete_customer_account");
+    if (error) {
+      window.alert(error.message || "Could not delete account.");
+      return;
+    }
+
+    await signOut();
+    navigate({ to: "/" });
   }
 
   const tabs = [
@@ -569,7 +583,7 @@ export default function CustomerAccountPage() {
             profile={profile}
             updateProfile={updateProfile}
             changePassword={changePassword}
-            deleteAccount={deleteAccount}
+            deleteAccount={handleDeleteAccount}
           />
         )}
       </div>

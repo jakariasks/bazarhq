@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, CheckCircle2, ChevronLeft, Info, Loader2, ShieldCheck, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, Loader2, ShieldCheck, TicketPercent, XCircle } from "lucide-react";
 
 const DISTRICTS = [
   "Dhaka", "Chattogram", "Sylhet", "Rajshahi", "Khulna", "Barishal", "Rangpur", "Mymensingh",
@@ -90,7 +90,10 @@ export default function CheckoutPage() {
   const [availableMethods, setAvailableMethods] = useState([]);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [productDeliveryRules, setProductDeliveryRules] = useState({});
-  const [dialog, setDialog] = useState(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
 
   const [delivery, setDelivery] = useState({
     full_name: "",
@@ -114,7 +117,7 @@ export default function CheckoutPage() {
     async function loadStore() {
       const { data, error } = await supabase
         .from("stores")
-        .select("id, shop_name, subdomain, return_policy, shipping_policy, payment_policy, logo_url, delivery_charge_dhaka, delivery_charge_outside_dhaka, free_delivery_min_amount")
+        .select("id, shop_name, subdomain, return_policy, shipping_policy, logo_url, delivery_charge_dhaka, delivery_charge_outside_dhaka, free_delivery_min_amount")
         .eq("subdomain", subdomain)
         .maybeSingle();
 
@@ -243,7 +246,12 @@ export default function CheckoutPage() {
   const deliveryZoneLabel = !delivery.district
     ? "Select district"
     : isDhakaDelivery ? "Inside Dhaka" : "Outside Dhaka";
-  const total = subtotal + deliveryCharge;
+  const totalBeforeDiscount = subtotal + deliveryCharge;
+  const discountAmount = Math.min(
+    Math.max(0, Number(appliedCoupon?.discount_amount || 0)),
+    totalBeforeDiscount
+  );
+  const total = Math.max(0, totalBeforeDiscount - discountAmount);
 
   useEffect(() => {
     if (!store?.id) return;
@@ -331,6 +339,10 @@ export default function CheckoutPage() {
     }
 
     const method = availableMethods.find((item) => item.id === paymentMethod);
+    if (method?.id === "ssl") {
+      setPaymentError("Online card payment is not configured yet. Please choose another payment method.");
+      return false;
+    }
     if (method?.needsTxn && !txnId.trim()) {
       setPaymentError("Enter the transaction ID after payment.");
       return false;
@@ -352,12 +364,121 @@ export default function CheckoutPage() {
   }
 
 
-  function openDialog(title, message, type = "info") {
-    setDialog({ title, message, type });
+  async function applyCoupon() {
+    setCouponError("");
+    const code = couponCode.trim().toUpperCase();
+
+    if (!code) {
+      setCouponError("Enter a coupon code.");
+      return;
+    }
+
+    if (!store?.id) {
+      setCouponError("Shop is not loaded yet.");
+      return;
+    }
+
+    if (subtotal <= 0) {
+      setCouponError("Add products before using a coupon.");
+      return;
+    }
+
+    setCouponLoading(true);
+    const { data, error } = await supabase.rpc("validate_coupon", {
+      p_store_id: store.id,
+      p_code: code,
+      p_subtotal: subtotal,
+    });
+    setCouponLoading(false);
+
+    if (error) {
+      setAppliedCoupon(null);
+      setCouponError(error.message || "Coupon could not be applied.");
+      return;
+    }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    if (!result?.valid) {
+      setAppliedCoupon(null);
+      setCouponError(result?.message || "Invalid coupon code.");
+      return;
+    }
+
+    setAppliedCoupon(result);
+    setCouponCode(result.code || code);
   }
 
-  function closeDialog() {
-    setDialog(null);
+  function removeCoupon() {
+    setAppliedCoupon(null);
+    setCouponError("");
+    setCouponCode("");
+  }
+
+
+  async function verifyCartBeforeOrder() {
+    if (!store?.id || !items.length) return true;
+
+    const productIds = [...new Set(items.map((item) => item.productId).filter(Boolean))];
+    const { data: latestProducts, error } = await supabase
+      .from("products")
+      .select("id, title, price, stock, status, variants, has_variants")
+      .in("id", productIds);
+
+    if (error) {
+      setPaymentError("Could not verify latest product stock. Please try again.");
+      return false;
+    }
+
+    const productMap = new Map((latestProducts || []).map((product) => [product.id, product]));
+    const conflicts = [];
+    const updatedPrices = [];
+
+    for (const item of items) {
+      const product = productMap.get(item.productId);
+      if (!product || !["published", "active"].includes(product.status)) {
+        conflicts.push(`${item.title} is no longer available.`);
+        continue;
+      }
+
+      let latestStock = Number(product.stock || 0);
+      let latestPrice = Number(product.price || 0);
+
+      if (product.has_variants && item.variantId) {
+        const variants = Array.isArray(product.variants) ? product.variants : [];
+        const variant = variants.find((variantItem) => {
+          const id = variantItem.id || variantItem.combo || variantItem.label;
+          return id === item.variantId || variantItem.combo === item.variantLabel || variantItem.label === item.variantLabel;
+        });
+
+        if (!variant) {
+          conflicts.push(`${item.title} option is no longer available.`);
+          continue;
+        }
+
+        latestStock = Number(variant.stock || 0);
+        latestPrice = Number(variant.price || product.price || 0);
+      }
+
+      if (latestStock < Number(item.qty || 1)) conflicts.push(`Only ${latestStock} left for ${item.title}.`);
+      if (Number(item.price || 0) !== latestPrice) {
+        updatedPrices.push({ key: item.key, title: item.title, oldPrice: Number(item.price || 0), newPrice: latestPrice });
+      }
+    }
+
+    if (conflicts.length) {
+      setPaymentError(conflicts.join(" "));
+      setStep(2);
+      return false;
+    }
+
+    if (updatedPrices.length && !priceChangesAccepted) {
+      setPriceChanges(updatedPrices);
+      setPaymentError("Some product prices changed. Please review and accept updated prices before placing the order.");
+      setStep(2);
+      return false;
+    }
+
+    return true;
   }
 
   async function placeOrder() {
@@ -369,21 +490,24 @@ export default function CheckoutPage() {
     }
 
     if (!store || items.length === 0) {
-      openDialog("Cart unavailable", "Your cart is empty or the shop did not load correctly.", "warning");
+      alert("Your cart is empty or the shop did not load correctly.");
       return;
     }
 
     if (priceChanges.length > 0 && !priceChangesAccepted) {
-      openDialog("Price update required", "Please accept the updated cart prices before placing the order.", "warning");
+      alert("Please accept the updated cart prices before placing the order.");
       return;
     }
 
     if (!policyAccepted) {
-      openDialog("Policy review required", "Please review and accept the shop policies before placing the order.", "warning");
+      alert("Please review and accept the shop policies before placing the order.");
       return;
     }
 
     if (!validateDelivery() || !validatePayment()) return;
+
+    const cartStillValid = await verifyCartBeforeOrder();
+    if (!cartStillValid) return;
 
     setPlacing(true);
 
@@ -398,7 +522,7 @@ export default function CheckoutPage() {
         qty: Number(item.qty),
       }));
 
-      const { data, error } = await supabase.rpc("place_customer_order", {
+      const { data, error } = await supabase.rpc("place_customer_order_v2", {
         p_order_id: publicOrderId,
         p_store_id: store.id,
         p_customer_name: delivery.full_name.trim(),
@@ -412,6 +536,7 @@ export default function CheckoutPage() {
         p_txn_id: txnId || null,
         p_items: orderItems,
         p_total: total,
+        p_coupon_code: appliedCoupon?.code || null,
       });
 
       if (error) throw error;
@@ -423,40 +548,17 @@ export default function CheckoutPage() {
         storeId: store.id,
         eventType: "order_completed",
         path: window.location.pathname,
-        metadata: { order_id: createdOrderId, subtotal, delivery_charge: deliveryCharge, total, payment_method: paymentMethod },
+        metadata: { order_id: createdOrderId, subtotal, delivery_charge: deliveryCharge, discount_amount: discountAmount, coupon_code: appliedCoupon?.code || null, total, payment_method: paymentMethod },
       });
-
-      if (paymentMethod === "ssl") {
-        const { data: sslData, error: sslError } = await supabase.functions.invoke("sslcommerz-initiate", {
-          body: {
-            order_id: createdOrderId,
-            store_id: store.id,
-            subdomain,
-            customer: {
-              name: delivery.full_name.trim(),
-              email: delivery.email || customer.email || "customer@example.com",
-              phone: delivery.phone.trim(),
-              address: delivery.address,
-              district: delivery.district,
-            },
-          },
-        });
-
-        if (sslError) throw sslError;
-        if (sslData?.gateway_url) {
-          window.location.href = sslData.gateway_url;
-          return;
-        }
-      }
 
       clearCart(store.id);
       setOrderId(createdOrderId);
       setCartVersion((value) => value + 1);
     } catch (err) {
-      openDialog(
-        "Could not place order",
-        `${err.message || "Unknown error"}\n\nMake sure the latest order RPC and notification SQL files have been run in Supabase SQL Editor.`,
-        "error"
+      alert(
+        "Could not place the order: " +
+        (err.message || "Unknown error") +
+        "\n\nMake sure supabase-order-rpc-fix.sql has been run in Supabase SQL Editor."
       );
     } finally {
       setPlacing(false);
@@ -756,6 +858,45 @@ export default function CheckoutPage() {
                     ))}
                   </div>
                 )}
+                <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                    <TicketPercent className="h-4 w-4 text-[var(--primary)]" />
+                    Coupon code
+                  </div>
+                  {appliedCoupon ? (
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+                      <span>
+                        <b>{appliedCoupon.code}</b> applied · {money(discountAmount)} discount
+                      </span>
+                      <button type="button" onClick={removeCoupon} className="inline-flex items-center gap-1 text-xs font-bold text-green-800 hover:underline">
+                        <XCircle className="h-3.5 w-3.5" /> Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        value={couponCode}
+                        onChange={(event) => {
+                          setCouponCode(event.target.value.toUpperCase());
+                          setCouponError("");
+                        }}
+                        placeholder="Enter coupon code"
+                        className="uppercase"
+                      />
+                      <Button type="button" variant="outline" onClick={applyCoupon} disabled={couponLoading}>
+                        {couponLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Apply
+                      </Button>
+                    </div>
+                  )}
+                  {couponError && <p className="mt-2 text-xs font-semibold text-red-500">{couponError}</p>}
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-sm font-semibold text-green-600">
+                    <span>Discount {appliedCoupon?.code ? `· ${appliedCoupon.code}` : ""}</span>
+                    <span>-{money(discountAmount)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-bold">
                   <span>Total</span>
@@ -788,13 +929,13 @@ export default function CheckoutPage() {
                 Review the shop policies before placing your order.
               </p>
               <div className="grid gap-2 text-xs sm:grid-cols-3">
-                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => openDialog("Return policy", getPolicyText(store, "return"), "info")}>
+                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => alert(getPolicyText(store, "return"))}>
                   Return policy
                 </button>
-                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => openDialog("Shipping policy", getPolicyText(store, "shipping"), "info")}>
+                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => alert(getPolicyText(store, "shipping"))}>
                   Shipping policy
                 </button>
-                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => openDialog("Payment policy", getPolicyText(store, "payment"), "info")}>
+                <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-left hover:border-[var(--primary)]" onClick={() => alert(getPolicyText(store, "payment"))}>
                   Payment policy
                 </button>
               </div>
@@ -822,54 +963,6 @@ export default function CheckoutPage() {
           </div>
         )}
       </div>
-
-      {dialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeDialog();
-          }}
-        >
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-start gap-4 p-5 sm:p-6">
-              <div className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
-                dialog.type === "error"
-                  ? "bg-red-50 text-red-600"
-                  : dialog.type === "warning"
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-[var(--primary)]/10 text-[var(--primary)]"
-              }`}>
-                {dialog.type === "error" || dialog.type === "warning" ? (
-                  <AlertTriangle className="h-5 w-5" />
-                ) : (
-                  <Info className="h-5 w-5" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-bold text-[var(--foreground)]">{dialog.title}</h3>
-                <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--muted-foreground)]">
-                  {dialog.message}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeDialog}
-                className="rounded-full p-2 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                aria-label="Close dialog"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex justify-end border-t border-[var(--border)] bg-[var(--muted)]/20 px-5 py-4 sm:px-6">
-              <Button type="button" onClick={closeDialog} className="rounded-xl px-6">
-                Got it
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
