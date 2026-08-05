@@ -335,7 +335,15 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
   }
 
   return (
-    <article className="group shop-hover-lift shop-themed-card relative overflow-hidden rounded-[1.55rem] border border-slate-200/85 bg-white shadow-[0_12px_34px_-26px_rgba(15,23,42,.35)] transition-all duration-500 hover:border-[var(--shop-primary-ring)] hover:shadow-[0_28px_70px_-38px_rgba(15,23,42,.38)] dark:border-white/10 dark:bg-slate-950">
+    <article
+      role="link"
+      tabIndex={0}
+      onClick={() => onView(product)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onView(product);
+      }}
+      className="group shop-hover-lift shop-themed-card relative cursor-pointer overflow-hidden rounded-[1rem] border border-slate-200/90 bg-white shadow-[0_14px_32px_-24px_rgba(15,23,42,.32)] transition-all duration-500 hover:border-[var(--shop-primary-ring)] hover:shadow-[0_28px_70px_-38px_rgba(15,23,42,.38)] dark:border-white/10 dark:bg-slate-950"
+    >
       <div className="relative overflow-hidden">
         <Link to="/shop/$storeSlug/product/$productId" params={detailsParams} className="block" aria-label={`View ${product.title}`}>
           <ProductImage product={product} className="aspect-square" />
@@ -357,15 +365,15 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
         <Link
           to="/shop/$storeSlug/product/$productId"
           params={detailsParams}
-          className="absolute bottom-3 left-3 right-3 flex translate-y-2 items-center justify-between rounded-2xl bg-slate-950/88 px-3.5 py-2.5 text-xs font-black text-white opacity-0 shadow-lg backdrop-blur transition duration-300 group-hover:translate-y-0 group-hover:opacity-100"
+          className="absolute bottom-3 left-3 right-3 flex translate-y-2 items-center justify-between rounded-xl bg-slate-950/88 px-3.5 py-2.5 text-xs font-black text-white opacity-0 shadow-lg backdrop-blur transition duration-300 group-hover:translate-y-0 group-hover:opacity-100"
         >
           View product details <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
 
-      <div className="space-y-3 p-4">
+      <div className="space-y-3 p-3.5">
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <span className="max-w-[55%] truncate rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+          <span className="max-w-[55%] truncate rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">
             {product.category || "General"}
           </span>
           <RatingStars product={product} />
@@ -384,7 +392,7 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
               <p className="text-xs font-semibold text-slate-400 line-through">{money(compareAt, currency)}</p>
             )}
           </div>
-          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${outOfStock ? "bg-rose-50 text-rose-600" : lowStock ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+          <span className={`shrink-0 rounded-md px-2.5 py-1 text-[10px] font-black ${outOfStock ? "bg-rose-50 text-rose-600" : lowStock ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
             {outOfStock ? "Out" : lowStock ? `${stock} left` : "In stock"}
           </span>
         </div>
@@ -394,7 +402,7 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
         <div className="grid grid-cols-[1fr_auto] gap-2 border-t border-slate-100 pt-3 dark:border-white/10">
           <Button
             size="sm"
-            className="rounded-xl bg-[var(--shop-primary)] text-white transition duration-300 hover:-translate-y-0.5 hover:opacity-90"
+            className="rounded-lg bg-[var(--shop-primary)] text-white transition duration-300 hover:-translate-y-0.5 hover:opacity-90"
             disabled={outOfStock || adding}
             onClick={handleAddToCart}
           >
@@ -403,7 +411,7 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
           <Link
             to="/shop/$storeSlug/product/$productId"
             params={detailsParams}
-            className="inline-flex h-9 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+            className="inline-flex h-9 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
             aria-label="Open product details"
           >
             <ArrowRight className="h-4 w-4" />
@@ -1192,6 +1200,58 @@ export default function ShopPage() {
           .shop-scroll-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
           .shop-hover-lift, .shop-hover-lift:hover { transform: none !important; }
         }
+
+        /* Final storefront visual layer: discovery controls visually overlap the hero.
+           No standalone white section remains between the banner and products. */
+        .shop-discovery-section {
+          margin-top: -4.75rem !important;
+          padding-top: 5.25rem !important;
+          padding-bottom: 1.5rem !important;
+          background:
+            linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--shop-primary) 7%, transparent) 34%, color-mix(in srgb, var(--shop-primary) 4%, var(--shop-page-bg)) 100%) !important;
+          border: 0 !important;
+          box-shadow: none !important;
+        }
+        .shop-discovery-section::after { display: none !important; }
+        .shop-discovery-inner { padding-top: 0 !important; padding-bottom: 0 !important; }
+        .shop-category-strip {
+          padding: .45rem .15rem .65rem !important;
+          border-radius: 1rem;
+        }
+        .shop-category-strip button[data-active="false"] {
+          background: color-mix(in srgb, var(--shop-primary) 9%, transparent) !important;
+          border-color: color-mix(in srgb, var(--shop-primary) 22%, transparent) !important;
+          color: color-mix(in srgb, var(--shop-primary) 58%, #334155) !important;
+          box-shadow: none !important;
+        }
+        .shop-category-strip button[data-active="true"] {
+          background: var(--shop-primary) !important;
+          border-color: var(--shop-primary) !important;
+          color: white !important;
+        }
+        .shop-search-surface,
+        .shop-inline-filter {
+          background: color-mix(in srgb, var(--shop-primary) 9%, transparent) !important;
+          border: 1px solid color-mix(in srgb, var(--shop-primary) 18%, transparent) !important;
+          box-shadow: none !important;
+          backdrop-filter: blur(12px) !important;
+        }
+        .shop-search-surface input,
+        .shop-inline-filter input,
+        .shop-inline-filter select {
+          background: color-mix(in srgb, var(--shop-primary) 5%, transparent) !important;
+          border-color: color-mix(in srgb, var(--shop-primary) 18%, transparent) !important;
+        }
+        .shop-themed-card {
+          border-radius: 1rem !important;
+          box-shadow: 0 14px 34px -24px rgba(15,23,42,.34) !important;
+        }
+        .shop-themed-card:hover {
+          box-shadow: 0 24px 54px -30px color-mix(in srgb, var(--shop-primary) 28%, rgba(15,23,42,.25)) !important;
+        }
+        @media (max-width: 767px) {
+          .shop-discovery-section { margin-top: -2rem !important; padding-top: 2.75rem !important; }
+        }
       `}</style>
 
       {store.announcement_enabled && store.announcement_text && (
@@ -1322,7 +1382,7 @@ export default function ShopPage() {
         </section>
       )}
 
-      <section className="shop-discovery-section border-y border-slate-200 dark:border-white/10">
+      <section className="shop-discovery-section relative z-20">
         <div className="shop-discovery-inner mx-auto w-[94%] max-w-[92rem]">
           <div className="shop-category-strip flex items-center gap-2 overflow-x-auto pb-2">
             {categories.map((item) => {
@@ -1331,8 +1391,9 @@ export default function ShopPage() {
                 <button
                   key={item.name}
                   type="button"
+                  data-active={active ? "true" : "false"}
                   onClick={() => setCategory(item.name)}
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs font-black transition ${active ? "border-[var(--shop-primary)] bg-[var(--shop-primary)] text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-300"}`}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs font-black transition ${active ? "border-[var(--shop-primary)] bg-[var(--shop-primary)] text-white shadow-sm" : "border-slate-200 bg-transparent text-slate-600 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-transparent dark:text-slate-300"}`}
                 >
                   {item.name === "all" ? "All categories" : item.name}
                   <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/18 text-white" : "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300"}`}>{item.count}</span>
@@ -1347,7 +1408,7 @@ export default function ShopPage() {
               placeholder="Search products, category, or tags..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-13 rounded-[1.05rem] border-slate-200 pl-12 pr-12 text-base font-semibold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10"
+              className="h-13 rounded-[1.05rem] border-slate-200 bg-transparent pl-12 pr-12 text-base font-semibold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10"
             />
             {search && (
               <button className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-200" onClick={() => setSearch("")} type="button" aria-label="Clear search">
@@ -1360,7 +1421,7 @@ export default function ShopPage() {
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value)}
-              className="h-10 min-w-[150px] flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:border-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950 sm:flex-none"
+              className="h-10 min-w-[150px] flex-1 rounded-xl border border-slate-200 bg-transparent px-3 text-xs font-bold outline-none focus:border-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950 sm:flex-none"
               aria-label="Sort products"
             >
               <option value="newest">Newest first</option>
@@ -1370,20 +1431,20 @@ export default function ShopPage() {
               <option value="name">Name A-Z</option>
             </select>
 
-            <Input className="h-10 w-[112px] rounded-xl bg-white text-xs dark:bg-slate-950" placeholder="Min price" type="number" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
-            <Input className="h-10 w-[112px] rounded-xl bg-white text-xs dark:bg-slate-950" placeholder="Max price" type="number" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
+            <Input className="h-10 w-[112px] rounded-xl bg-transparent text-xs dark:bg-slate-950" placeholder="Min price" type="number" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
+            <Input className="h-10 w-[112px] rounded-xl bg-transparent text-xs dark:bg-slate-950" placeholder="Max price" type="number" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
 
             <button
               type="button"
               onClick={() => setInStockOnly((value) => !value)}
-              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${inStockOnly ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
+              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${inStockOnly ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-200 bg-transparent text-slate-600 hover:border-emerald-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
             >
               In stock
             </button>
             <button
               type="button"
               onClick={() => setDiscountOnly((value) => !value)}
-              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${discountOnly ? "border-rose-500 bg-rose-500 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-rose-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
+              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${discountOnly ? "border-rose-500 bg-rose-500 text-white" : "border-slate-200 bg-transparent text-slate-600 hover:border-rose-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
             >
               On offer
             </button>
@@ -1394,7 +1455,7 @@ export default function ShopPage() {
               </button>
             )}
 
-            <span className="ml-auto rounded-full bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm dark:bg-slate-950 dark:text-slate-300">
+            <span className="ml-auto rounded-lg bg-transparent px-3 py-2 text-xs font-black text-slate-600 shadow-sm dark:bg-slate-950 dark:text-slate-300">
               {filtered.length} result{filtered.length === 1 ? "" : "s"}
             </span>
           </div>

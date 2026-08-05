@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ArrowLeft, CheckCircle2, ChevronRight, MessageSquare, Minus, Package, Plus, Scale, ShieldCheck, ShoppingCart, Star, Store, Tag, Truck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ChevronRight, MessageSquare, Minus, Package, Plus, Scale, ShieldCheck, ShoppingCart, Star, Store, Tag, Truck, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/integrations/supabase/client'
 import { addToCart, getCartTotals } from '@/lib/cart'
@@ -9,7 +9,6 @@ import { getTheme, themeCssVars } from '@/lib/preview-themes'
 import { trackStoreEvent } from '@/lib/analytics-tracker'
 import { useCustomerAuth } from '@/hooks/use-customer-auth'
 import ProductImageGallery from '@/components/product-image-gallery'
-import MarketplaceProductCard from '@/components/marketplace-product-card'
 import { fetchMarketplaceProductRecommendations } from '@/lib/marketplace-api'
 
 function toNumber(value, fallback = 0) {
@@ -62,6 +61,7 @@ function buildReviewStats(rows) {
 
 function RelatedProductCard({ storeSlug, product, primary, currency = 'BDT' }) {
   const routeProductId = String(product.slug || product.id)
+  const targetStoreSlug = product.store_slug || product.subdomain || storeSlug
   const image = getImage(product)
   const price = toNumber(product.price, 0)
   const compareAt = toNumber(product.compare_at_price, 0)
@@ -69,10 +69,10 @@ function RelatedProductCard({ storeSlug, product, primary, currency = 'BDT' }) {
   return (
     <Link
       to="/shop/$storeSlug/product/$productId"
-      params={{ storeSlug, productId: routeProductId }}
-      className="group overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[var(--shop-primary)]/20 hover:shadow-md"
+      params={{ storeSlug: targetStoreSlug, productId: routeProductId }}
+      className="group overflow-hidden rounded-[1rem] border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[var(--shop-primary)]/20 hover:shadow-md"
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-slate-50">
+      <div className="relative aspect-square overflow-hidden bg-slate-50">
         {image ? (
           <img src={image} alt={getProductTitle(product)} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
         ) : (
@@ -80,7 +80,8 @@ function RelatedProductCard({ storeSlug, product, primary, currency = 'BDT' }) {
         )}
         {discount > 0 && <span className="absolute left-3 top-3 rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-black text-white">-{discount}%</span>}
       </div>
-      <div className="space-y-2 p-4">
+      <div className="space-y-2 p-3.5">
+        {product.shop_name && <p className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{product.shop_name}</p>}
         <p className="line-clamp-2 min-h-[2.6rem] text-sm font-black leading-snug text-slate-900 group-hover:text-[var(--shop-primary)]">{getProductTitle(product)}</p>
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -365,6 +366,9 @@ export default function ShopProductPage() {
   const theme = getTheme(store?.theme_id)
   const primary = store?.brand_color || theme.swatch || '#4f46e5'
   const vars = { ...themeCssVars(theme), '--shop-primary': primary }
+  const currentProductPath = `/shop/${encodeURIComponent(storeSlug)}/product/${encodeURIComponent(String(product.slug || product.id))}`
+  const shopHomePath = `/shop/${encodeURIComponent(storeSlug)}`
+  const aboutPath = `${shopHomePath}/about`
 
   function addSelectedToCart() {
     if (!store?.id || !product) return
@@ -393,22 +397,69 @@ export default function ShopProductPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950" style={vars}>
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-3 font-black">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--shop-primary)] text-white"><ShoppingCart className="h-5 w-5" /></span>
-            <span>{store.shop_name}</span>
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 w-[94%] max-w-[92rem] items-center gap-4">
+          <Link to="/shop/$storeSlug" params={{ storeSlug }} className="flex min-w-0 items-center gap-3">
+            {store.logo_url ? (
+              <img src={store.logo_url} alt={store.shop_name} className="h-10 w-10 shrink-0 rounded-xl object-cover" />
+            ) : (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--shop-primary)] text-base font-black text-white">
+                {String(store.shop_name || 'S').charAt(0).toUpperCase()}
+              </span>
+            )}
+            <span className="truncate text-lg font-black tracking-tight text-slate-950">{store.shop_name}</span>
           </Link>
-          <Button variant="outline" className="rounded-full" onClick={() => navigate({ to: '/checkout', search: { store: storeSlug } })}>
-            Cart ({cartCount})
-          </Button>
+
+          <nav className="ml-5 hidden items-center gap-5 text-sm font-semibold text-slate-600 lg:flex">
+            <a href={`${shopHomePath}#featured`} className="transition hover:text-[var(--shop-primary)]">Featured</a>
+            <a href={`${shopHomePath}#products`} className="transition hover:text-[var(--shop-primary)]">Products</a>
+            <a href={`${shopHomePath}#offers`} className="transition hover:text-[var(--shop-primary)]">Offers</a>
+            <a href={aboutPath} className="transition hover:text-[var(--shop-primary)]">About</a>
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate({
+                to: isLoggedIn ? '/customer/account' : '/customer/login',
+                search: isLoggedIn ? {} : { redirect: currentProductPath },
+              })}
+              className="hidden items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] sm:inline-flex"
+            >
+              <User className="mr-2 h-4 w-4" /> {isLoggedIn ? 'My account' : 'Login'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate({
+                to: isLoggedIn ? '/customer/account' : '/customer/login',
+                search: isLoggedIn ? {} : { redirect: currentProductPath },
+              })}
+              className="rounded-full p-2.5 text-slate-700 transition hover:bg-slate-100 sm:hidden"
+              aria-label="Customer account"
+            >
+              <User className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              className="relative rounded-full bg-slate-100 p-2.5 text-slate-800 transition hover:bg-[var(--shop-primary)]/10 hover:text-[var(--shop-primary)]"
+              onClick={() => navigate({ to: '/checkout', search: { store: storeSlug } })}
+              aria-label="Open cart"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {cartCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--shop-primary)] px-1 text-[10px] font-black text-white">{cartCount > 99 ? '99+' : cartCount}</span>}
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <button onClick={() => navigate({ to: '/shop/$storeSlug', params: { storeSlug } })} className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-[var(--shop-primary)]">
-          <ArrowLeft className="h-4 w-4" /> Back to shop
-        </button>
+      <main className="mx-auto w-[94%] max-w-[92rem] py-8">
+        <div className="mb-6 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">
+          <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-2 hover:text-[var(--shop-primary)]">
+            <ArrowLeft className="h-4 w-4" /> {store.shop_name}
+          </Link>
+          <ChevronRight className="h-4 w-4 text-slate-300" />
+          <span className="truncate text-slate-700">{getProductTitle(product)}</span>
+        </div>
 
         <section className="grid gap-8 lg:grid-cols-[1.05fr_.95fr]">
           <ProductImageGallery
@@ -417,7 +468,7 @@ export default function ShopProductPage() {
             alt={getProductTitle(product)}
           />
 
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <div className="rounded-[1.25rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{product.category || 'General'}</span>
               {discount > 0 && <span className="rounded-full bg-rose-500 px-3 py-1 text-xs font-black text-white">-{discount}%</span>}
@@ -471,7 +522,7 @@ export default function ShopProductPage() {
               ))}
             </div>
 
-            <div className="mt-8 rounded-[1.6rem] border border-slate-200 bg-slate-50 p-5">
+            <div className="mt-8 rounded-[1rem] border border-slate-200 bg-slate-50 p-5">
               <div className="flex items-center gap-2">
                 <Tag className="h-4 w-4 text-[var(--shop-primary)]" />
                 <h3 className="text-sm font-black text-slate-950">More product information</h3>
@@ -509,7 +560,7 @@ export default function ShopProductPage() {
         </section>
 
         {relatedProducts.length > 0 && (
-          <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <section className="mt-8 rounded-[1.25rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-indigo-700">
@@ -529,7 +580,7 @@ export default function ShopProductPage() {
         )}
 
         {(recommendationQuery.data?.same_product?.length > 0 || recommendationQuery.data?.recommended?.length > 0) && (
-          <section className="mt-8 space-y-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <section className="mt-8 space-y-8 rounded-[1.25rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
             {recommendationQuery.data?.same_product?.length > 0 && (
               <div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -552,7 +603,7 @@ export default function ShopProductPage() {
                 </div>
                 <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                   {recommendationQuery.data.same_product.slice(0, 6).map((item) => (
-                    <MarketplaceProductCard key={`same-${item.id}`} product={{ ...item, comparison_count: recommendationQuery.data.comparison?.shop_count, best_price: recommendationQuery.data.comparison?.best_price, highest_price: recommendationQuery.data.comparison?.highest_price }} comparison />
+                    <RelatedProductCard key={`same-${item.id}`} storeSlug={item.store_slug || item.subdomain || storeSlug} product={item} primary={primary} currency={currency} />
                   ))}
                 </div>
               </div>
@@ -569,7 +620,7 @@ export default function ShopProductPage() {
                 </div>
                 <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                   {recommendationQuery.data.recommended.slice(0, 8).map((item) => (
-                    <MarketplaceProductCard key={`recommended-${item.id}`} product={item} />
+                    <RelatedProductCard key={`recommended-${item.id}`} storeSlug={item.store_slug || item.subdomain || storeSlug} product={item} primary={primary} currency={currency} />
                   ))}
                 </div>
               </div>
@@ -577,7 +628,7 @@ export default function ShopProductPage() {
           </section>
         )}
 
-        <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+        <section className="mt-8 rounded-[1.25rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
@@ -668,6 +719,41 @@ export default function ShopProductPage() {
           </div>
         </section>
       </main>
+
+      <footer className="mt-10 border-t border-slate-200 bg-white">
+        <div className="mx-auto grid w-[94%] max-w-[92rem] gap-8 py-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="lg:col-span-2">
+            <div className="flex items-center gap-3">
+              {store.logo_url ? (
+                <img src={store.logo_url} alt={store.shop_name} className="h-11 w-11 rounded-xl object-cover" />
+              ) : (
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--shop-primary)] font-black text-white">{String(store.shop_name || 'S').charAt(0).toUpperCase()}</span>
+              )}
+              <p className="text-lg font-black">{store.shop_name}</p>
+            </div>
+            <p className="mt-4 max-w-md text-sm leading-7 text-slate-600">{store.about || store.tagline || 'Shop products securely from this BazarHQ storefront.'}</p>
+          </div>
+          <div>
+            <p className="font-black">Shop links</p>
+            <div className="mt-4 space-y-2 text-sm font-semibold text-slate-500">
+              <a href={`${shopHomePath}#featured`} className="block hover:text-[var(--shop-primary)]">Featured products</a>
+              <a href={`${shopHomePath}#products`} className="block hover:text-[var(--shop-primary)]">All products</a>
+              <a href={aboutPath} className="block hover:text-[var(--shop-primary)]">About the shop</a>
+              <Link to="/track" search={{ store: storeSlug }} className="block hover:text-[var(--shop-primary)]">Track order</Link>
+            </div>
+          </div>
+          <div>
+            <p className="font-black">Contact</p>
+            <div className="mt-4 space-y-2 text-sm text-slate-500">
+              {store.contact_email && <p>{store.contact_email}</p>}
+              {(store.contact_phone || store.phone) && <p>{store.contact_phone || store.phone}</p>}
+              {store.address && <p>{store.address}</p>}
+              {!store.contact_email && !(store.contact_phone || store.phone) && !store.address && <p>Contact details will appear after merchant setup.</p>}
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-slate-200 py-4 text-center text-xs font-semibold text-slate-500">Powered by <strong>BazarHQ</strong></div>
+      </footer>
     </div>
   )
 }
