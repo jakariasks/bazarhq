@@ -47,17 +47,102 @@ export async function fetchJson(url: string, init?: RequestInit) {
   return { response, data }
 }
 
-export async function validateCredentials(storeId: string, password: string, isLive: boolean) {
+export type CredentialCheckCode =
+  | 'verified'
+  | 'authentication-failed'
+  | 'store-inactive'
+  | 'invalid-request'
+  | 'unexpected-response'
+
+export type CredentialCheckResult = {
+  valid: boolean
+  apiConnect: string
+  code: CredentialCheckCode
+  message: string
+}
+
+/**
+ * Verifies the merchant credential pair against the official Transaction Query API.
+ *
+ * SSLCOMMERZ documents APIConnect as:
+ * DONE = authenticated, FAILED = authentication failed,
+ * INACTIVE = store inactive, INVALID_REQUEST = malformed request.
+ * A non-existent random transaction ID is intentional: we only need the
+ * authenticated API connection result, not a real transaction record.
+ */
+export async function validateCredentials(storeId: string, password: string, isLive: boolean): Promise<CredentialCheckResult> {
   const url = new URL(sslEndpoints(isLive).query)
-  url.searchParams.set('tran_id', `BHQCHECK${Date.now().toString(36)}`.slice(0, 30))
+  url.searchParams.set('tran_id', `BHQCHECK${Date.now().toString(36).toUpperCase()}`.slice(0, 30))
   url.searchParams.set('store_id', storeId)
   url.searchParams.set('store_passwd', password)
+  url.searchParams.set('v', '1')
   url.searchParams.set('format', 'json')
 
-  const { response, data } = await fetchJson(url.toString(), { headers: { Accept: 'application/json' } })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+
+  let response: Response
+  let data: JsonRecord
+  try {
+    const result = await fetchJson(url.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    response = result.response
+    data = result.data
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('GATEWAY_UNAVAILABLE')
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+
   if (!response.ok) throw new Error('GATEWAY_UNAVAILABLE')
-  const apiConnect = String(data.APIConnect || '').toUpperCase()
-  return { valid: apiConnect === 'DONE', apiConnect }
+
+  const apiConnect = String(data.APIConnect ?? data.apiConnect ?? '').trim().toUpperCase()
+
+  if (apiConnect === 'DONE') {
+    return {
+      valid: true,
+      apiConnect,
+      code: 'verified',
+      message: `SSLCommerz ${isLive ? 'live' : 'sandbox'} credentials verified.`,
+    }
+  }
+
+  if (apiConnect === 'FAILED') {
+    return {
+      valid: false,
+      apiConnect,
+      code: 'authentication-failed',
+      message: `Store ID or Store Password was rejected by the ${isLive ? 'live' : 'sandbox'} gateway.`,
+    }
+  }
+
+  if (apiConnect === 'INACTIVE') {
+    return {
+      valid: false,
+      apiConnect,
+      code: 'store-inactive',
+      message: `This SSLCommerz ${isLive ? 'live' : 'sandbox'} store is inactive.`,
+    }
+  }
+
+  if (apiConnect === 'INVALID_REQUEST') {
+    return {
+      valid: false,
+      apiConnect,
+      code: 'invalid-request',
+      message: 'SSLCommerz rejected the credential-check request.',
+    }
+  }
+
+  return {
+    valid: false,
+    apiConnect: apiConnect || 'UNKNOWN',
+    code: 'unexpected-response',
+    message: 'SSLCommerz returned an unexpected verification response.',
+  }
 }
 
 export async function validateByValId(args: { valId: string; storeId: string; password: string; isLive: boolean }) {

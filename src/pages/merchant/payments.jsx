@@ -54,6 +54,19 @@ function isConfigured(method, config) {
   return method.fields.every((field) => String(config?.[field.key] || '').trim().length > 0)
 }
 
+async function functionErrorMessage(error, fallback) {
+  const response = error?.context
+  if (response && typeof response.clone === 'function') {
+    try {
+      const payload = await response.clone().json()
+      if (payload?.message) return String(payload.message)
+    } catch {
+      // The response may be non-JSON. Fall through to the safe fallback.
+    }
+  }
+  return fallback || error?.message || 'The request could not be completed.'
+}
+
 export default function PaymentsPage() {
   const { user } = useAuth()
   const { store, isLoading } = useCurrentStore()
@@ -240,12 +253,18 @@ export default function PaymentsPage() {
           },
         })
 
-        if (error || !data?.valid) {
+        if (error) {
+          const message = await functionErrorMessage(error, 'SSLCommerz verification service could not be reached. Existing settings were not changed.')
           await refreshAfterChange()
-          throw new Error(data?.message || 'SSLCommerz credentials could not be verified. Online payment has been disabled.')
+          throw new Error(message)
         }
 
-        toast.success(`SSLCommerz ${sslLive ? 'live' : 'sandbox'} credentials verified and enabled`)
+        if (!data?.valid) {
+          await refreshAfterChange()
+          throw new Error(data?.message || 'SSLCommerz credentials were rejected. Online payment remains disabled.')
+        }
+
+        toast.success(data?.message || `SSLCommerz ${sslLive ? 'live' : 'sandbox'} credentials verified and enabled`)
       } else {
         const payload = { enabled: true }
         for (const field of activeMethod.fields) payload[field.key] = String(fieldValues[field.key] || '').trim()
@@ -308,6 +327,7 @@ export default function PaymentsPage() {
                     {config?.merchant_number && <p className="mt-1 text-xs text-muted-foreground">Number: <span className="font-mono">{maskValue(config.merchant_number)}</span></p>}
                     {method.id === 'ssl' && config?.ssl_store_id && <p className="mt-1 text-xs text-muted-foreground">Store ID: <span className="font-mono">{maskValue(config.ssl_store_id)}</span></p>}
                     {method.id === 'ssl' && config?.ssl_credentials_checked_at && <p className="mt-1 text-[11px] text-muted-foreground">Checked {new Date(config.ssl_credentials_checked_at).toLocaleString()}</p>}
+                    {method.id === 'ssl' && config?.ssl_credentials_error && <p className="mt-1 max-w-md text-[11px] leading-4 text-red-600">{config.ssl_credentials_error}</p>}
                     {method.fields.length === 0 && <p className="mt-1 text-xs text-muted-foreground">No credentials needed</p>}
                   </div>
                 </div>
@@ -334,7 +354,22 @@ export default function PaymentsPage() {
                 <div className="rounded-xl border border-border bg-muted/30 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div><Label>Gateway environment</Label><p className="mt-1 text-xs text-muted-foreground">Use Sandbox until every callback and IPN test passes.</p></div>
-                    <div className="flex items-center gap-2 text-sm"><span className={!sslLive ? 'font-semibold text-blue-600' : 'text-muted-foreground'}>Sandbox</span><Switch checked={sslLive} onCheckedChange={setSslLive} /><span className={sslLive ? 'font-semibold text-green-600' : 'text-muted-foreground'}>Live</span></div>
+                    <div className="inline-flex rounded-lg border border-border bg-background p-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setSslLive(false)}
+                        className={`rounded-md px-3 py-1.5 font-medium transition ${!sslLive ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Sandbox
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSslLive(true)}
+                        className={`rounded-md px-3 py-1.5 font-medium transition ${sslLive ? 'bg-emerald-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Live
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
