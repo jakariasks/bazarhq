@@ -1,19 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  Shield, Smartphone, Bell, Monitor, LogOut, Upload,
-  Loader2, Image as ImageIcon, Globe, MessageCircle,
-  Palette, Eye, EyeOff, Trash2, AlertTriangle, Key,
-  Check, X, RefreshCw,
-} from 'lucide-react'
+import { Loader2, Image as ImageIcon, Globe, MessageCircle, Upload } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { supabase } from '@/integrations/supabase/client'
@@ -21,6 +14,8 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { useQueryClient } from '@tanstack/react-query'
 import { MerchantSecuritySuite } from '@/components/merchant-security-suite'
+import { MerchantNotificationPreferences } from '@/components/merchant-notification-preferences'
+import { MerchantLifecycleCard } from '@/components/merchant-lifecycle-card'
 
 const CATEGORIES = ['Fashion & Apparel','Electronics','Grocery & Food','Beauty & Personal Care','Home & Living','Books & Stationery','Handmade & Crafts','Sports & Outdoors','Other']
 const CURRENCIES = [{ v:'BDT', l:'BDT — Bangladeshi Taka' },{ v:'USD', l:'USD — US Dollar' },{ v:'EUR', l:'EUR — Euro' }]
@@ -64,14 +59,9 @@ const EMPTY = {
 }
 
 
-const NOTIF_DEFAULTS = {
-  new_order: true, low_stock: true, order_status: true,
-  weekly_report: false, marketing: false,
-  channel: 'email', // 'email' | 'sms' | 'both'
-}
 
 export default function SettingsPage() {
-  const { user, signOut } = useAuth()
+  const { user } = useAuth()
   const { store, isLoading: storeLoading } = useCurrentStore()
   const qc = useQueryClient()
 
@@ -84,23 +74,7 @@ export default function SettingsPage() {
   const logoInput = useRef(null)
   const bannerInput = useRef(null)
 
-  // Security
-  const [currentPwd, setCurrentPwd] = useState('')
-  const [newPwd, setNewPwd] = useState('')
-  const [confirmPwd, setConfirmPwd] = useState('')
-  const [showPwd, setShowPwd] = useState({})
-  const [pwdLoading, setPwdLoading] = useState(false)
-  const isGoogleUser = user?.app_metadata?.provider === 'google'
 
-  // Notification prefs
-  const [notif, setNotif] = useState(NOTIF_DEFAULTS)
-  const [notifSaving, setNotifSaving] = useState(false)
-
-  // Account deletion
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deletePhrase, setDeletePhrase] = useState('')
-  const [deleting, setDeleting] = useState(false)
-  const DELETE_PHRASE = 'DELETE MY ACCOUNT'
 
   useEffect(() => {
     if (storeLoading) return
@@ -141,10 +115,6 @@ export default function SettingsPage() {
       })
       setLogoUrl(store.logo_url ?? null)
       setBannerUrl(store.banner_url ?? null)
-      // Load notification prefs from store
-      if (store.notification_prefs) {
-        setNotif({ ...NOTIF_DEFAULTS, ...store.notification_prefs })
-      }
     }
     setLoading(false)
   }, [store, storeLoading, user])
@@ -239,95 +209,7 @@ export default function SettingsPage() {
     toast.success('Store profile saved ✓')
   }
 
-  // SRS M8: real password change
-  const changePassword = async () => {
-    if (!newPwd || newPwd.length < 8) { toast.error('New password must be at least 8 characters'); return }
-    if (newPwd !== confirmPwd) { toast.error('Passwords do not match'); return }
-    if (!currentPwd) { toast.error('Enter your current password first'); return }
-    setPwdLoading(true)
-    // Re-auth first
-    const { error: reAuthErr } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPwd })
-    if (reAuthErr) { toast.error('Current password is incorrect'); setPwdLoading(false); return }
-    const { error } = await supabase.auth.updateUser({ password: newPwd })
-    setPwdLoading(false)
-    if (error) { toast.error(error.message); return }
-    toast.success('Password updated. All other sessions have been signed out.')
-    setCurrentPwd(''); setNewPwd(''); setConfirmPwd('')
-  }
-
-  // SRS M8: notification prefs save
-  const saveNotifPrefs = async () => {
-    if (!store) return
-    setNotifSaving(true)
-    const { error } = await supabase.from('stores').update({ notification_prefs: notif }).eq('id', store.id)
-    setNotifSaving(false)
-    if (error) { toast.error(error.message); return }
-    qc.invalidateQueries({ queryKey: ['stores', user?.id] })
-    toast.success('Notification preferences saved')
-  }
-
-  // SRS M8: account / shop deletion request
-  const deleteAccount = async () => {
-    if (deletePhrase !== DELETE_PHRASE) {
-      toast.error('Please type the confirmation phrase exactly')
-      return
-    }
-
-    if (!store?.id) {
-      toast.error('No active store found to delete')
-      return
-    }
-
-    setDeleting(true)
-
-    try {
-      // Preferred path: SECURITY DEFINER RPC. This works even when normal store updates
-      // are blocked by RLS, but it still verifies auth.uid() = store.owner_id inside SQL.
-      const { error: rpcError } = await supabase.rpc('merchant_delete_store', {
-        p_store_id: store.id,
-      })
-
-      // Fallback for projects where the SQL migration has not been run yet.
-      if (rpcError) {
-        const missingFunction = /merchant_delete_store|function .* does not exist|Could not find the function/i.test(rpcError.message || '')
-
-        if (!missingFunction) {
-          throw rpcError
-        }
-
-        const { error: fallbackError } = await supabase
-          .from('stores')
-          .update({
-            account_status: 'deleted',
-            storefront_published: false,
-            deleted_at: new Date().toISOString(),
-            suspended_reason: 'Deleted by merchant from account settings.',
-          })
-          .eq('id', store.id)
-          .eq('owner_id', user.id)
-
-        if (fallbackError) throw fallbackError
-      }
-
-      await qc.invalidateQueries({ queryKey: ['stores', user?.id] })
-      await qc.invalidateQueries({ queryKey: ['storeLimit'] })
-      setDeleteOpen(false)
-      setDeletePhrase('')
-      toast.success('Your store has been deleted and unpublished.')
-
-      // Keep the user out of a deleted merchant dashboard state.
-      await signOut()
-      window.location.href = '/'
-    } catch (error) {
-      console.error('Store deletion failed:', error)
-      toast.error(error?.message || 'Could not delete your store. Please try again.')
-      setDeleting(false)
-    }
-  }
-
   const initial = (form.shop_name || user?.email || '?').charAt(0).toUpperCase()
-  const pwdMatch = confirmPwd.length > 0 && newPwd === confirmPwd
-  const pwdMismatch = confirmPwd.length > 0 && newPwd !== confirmPwd
 
   return (
     <div className="space-y-6">
@@ -550,45 +432,9 @@ export default function SettingsPage() {
           <MerchantSecuritySuite user={user} />
         </TabsContent>
 
-        {/* ── NOTIFICATIONS TAB — SRS M8 ── */}
+        {/* ── NOTIFICATIONS TAB ── */}
         <TabsContent value="notifications" className="mt-6">
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <h3 className="mb-1 text-base font-semibold">Notification channel</h3>
-            <p className="mb-4 text-sm text-muted-foreground">How would you like to receive notifications?</p>
-            <div className="mb-6 grid grid-cols-3 gap-2">
-              {['email','sms','both'].map(ch=>(
-                <button key={ch} onClick={()=>setNotif(n=>({...n,channel:ch}))}
-                  className={`rounded-xl border-2 py-3 text-sm font-medium capitalize transition-all ${notif.channel===ch?'border-primary bg-primary/5 text-primary':'border-border text-muted-foreground hover:border-primary/40'}`}>
-                  {ch==='both'?'Email & SMS':ch.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            <h3 className="mb-1 text-base font-semibold">Notification types</h3>
-            <p className="mb-4 text-sm text-muted-foreground">Choose which events trigger a notification.</p>
-            <div className="space-y-0 divide-y divide-border">
-              {[
-                { key:'new_order',      icon:Bell,        label:'New orders',         desc:'When a customer places an order' },
-                { key:'low_stock',      icon:AlertTriangle,label:'Low stock alerts',  desc:'When product stock drops below threshold' },
-                { key:'order_status',   icon:RefreshCw,   label:'Order status updates',desc:'When order status changes (shipped, delivered)' },
-                { key:'weekly_report',  icon:Monitor,     label:'Weekly report',       desc:'Performance summary every Monday' },
-                { key:'marketing',      icon:Smartphone,  label:'Tips & updates',      desc:'BazarHQ platform news and growth tips' },
-              ].map(n=>(
-                <div key={n.key} className="flex items-center justify-between gap-4 py-4">
-                  <div className="flex gap-3">
-                    <n.icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"/>
-                    <div><div className="text-sm font-medium">{n.label}</div><div className="text-xs text-muted-foreground">{n.desc}</div></div>
-                  </div>
-                  <Switch checked={notif[n.key]??true} onCheckedChange={v=>setNotif(prev=>({...prev,[n.key]:v}))}/>
-                </div>
-              ))}
-            </div>
-            <div className="mt-6">
-              <Button onClick={saveNotifPrefs} disabled={notifSaving} className="bg-gradient-primary gap-2">
-                {notifSaving&&<Loader2 className="h-4 w-4 animate-spin"/>}Save preferences
-              </Button>
-            </div>
-          </div>
+          <MerchantNotificationPreferences />
         </TabsContent>
 
         {/* ── DANGER / ACCOUNT TAB — SRS M8 ── */}
@@ -611,47 +457,10 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* SRS M8: Account deletion */}
-          <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10"><Trash2 className="h-5 w-5 text-destructive"/></div>
-              <div className="flex-1">
-                <h3 className="text-base font-semibold text-destructive">Delete store</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Your shop will be unpublished immediately and marked as deleted. Customers will not be able to open the storefront. Products, orders history, and settings can be permanently removed later by admin cleanup. <strong>This cannot be undone from the merchant dashboard.</strong>
-                </p>
-                <Button variant="destructive" size="sm" className="mt-4 gap-2" onClick={()=>setDeleteOpen(true)}>
-                  <Trash2 className="h-4 w-4"/>Delete my store
-                </Button>
-              </div>
-            </div>
-          </div>
+          <MerchantLifecycleCard />
         </TabsContent>
       </Tabs>
 
-      {/* Delete confirmation dialog */}
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle className="text-destructive">Delete store permanently</DialogTitle></DialogHeader>
-          <div className="py-2 space-y-4">
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-              <AlertTriangle className="mb-2 h-5 w-5"/>
-              <p>This will <strong>immediately unpublish</strong> your shop and mark it as deleted. Customers will not be able to browse or place orders from this store.</p>
-            </div>
-            <div className="grid gap-2">
-              <Label>Type <strong>{DELETE_PHRASE}</strong> to confirm</Label>
-              <Input value={deletePhrase} onChange={e=>setDeletePhrase(e.target.value)} placeholder={DELETE_PHRASE} className="font-mono"/>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={()=>{setDeleteOpen(false);setDeletePhrase('')}}>Cancel</Button>
-            <Button variant="destructive" onClick={deleteAccount} disabled={deleting||deletePhrase!==DELETE_PHRASE}>
-              {deleting?<Loader2 className="mr-2 h-4 w-4 animate-spin"/>:<Trash2 className="mr-2 h-4 w-4"/>}
-              Delete store
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

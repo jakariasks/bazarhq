@@ -16,7 +16,17 @@ import { supabase } from '@/integrations/supabase/client'
 import { fetchMerchantStoreLimit } from '@/lib/store-limit'
 import { clearOnboardingDraft, loadOnboardingDraft, saveOnboardingDraft, syncOnboardingProgress, syncStoreOnboardingProgress } from '@/lib/onboarding-progress'
 
-const RESERVED = new Set(['www','api','app','admin','dashboard','shop','store','checkout','help','support','blog','docs','mail','email','status','about','login','signup','auth','static','assets','cdn','bazarhq'])
+const RESERVED_REASONS = {
+  www: 'Reserved for the main BazarHQ website.', api: 'Reserved for platform APIs.', app: 'Reserved for the BazarHQ application.',
+  admin: 'Reserved for administration.', superadmin: 'Reserved for administration.', dashboard: 'Reserved for dashboards.',
+  shop: 'Reserved for storefront routing.', store: 'Reserved for storefront routing.', checkout: 'Reserved for checkout.',
+  auth: 'Reserved for authentication.', login: 'Reserved for authentication.', signup: 'Reserved for authentication.',
+  support: 'Reserved for BazarHQ support.', help: 'Reserved for BazarHQ help.', status: 'Reserved for service status.',
+  blog: 'Reserved for BazarHQ content.', docs: 'Reserved for documentation.', mail: 'Reserved for platform email.',
+  email: 'Reserved for platform email.', static: 'Reserved for static files.', assets: 'Reserved for static files.', cdn: 'Reserved for static files.',
+  about: 'Reserved for the BazarHQ website.', bazarhq: 'Reserved platform name.',
+}
+const RESERVED = new Set(Object.keys(RESERVED_REASONS))
 const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,32)
 
 function validateSubdomain(raw) {
@@ -28,7 +38,7 @@ function validateSubdomain(raw) {
   if (/^[-0-9]/.test(slug)) return { ok: false, message: 'Must start with a letter.' }
   if (/-$/.test(slug)) return { ok: false, message: 'Cannot end with a hyphen.' }
   if (/--/.test(slug)) return { ok: false, message: 'No consecutive hyphens.' }
-  if (RESERVED.has(slug)) return { ok: false, message: 'This subdomain is reserved.' }
+  if (RESERVED.has(slug)) return { ok: false, message: RESERVED_REASONS[slug] || 'This name is reserved by BazarHQ.' }
   return { ok: true, slug }
 }
 
@@ -46,6 +56,7 @@ function CreateStorePage() {
   const [sub, setSub] = useState('')
   const [touched, setTouched] = useState(false)
   const [subStatus, setSubStatus] = useState({ kind: 'idle' })
+  const [subSuggestions, setSubSuggestions] = useState([])
   const [shopType, setShopType] = useState('')
   const [categories, setCategories] = useState([])
   const [catInput, setCatInput] = useState('')
@@ -92,16 +103,22 @@ function CreateStorePage() {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!sub) { setSubStatus({ kind: 'idle' }); return }
+    if (!sub) { setSubStatus({ kind: 'idle' }); setSubSuggestions([]); return }
     const v = validateSubdomain(sub)
-    if (!v.ok) { setSubStatus({ kind: 'error', message: v.message }); return }
+    if (!v.ok) { setSubStatus({ kind: 'error', message: v.message }); setSubSuggestions([]); return }
     setSubStatus({ kind: 'checking' })
     const myReq = ++reqIdRef.current
     debounceRef.current = setTimeout(async () => {
       const { data, error } = await supabase.from('stores').select('id').eq('subdomain', v.slug).maybeSingle()
       if (myReq !== reqIdRef.current) return
-      if (error) { setSubStatus({ kind: 'error', message: "Couldn't check." }); return }
-      if (data) { setSubStatus({ kind: 'error', message: 'This subdomain is taken.' }); return }
+      if (error) { setSubStatus({ kind: 'error', message: "Couldn't check availability." }); setSubSuggestions([]); return }
+      if (data) {
+        const { data: suggestions } = await supabase.rpc('suggest_store_subdomains', { p_base: v.slug, p_limit: 5 })
+        setSubSuggestions((suggestions || []).map((item) => typeof item === 'string' ? item : item.slug).filter(Boolean))
+        setSubStatus({ kind: 'error', message: 'This subdomain is already used. Choose an available suggestion below.' })
+        return
+      }
+      setSubSuggestions([])
       setSubStatus({ kind: 'ok' })
     }, 400)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
@@ -142,14 +159,18 @@ function CreateStorePage() {
     const { data, error } = await supabase.from('stores').insert({
       owner_id: user.id, shop_name: shopName.trim(), subdomain: sub,
       theme_id: theme, business_category: shopType, categories,
+      storefront_published: false,
+      onboarding_completed: false,
+      onboarding_step: 'store-created',
+      account_status: 'active',
     }).select('id').single()
     if (error || !data) { setLaunching(false); toast.error(error?.message ?? 'Failed'); return }
     await supabase.from('profiles').update({ current_store_id: data.id }).eq('id', user.id)
-    await syncStoreOnboardingProgress(data.id, { step: 5, shopName, sub, shopType, categories, theme }, 'completed', true).catch(() => {})
+    await syncStoreOnboardingProgress(data.id, { step: 5, shopName, sub, shopType, categories, theme }, 'store-created', false).catch(() => {})
     clearOnboardingDraft(user.id, 'store')
     await qc.invalidateQueries()
     setLaunching(false)
-    toast.success('Store created! 🎉')
+    toast.success('Store created in Draft. Add products, payment and policies before publishing.')
     navigate({ to: '/merchant' })
   }
 
@@ -257,6 +278,20 @@ function CreateStorePage() {
                       {showSubError && <motion.span key="err" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-1 text-destructive"><AlertCircle className="h-3 w-3" /> {subStatus.message}</motion.span>}
                     </AnimatePresence>
                   </div>
+                  {subSuggestions.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {subSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => { setTouched(true); setSub(suggestion); setSubSuggestions([]) }}
+                          className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+                        >
+                          {suggestion}.bazarhq.com
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -343,8 +378,8 @@ function CreateStorePage() {
                   <Check className="h-10 w-10 text-primary-foreground" />
                 </motion.div>
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                  <h1 className="mt-6 text-2xl font-bold">Ready to launch! 🎉</h1>
-                  <p className="mt-2 text-sm text-muted-foreground">Your new store will live at <strong className="text-foreground">{sub}.bazarhq.com</strong></p>
+                  <h1 className="mt-6 text-2xl font-bold">Ready to create your Draft store</h1>
+                  <p className="mt-2 text-sm text-muted-foreground">The address <strong className="text-foreground">{sub}.bazarhq.com</strong> is reserved for your store, but it becomes public only after you add at least one published product, one valid payment method, and complete all store policies.</p>
                   <div className="mt-4 space-y-2">
                     <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">{shopType}</span>
                     <div className="flex flex-wrap items-center justify-center gap-1.5">

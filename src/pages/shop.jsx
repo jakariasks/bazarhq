@@ -1022,6 +1022,13 @@ export default function ShopPage() {
     });
   }, [status, store?.id, subdomain]);
 
+  useEffect(() => {
+    if (status !== "ok" || !store?.id || category === "all") return;
+    import("@/lib/analytics-tracker").then(({ trackCategoryView }) => {
+      trackCategoryView(store.id, category, { store_slug: subdomain, path: window.location.pathname });
+    });
+  }, [status, store?.id, subdomain, category]);
+
   const refreshCartCount = useCallback(() => {
     if (!store?.id) return;
     const { itemCount } = getCartTotals(store.id);

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { MerchantMfaGate } from "@/components/merchant-mfa-gate";
 
 export function AuthGuard({ children }) {
   const { user, loading, emailVerified, wrongRole, wrongRoleEmail, signOut } = useAuth();
@@ -128,5 +129,5 @@ export function AuthGuard({ children }) {
     );
   }
 
-  return <>{children}</>;
+  return <MerchantMfaGate user={user}>{children}</MerchantMfaGate>;
 }

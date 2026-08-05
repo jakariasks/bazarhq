@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { StoreSwitcher } from '@/components/store-switcher'
 import { NotificationCenter } from '@/components/notification-center'
 import { useCurrentStore } from '@/lib/use-current-store'
+import { DeletedStoreRecovery } from '@/components/merchant-lifecycle-card'
 
 const nav = [
   { to: '/merchant', label: 'Dashboard', icon: LayoutDashboard, exact: true, noStore: true },
@@ -29,6 +30,7 @@ const nav = [
 function NoStoreDashboard({ user, navigate }) {
   return (
     <div className="space-y-6">
+      <DeletedStoreRecovery />
       <section className="relative overflow-hidden rounded-[2rem] border border-border bg-card p-6 shadow-elegant sm:p-8">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,.18),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,.14),transparent_30%)]" />
         <div className="relative grid gap-8 lg:grid-cols-[1.1fr_.9fr] lg:items-center">
