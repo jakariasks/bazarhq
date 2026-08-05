@@ -1110,6 +1110,70 @@ export default function ShopPage() {
         .shop-category-strip { scrollbar-width: thin; scrollbar-color: var(--shop-primary) transparent; }
         .shop-inline-filter select,
         .shop-inline-filter input { min-width: 0; }
+
+        /* Smooth the visual transition between the full-width hero and the
+           product collection. This section is intentionally theme-aware so it
+           does not appear as a separate hard-white block. */
+        .shop-discovery-section {
+          position: relative;
+          overflow: hidden;
+          background:
+            radial-gradient(circle at 12% 0%, var(--shop-primary-soft), transparent 34%),
+            linear-gradient(
+              180deg,
+              rgba(255,255,255,.98) 0%,
+              rgba(248,250,252,.94) 46%,
+              var(--shop-page-bg) 100%
+            ) !important;
+          border-color: rgba(148,163,184,.22) !important;
+        }
+        .shop-discovery-section::after {
+          content: "";
+          position: absolute;
+          inset: auto 0 0;
+          height: 44px;
+          pointer-events: none;
+          background: linear-gradient(180deg, transparent, var(--shop-page-bg));
+        }
+        .shop-discovery-inner {
+          position: relative;
+          z-index: 1;
+          padding-top: 1.1rem;
+          padding-bottom: 1.35rem;
+        }
+        .shop-category-strip {
+          padding: .3rem .15rem .55rem;
+        }
+        .shop-search-surface {
+          border-radius: 1.35rem;
+          background: rgba(255,255,255,.82);
+          box-shadow: 0 12px 36px rgba(15,23,42,.055);
+          backdrop-filter: blur(14px);
+        }
+        .shop-search-surface input {
+          background: transparent !important;
+          border-color: rgba(148,163,184,.24) !important;
+        }
+        .shop-inline-filter {
+          background: rgba(255,255,255,.68) !important;
+          border-color: rgba(148,163,184,.24) !important;
+          box-shadow: 0 12px 34px rgba(15,23,42,.045);
+          backdrop-filter: blur(14px);
+        }
+        [data-theme-bg="dark"] .shop-discovery-section {
+          background:
+            radial-gradient(circle at 12% 0%, var(--shop-primary-soft), transparent 34%),
+            linear-gradient(180deg, rgba(15,23,42,.98), rgba(15,23,42,.94), var(--shop-page-bg)) !important;
+        }
+        [data-theme-bg="dark"] .shop-search-surface,
+        [data-theme-bg="dark"] .shop-inline-filter {
+          background: rgba(15,23,42,.72) !important;
+          border-color: rgba(255,255,255,.1) !important;
+        }
+        @media (max-width: 639px) {
+          .shop-discovery-inner { padding-top: .8rem; padding-bottom: 1rem; }
+          .shop-search-surface { border-radius: 1.1rem; }
+        }
         @media (max-width: 639px) {
           .shop-product-grid .shop-themed-card > div:last-child,
           .shop-featured-grid .shop-themed-card > div:last-child { padding: .72rem !important; }
@@ -1258,8 +1322,8 @@ export default function ShopPage() {
         </section>
       )}
 
-      <section className="border-y border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950">
-        <div className="mx-auto w-[94%] max-w-[92rem] py-4">
+      <section className="shop-discovery-section border-y border-slate-200 dark:border-white/10">
+        <div className="shop-discovery-inner mx-auto w-[94%] max-w-[92rem]">
           <div className="shop-category-strip flex items-center gap-2 overflow-x-auto pb-2">
             {categories.map((item) => {
               const active = category === item.name;
@@ -1277,13 +1341,13 @@ export default function ShopPage() {
             })}
           </div>
 
-          <div className="relative mt-3">
+          <div className="shop-search-surface relative mt-3 p-1.5">
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
             <Input
               placeholder="Search products, category, or tags..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-13 rounded-2xl border-slate-200 bg-slate-50 pl-12 pr-12 text-base font-semibold transition focus:bg-white focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5"
+              className="h-13 rounded-[1.05rem] border-slate-200 pl-12 pr-12 text-base font-semibold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10"
             />
             {search && (
               <button className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-200" onClick={() => setSearch("")} type="button" aria-label="Clear search">
@@ -1292,7 +1356,7 @@ export default function ShopPage() {
             )}
           </div>
 
-          <div className="shop-inline-filter mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-white/10 dark:bg-white/5">
+          <div className="shop-inline-filter mt-3 flex flex-wrap items-center gap-2 rounded-[1.25rem] border border-slate-200 p-2.5 dark:border-white/10">
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value)}
