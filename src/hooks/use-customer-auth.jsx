@@ -163,7 +163,7 @@ export function CustomerAuthProvider({ children }) {
     };
   }, [loadCustomerFromSession]);
 
-  async function signUp({ email, password, fullName, phone, captchaToken, redirectTo = "/customer/account" }) {
+  async function signUp({ email, password, fullName, phone, redirectTo = "/customer/account" }) {
     const normalizedEmail = email.trim().toLowerCase();
     const cleanedName = fullName.trim();
     const cleanedPhone = phone?.trim() || null;
@@ -177,7 +177,6 @@ export function CustomerAuthProvider({ children }) {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}${safeRedirect}`,
-        captchaToken,
         data: {
           role: ROLE_CUSTOMER,
           full_name: cleanedName,
@@ -197,14 +196,13 @@ export function CustomerAuthProvider({ children }) {
     return data;
   }
 
-  async function signIn({ email, password, captchaToken }) {
+  async function signIn({ email, password }) {
     await supabase.auth.signOut();
     clearAllRoleIntents();
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
-      options: { captchaToken },
     });
 
     if (error) throw error;

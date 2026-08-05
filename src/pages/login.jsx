@@ -1,17 +1,14 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
-import { Eye, EyeOff, Loader2, ShieldCheck, Store } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Eye, EyeOff, Loader2, LockKeyhole, Mail, ShieldCheck, Store } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Logo } from '@/components/logo'
+import { AuthPageShell } from '@/components/auth-page-shell'
+import { ResendVerificationCard } from '@/components/resend-verification-card'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
-import { AuthCaptcha } from '@/components/auth-captcha'
-import { ResendVerificationCard } from '@/components/resend-verification-card'
-import { isEmailNotConfirmedError } from '@/lib/auth-verification'
 import { validateRealEmail } from '@/lib/email-validation'
 import {
   MERCHANT_OAUTH_INTENT_KEY,
@@ -22,6 +19,11 @@ import {
   safeInternalPath,
   setStoredIntent,
 } from '@/lib/auth-roles'
+
+function isEmailNotConfirmedError(error) {
+  const message = String(error?.message || '').toLowerCase()
+  return message.includes('email not confirmed') || message.includes('email_not_confirmed')
+}
 
 async function hasMerchantRecord(userId) {
   if (!userId) return false
@@ -38,16 +40,13 @@ async function ensureMerchantProfile(user) {
   if (!user?.id || !user?.email) return
 
   const fullName = user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0]
-
-  const { error } = await supabase
-    .from('profiles')
-    .upsert({
-      id: user.id,
-      email: user.email.toLowerCase(),
-      full_name: fullName,
-      plan_tier: 'free',
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' })
+  const { error } = await supabase.from('profiles').upsert({
+    id: user.id,
+    email: user.email.toLowerCase(),
+    full_name: fullName,
+    plan_tier: 'free',
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'id' })
 
   if (error) console.warn('Profile upsert failed:', error.message)
 }
@@ -55,19 +54,13 @@ async function ensureMerchantProfile(user) {
 async function assertMerchantAccount(user) {
   const role = getUserRole(user)
 
-  if (role === ROLE_CUSTOMER) {
-    throw new Error('This email is registered as a customer account.')
-  }
-
+  if (role === ROLE_CUSTOMER) throw new Error('This email belongs to a customer account. Use customer sign in instead.')
   if (role === ROLE_MERCHANT) {
     await ensureMerchantProfile(user)
     return
   }
 
-  const hasRecord = await hasMerchantRecord(user?.id)
-  if (!hasRecord) {
-    throw new Error('No merchant account found for this email.')
-  }
+  if (!await hasMerchantRecord(user?.id)) throw new Error('No merchant account was found for this email address.')
 
   await supabase.auth.updateUser({
     data: {
@@ -77,7 +70,6 @@ async function assertMerchantAccount(user) {
       signup_method: user.user_metadata?.signup_method || 'email',
     },
   })
-
   await ensureMerchantProfile(user)
 }
 
@@ -87,24 +79,8 @@ function GoogleIcon() {
       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
       <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
       <path fill="#FBBC05" d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.83z" />
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.83c.87-2.6 3.3-4.52 6.16-4.52z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 0 3.99 3.47 2.18 7.07l3.66 2.83c.87-2.6 3.3-4.52 6.16-4.52z" />
     </svg>
-  )
-}
-
-function AuthShell({ children }) {
-  return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.10),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(99,102,241,0.12),transparent_35%),linear-gradient(180deg,#f8fafc_0%,#ffffff_48%,#f6f8fb_100%)] p-4">
-      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/25 to-transparent" />
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-        className="relative w-full max-w-md"
-      >
-        {children}
-      </motion.div>
-    </div>
   )
 }
 
@@ -114,19 +90,16 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [captchaToken, setCaptchaToken] = useState('')
-  const [captchaResetKey, setCaptchaResetKey] = useState(0)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [showResend, setShowResend] = useState(false)
+  const [verificationMode, setVerificationMode] = useState(false)
   const [preparingMerchantLogin, setPreparingMerchantLogin] = useState(false)
   const [roleSwitchError, setRoleSwitchError] = useState('')
   const roleSwitchStartedRef = useRef(false)
 
-  const redirectTo = useMemo(() => {
-    const value = new URLSearchParams(window.location.search).get('redirect')
-    return safeInternalPath(value, '/merchant')
-  }, [])
+  const params = useMemo(() => new URLSearchParams(window.location.search), [])
+  const redirectTo = useMemo(() => safeInternalPath(params.get('redirect'), '/merchant'), [params])
+  const verifiedNotice = params.get('verified') === '1'
 
   useEffect(() => {
     if (user) {
@@ -135,10 +108,8 @@ export default function Login() {
     }
 
     if (authLoading || !wrongRole || roleSwitchStartedRef.current) return
-
     roleSwitchStartedRef.current = true
     setPreparingMerchantLogin(true)
-    setRoleSwitchError('')
     clearAllRoleIntents()
 
     supabase.auth.signOut({ scope: 'local' }).then(({ error }) => {
@@ -149,40 +120,26 @@ export default function Login() {
     }).catch((error) => {
       roleSwitchStartedRef.current = false
       setRoleSwitchError(error?.message || 'Could not close the active customer session.')
-    }).finally(() => {
-      setPreparingMerchantLogin(false)
-    })
+    }).finally(() => setPreparingMerchantLogin(false))
   }, [user, wrongRole, authLoading, navigate, redirectTo])
 
   const emailCheck = useMemo(() => validateRealEmail(email), [email])
-  const formReady = emailCheck.ok && password.length > 0 && !!captchaToken
+  const formReady = emailCheck.ok && password.length > 0
 
-  const resetCaptcha = useCallback(() => {
-    setCaptchaToken('')
-    setCaptchaResetKey((value) => value + 1)
-  }, [])
-
-  const submitEmail = async (event) => {
+  async function submitEmail(event) {
     event.preventDefault()
-
     if (!emailCheck.ok) {
       toast.error(emailCheck.message)
       return
     }
 
-    if (!captchaToken) {
-      toast.error('Complete the robot check.')
-      return
-    }
-
     setLoading(true)
     setRoleSwitchError('')
-
     clearAllRoleIntents()
+
     const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' })
     if (signOutError && signOutError.name !== 'AuthSessionMissingError') {
       setLoading(false)
-      resetCaptcha()
       toast.error('Could not clear the previous browser session. Please retry.')
       return
     }
@@ -190,32 +147,30 @@ export default function Login() {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailCheck.email,
       password,
-      options: { captchaToken },
     })
 
     if (error) {
       setLoading(false)
-      resetCaptcha()
-      if (isEmailNotConfirmedError(error)) setShowResend(true)
-      toast.error(error.message)
+      if (isEmailNotConfirmedError(error)) {
+        setVerificationMode(true)
+        return
+      }
+      toast.error(error.message || 'Email or password is incorrect.')
       return
     }
 
     try {
       await assertMerchantAccount(data.user)
-    } catch (err) {
-      await supabase.auth.signOut()
+      navigate({ to: redirectTo, replace: true })
+    } catch (error) {
+      await supabase.auth.signOut({ scope: 'local' })
+      toast.error(error.message || 'This account cannot access the merchant dashboard.')
+    } finally {
       setLoading(false)
-      resetCaptcha()
-      toast.error(err.message || 'This account cannot access merchant dashboard.')
-      return
     }
-
-    setLoading(false)
-    navigate({ to: redirectTo, replace: true })
   }
 
-  const signInWithGoogle = async () => {
+  async function signInWithGoogle() {
     setGoogleLoading(true)
     await supabase.auth.signOut({ scope: 'local' })
     clearAllRoleIntents()
@@ -238,98 +193,122 @@ export default function Login() {
 
   if (authLoading || preparingMerchantLogin) {
     return (
-      <AuthShell>
-        <div className="rounded-[2rem] border border-border/80 bg-card/95 p-8 text-center shadow-xl shadow-slate-200/70 backdrop-blur">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <ShieldCheck className="h-7 w-7" />
+      <AuthPageShell
+        title="Run your store with confidence."
+        description="Secure merchant access for products, orders, payments, analytics, and storefront operations."
+      >
+        <div className="py-8 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <ShieldCheck className="h-8 w-8" />
           </div>
-          <h1 className="mt-5 text-xl font-semibold">Preparing merchant sign-in</h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {wrongRole
-              ? 'Closing the active customer session in this browser.'
-              : 'Checking the current browser session.'}
+          <h1 className="mt-5 text-2xl font-bold">Preparing merchant sign in</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {wrongRole ? 'Closing the active customer session in this browser.' : 'Checking your secure session.'}
           </p>
-          <Loader2 className="mx-auto mt-5 h-6 w-6 animate-spin text-primary" />
+          <Loader2 className="mx-auto mt-6 h-6 w-6 animate-spin text-emerald-600" />
         </div>
-      </AuthShell>
+      </AuthPageShell>
     )
   }
 
   if (roleSwitchError) {
     return (
-      <AuthShell>
-        <div className="rounded-[2rem] border border-border/80 bg-card/95 p-8 text-center shadow-xl shadow-slate-200/70 backdrop-blur">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-            <ShieldCheck className="h-7 w-7" />
+      <AuthPageShell title="Run your store with confidence." description="Secure merchant access for your BazarHQ business.">
+        <div className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
+            <ShieldCheck className="h-8 w-8" />
           </div>
-          <h1 className="mt-5 text-xl font-semibold">Could not switch accounts</h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{roleSwitchError}</p>
-          <Button className="mt-6 w-full" onClick={() => window.location.reload()}>Retry</Button>
-          <Button variant="outline" className="mt-3 w-full" onClick={() => navigate({ to: '/shop' })}>Return to storefront</Button>
+          <h1 className="mt-5 text-2xl font-bold">Could not switch accounts</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{roleSwitchError}</p>
+          <Button className="mt-6 h-11 w-full rounded-xl" onClick={() => window.location.reload()}>Retry</Button>
+          <Button variant="outline" className="mt-3 h-11 w-full rounded-xl" onClick={() => navigate({ to: '/shop' })}>Go to storefront</Button>
         </div>
-      </AuthShell>
+      </AuthPageShell>
     )
   }
 
   return (
-    <AuthShell>
-      <div className="mb-6 flex justify-center">
-        <Logo size="lg" />
-      </div>
-
-      <div className="rounded-[2rem] border border-border/80 bg-card/95 p-6 text-card-foreground shadow-xl shadow-slate-200/70 backdrop-blur sm:p-8">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <Store className="h-6 w-6" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight">Sign in</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Merchant dashboard</p>
-        </div>
-
-        <Button type="button" variant="outline" className="h-11 w-full gap-2 rounded-xl" onClick={signInWithGoogle} disabled={googleLoading || loading}>
-          {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-          Continue with Google
-        </Button>
-
-        <div className="my-5 flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-xs text-muted-foreground">or</span>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-
-        <form onSubmit={submitEmail} className="space-y-4">
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required className="mt-1 h-11 rounded-xl" />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link to="/forgot-password" className="text-xs font-medium text-primary hover:underline">Forgot?</Link>
+    <AuthPageShell
+      title="Run your business from one calm workspace."
+      description="Manage products, orders, customers, analytics, payments, and your live storefront securely."
+      points={['Role-protected merchant dashboard', 'Optional authenticator-based 2FA', 'Session and device security controls']}
+    >
+      {verificationMode ? (
+        <ResendVerificationCard
+          defaultEmail={email}
+          role="merchant"
+          redirectTo={redirectTo}
+          onBack={() => setVerificationMode(false)}
+        />
+      ) : (
+        <>
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <Store className="h-6 w-6" />
             </div>
-            <div className="relative mt-1">
-              <Input id="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-11 rounded-xl pr-10" />
-              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">Merchant portal</p>
+              <h1 className="mt-1 text-3xl font-black tracking-[-0.035em] text-slate-950">Welcome back</h1>
+              <p className="mt-1 text-sm leading-6 text-slate-600">Sign in to continue to your BazarHQ dashboard.</p>
             </div>
           </div>
 
-          <AuthCaptcha key={captchaResetKey} resetKey={captchaResetKey} onVerify={setCaptchaToken} />
+          {verifiedNotice && (
+            <div className="mt-6 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900" role="status">
+              <Mail className="mt-0.5 h-5 w-5 shrink-0" />
+              <div><strong>Email verified.</strong> You can now sign in to your merchant account.</div>
+            </div>
+          )}
 
-          {showResend && <ResendVerificationCard defaultEmail={email} compact />}
-
-          <Button type="submit" className="h-11 w-full rounded-xl" disabled={!formReady || loading || googleLoading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sign in'}
+          <Button type="button" variant="outline" className="mt-6 h-12 w-full gap-2 rounded-xl border-slate-200" onClick={signInWithGoogle} disabled={googleLoading || loading}>
+            {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
+            Continue with Google
           </Button>
-        </form>
 
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          New here?{' '}
-          <Link to="/signup" className="font-semibold text-primary hover:underline">Create account</Link>
-        </p>
-      </div>
-    </AuthShell>
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">or use email</span>
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          <form onSubmit={submitEmail} className="space-y-4">
+            <div>
+              <Label htmlFor="merchant-email" className="text-slate-700">Email address</Label>
+              <div className="relative mt-1.5">
+                <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input id="merchant-email" type="email" autoComplete="email" placeholder="you@company.com" value={email} onChange={(event) => setEmail(event.target.value)} required className="h-12 rounded-xl border-slate-200 bg-white pl-10" />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="merchant-password" className="text-slate-700">Password</Label>
+                <Link to="/forgot-password" className="text-xs font-semibold text-emerald-700 hover:underline">Forgot password?</Link>
+              </div>
+              <div className="relative mt-1.5">
+                <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input id="merchant-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" placeholder="Enter your password" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-12 rounded-xl border-slate-200 bg-white px-10" />
+                <button type="button" className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <Button type="submit" className="h-12 w-full rounded-xl bg-slate-950 text-white hover:bg-slate-800" disabled={!formReady || loading || googleLoading}>
+              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Signing in securely...</> : 'Sign in to dashboard'}
+            </Button>
+          </form>
+
+          <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-600">
+            New to BazarHQ?{' '}
+            <Link to="/signup" className="font-bold text-emerald-700 hover:underline">Create a merchant account</Link>
+          </div>
+
+          <p className="mt-4 text-center text-xs text-slate-500">
+            Shopping instead? <Link to="/customer/login" className="font-semibold text-slate-700 hover:underline">Customer sign in</Link>
+          </p>
+        </>
+      )}
+    </AuthPageShell>
   )
 }
