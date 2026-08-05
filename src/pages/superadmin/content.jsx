@@ -59,9 +59,24 @@ export default function SuperAdminContent() {
     await load()
   }
 
+  async function workflow(action) {
+    if (!current?.id) {
+      await save('draft')
+      alert('Saved draft first. Click the workflow action again.')
+      return
+    }
+    const { error } = await supabase.rpc(
+      action === 'submit' ? 'submit_platform_content' : action === 'approve' ? 'approve_platform_content' : 'publish_platform_content',
+      { p_content_id: current.id, p_admin_email: admin?.email || null }
+    )
+    if (error) return alert(error.message)
+    await writeAuditLog?.(`content.${action}`, { content_type: selected }, 'platform_content', current.id)
+    await load()
+  }
+
   async function publish() {
-    if (!confirm('Publish this content publicly?')) return
-    await save('published')
+    if (!confirm('Publish this approved content publicly?')) return
+    await workflow('publish')
   }
 
   return (
@@ -85,7 +100,7 @@ export default function SuperAdminContent() {
             <label className="block text-sm font-semibold text-slate-300">Title<input value={form.title} onChange={(e) => setForm((v) => ({ ...v, title: e.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none" /></label>
             <label className="block text-sm font-semibold text-slate-300">Body / policy text<textarea value={form.body} onChange={(e) => setForm((v) => ({ ...v, body: e.target.value }))} rows={16} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none" /></label>
             <label className="block text-sm font-semibold text-slate-300">Effective date<input type="datetime-local" value={form.effective_at} onChange={(e) => setForm((v) => ({ ...v, effective_at: e.target.value }))} className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none" /></label>
-            <div className="grid gap-3 sm:grid-cols-4"><button onClick={() => save('draft')} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold"><Save className="inline h-4 w-4" /> Save draft</button><button onClick={() => save('pending_approval')} className="rounded-2xl border border-amber-500/30 px-4 py-3 text-sm font-bold text-amber-200"><Send className="inline h-4 w-4" /> Submit</button><button onClick={() => save('approved')} className="rounded-2xl border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-200"><ShieldCheck className="inline h-4 w-4" /> Approve</button><button onClick={publish} className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold"><CheckCircle2 className="inline h-4 w-4" /> Publish</button></div>
+            <div className="grid gap-3 sm:grid-cols-4"><button onClick={() => save('draft')} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold"><Save className="inline h-4 w-4" /> Save draft</button><button onClick={() => workflow('submit')} className="rounded-2xl border border-amber-500/30 px-4 py-3 text-sm font-bold text-amber-200"><Send className="inline h-4 w-4" /> Submit</button><button onClick={() => workflow('approve')} className="rounded-2xl border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-200"><ShieldCheck className="inline h-4 w-4" /> Approve</button><button onClick={publish} className="rounded-2xl bg-violet-600 px-4 py-3 text-sm font-bold"><CheckCircle2 className="inline h-4 w-4" /> Publish</button></div>
           </div>
         </section>
       </div>

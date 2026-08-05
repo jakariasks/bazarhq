@@ -1,8 +1,29 @@
-[functions.process-notification-queue]
+[functions.admin-login]
 verify_jwt = false
 
-[functions.run-pending-order-reminders]
+[functions.admin-verify-session]
 verify_jwt = false
 
-[functions.cleanup-deleted-accounts]
+[functions.admin-logout]
+verify_jwt = false
+
+[functions.admin-audit]
+verify_jwt = false
+
+[functions.admin-totp-setup]
+verify_jwt = false
+
+[functions.admin-disable-totp]
+verify_jwt = false
+
+[functions.admin-health-monitor]
+verify_jwt = false
+
+[functions.admin-report-worker]
+verify_jwt = false
+
+[functions.admin-send-announcement]
+verify_jwt = false
+
+[functions.admin-policy-workflow]
 verify_jwt = false

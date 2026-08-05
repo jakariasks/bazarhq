@@ -1,11 +1,12 @@
 // src/pages/checkout.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
-import { clearCart, getCart, getCartTotals, syncCartPrices } from "@/lib/cart";
+import { clearCart, getCart, getCartTotals, reconcileCartWithProducts } from "@/lib/cart";
 import { trackStoreEvent } from "@/lib/analytics-tracker";
 import { getPolicyText } from "@/lib/shop-policies";
+import { clearCheckoutDraft, getCheckoutDraft, saveCheckoutDraft } from "@/lib/checkout-draft";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,6 +79,11 @@ export default function CheckoutPage() {
   const [storeStatus, setStoreStatus] = useState("loading");
   const [cartVersion, setCartVersion] = useState(0);
   const [priceChanges, setPriceChanges] = useState([]);
+  const [stockChanges, setStockChanges] = useState([]);
+  const [stockChangesAccepted, setStockChangesAccepted] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [checkoutNotice, setCheckoutNotice] = useState("");
+  const restoredDraftHadAddressRef = useRef(false);
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [step, setStep] = useState(1);
@@ -136,44 +142,55 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!store?.id) return;
 
+    const draft = getCheckoutDraft(store.id);
+    restoredDraftHadAddressRef.current = Boolean(draft?.delivery?.address);
+
+    if (draft) {
+      setDelivery((current) => ({ ...current, ...draft.delivery }));
+      setSelectedAddressId(draft.selectedAddressId || "");
+      setPaymentMethod(draft.paymentMethod || "");
+      setTxnId(draft.txnId || "");
+      setCouponCode(draft.couponCode || "");
+      setPolicyAccepted(Boolean(draft.policyAccepted));
+      setStep(draft.step || 1);
+      setCheckoutNotice("Your saved checkout information has been restored.");
+    }
+
+    setDraftReady(true);
+  }, [store?.id]);
+
+  useEffect(() => {
+    if (!store?.id) return;
+
     const cartData = getCart(store.id);
     if (cartData.items.length === 0) {
       navigate({ to: "/shop", search: { store: subdomain } });
       return;
     }
 
-    const productIds = [...new Set(cartData.items.map((item) => item.productId))];
-
-    supabase
-      .from("products")
-      .select("id, price, stock, variants, has_variants, delivery_charge_mode, delivery_charge_dhaka, delivery_charge_outside_dhaka")
-      .in("id", productIds)
-      .then(({ data }) => {
-        if (data?.length) {
-          const deliveryRules = {};
-          data.forEach((product) => {
-            deliveryRules[product.id] = {
-              mode: product.delivery_charge_mode || "store_default",
-              dhaka: product.delivery_charge_dhaka,
-              outsideDhaka: product.delivery_charge_outside_dhaka,
-            };
-          });
-          setProductDeliveryRules(deliveryRules);
-          const changed = syncCartPrices(store.id, data);
-          if (changed.length) {
-            setPriceChanges(changed);
-            setPriceChangesAccepted(false);
-          }
-        }
-
-        if (getCart(store.id).items.length === 0) {
-          navigate({ to: "/shop", search: { store: subdomain } });
-          return;
-        }
-
-        setCartVersion((value) => value + 1);
-      });
+    refreshCartFromServer({ finalCheck: false });
   }, [store?.id, navigate, subdomain]);
+
+  useEffect(() => {
+    if (!store?.id || !draftReady || orderId) return;
+
+    const timer = window.setTimeout(() => {
+      persistCheckoutDraft();
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    store?.id,
+    draftReady,
+    orderId,
+    delivery,
+    selectedAddressId,
+    paymentMethod,
+    txnId,
+    couponCode,
+    policyAccepted,
+    step,
+  ]);
 
   useEffect(() => {
     if (!isLoggedIn || !customer?.id) return;
@@ -188,7 +205,7 @@ export default function CheckoutPage() {
         setSavedAddresses(rows);
 
         const defaultAddress = rows.find((address) => address.is_default);
-        if (defaultAddress) applySavedAddress(defaultAddress);
+        if (defaultAddress && !restoredDraftHadAddressRef.current) applySavedAddress(defaultAddress);
       });
   }, [isLoggedIn, customer?.id]);
 
@@ -294,6 +311,82 @@ export default function CheckoutPage() {
     }
   }, [availableMethods, paymentMethod]);
 
+  function persistCheckoutDraft(overrides = {}) {
+    if (!store?.id) return;
+
+    saveCheckoutDraft(store.id, {
+      delivery,
+      selectedAddressId,
+      paymentMethod,
+      txnId,
+      couponCode,
+      policyAccepted,
+      step,
+      ...overrides,
+    });
+  }
+
+  async function refreshCartFromServer({ finalCheck = false } = {}) {
+    if (!store?.id) return { ok: false, priceChanges: [], stockChanges: [] };
+
+    const cartData = getCart(store.id);
+    if (!cartData.items.length) {
+      navigate({ to: "/shop", search: { store: subdomain } });
+      return { ok: false, priceChanges: [], stockChanges: [] };
+    }
+
+    const productIds = [...new Set(cartData.items.map((item) => item.productId).filter(Boolean))];
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, title, price, stock, status, variants, has_variants, delivery_charge_mode, delivery_charge_dhaka, delivery_charge_outside_dhaka")
+      .in("id", productIds);
+
+    if (error) {
+      setPaymentError("Could not verify the latest prices and stock. Please try again.");
+      return { ok: false, priceChanges: [], stockChanges: [] };
+    }
+
+    const deliveryRules = {};
+    (data || []).forEach((product) => {
+      deliveryRules[product.id] = {
+        mode: product.delivery_charge_mode || "store_default",
+        dhaka: product.delivery_charge_dhaka,
+        outsideDhaka: product.delivery_charge_outside_dhaka,
+      };
+    });
+    setProductDeliveryRules(deliveryRules);
+
+    const result = reconcileCartWithProducts(store.id, data || []);
+    setCartVersion((value) => value + 1);
+
+    if (result.priceChanges.length) {
+      setPriceChanges(result.priceChanges);
+      setPriceChangesAccepted(false);
+      setAppliedCoupon(null);
+      if (couponCode.trim()) {
+        setCouponError("Prices changed. Please apply the coupon again after accepting the new prices.");
+      }
+    }
+
+    if (result.stockChanges.length) {
+      setStockChanges(result.stockChanges);
+      setStockChangesAccepted(false);
+    }
+
+    if (!getCart(store.id).items.length) {
+      navigate({ to: "/shop", search: { store: subdomain } });
+      return { ok: false, ...result };
+    }
+
+    const hasChanges = result.priceChanges.length > 0 || result.stockChanges.length > 0;
+    if (finalCheck && hasChanges) {
+      setPaymentError("Your cart changed while checking out. Review and confirm the updated cart before placing the order.");
+      setStep(2);
+    }
+
+    return { ok: !hasChanges, ...result };
+  }
+
   function applySavedAddress(address) {
     setSelectedAddressId(address.id);
     setDelivery((current) => ({
@@ -307,6 +400,7 @@ export default function CheckoutPage() {
   }
 
   function goToCustomerLogin() {
+    persistCheckoutDraft();
     navigate({
       to: "/customer/login",
       search: { redirect: `/checkout?store=${encodeURIComponent(subdomain)}` },
@@ -358,6 +452,10 @@ export default function CheckoutPage() {
   function handleStep2Next() {
     if (priceChanges.length > 0 && !priceChangesAccepted) {
       setPaymentError("Please accept the updated cart prices before reviewing the order.");
+      return;
+    }
+    if (stockChanges.length > 0 && !stockChangesAccepted) {
+      setPaymentError("Please acknowledge the stock adjustment before reviewing the order.");
       return;
     }
     if (validatePayment()) setStep(3);
@@ -416,75 +514,15 @@ export default function CheckoutPage() {
 
 
   async function verifyCartBeforeOrder() {
-    if (!store?.id || !items.length) return true;
-
-    const productIds = [...new Set(items.map((item) => item.productId).filter(Boolean))];
-    const { data: latestProducts, error } = await supabase
-      .from("products")
-      .select("id, title, price, stock, status, variants, has_variants")
-      .in("id", productIds);
-
-    if (error) {
-      setPaymentError("Could not verify latest product stock. Please try again.");
-      return false;
-    }
-
-    const productMap = new Map((latestProducts || []).map((product) => [product.id, product]));
-    const conflicts = [];
-    const updatedPrices = [];
-
-    for (const item of items) {
-      const product = productMap.get(item.productId);
-      if (!product || !["published", "active"].includes(product.status)) {
-        conflicts.push(`${item.title} is no longer available.`);
-        continue;
-      }
-
-      let latestStock = Number(product.stock || 0);
-      let latestPrice = Number(product.price || 0);
-
-      if (product.has_variants && item.variantId) {
-        const variants = Array.isArray(product.variants) ? product.variants : [];
-        const variant = variants.find((variantItem) => {
-          const id = variantItem.id || variantItem.combo || variantItem.label;
-          return id === item.variantId || variantItem.combo === item.variantLabel || variantItem.label === item.variantLabel;
-        });
-
-        if (!variant) {
-          conflicts.push(`${item.title} option is no longer available.`);
-          continue;
-        }
-
-        latestStock = Number(variant.stock || 0);
-        latestPrice = Number(variant.price || product.price || 0);
-      }
-
-      if (latestStock < Number(item.qty || 1)) conflicts.push(`Only ${latestStock} left for ${item.title}.`);
-      if (Number(item.price || 0) !== latestPrice) {
-        updatedPrices.push({ key: item.key, title: item.title, oldPrice: Number(item.price || 0), newPrice: latestPrice });
-      }
-    }
-
-    if (conflicts.length) {
-      setPaymentError(conflicts.join(" "));
-      setStep(2);
-      return false;
-    }
-
-    if (updatedPrices.length && !priceChangesAccepted) {
-      setPriceChanges(updatedPrices);
-      setPaymentError("Some product prices changed. Please review and accept updated prices before placing the order.");
-      setStep(2);
-      return false;
-    }
-
-    return true;
+    const result = await refreshCartFromServer({ finalCheck: true });
+    return result.ok;
   }
 
   async function placeOrder() {
-    if (authLoading) return;
+    if (authLoading || placing) return;
 
     if (!isLoggedIn || !customer) {
+      persistCheckoutDraft({ step: 3 });
       goToCustomerLogin();
       return;
     }
@@ -495,7 +533,14 @@ export default function CheckoutPage() {
     }
 
     if (priceChanges.length > 0 && !priceChangesAccepted) {
-      alert("Please accept the updated cart prices before placing the order.");
+      setPaymentError("Please accept the updated cart prices before placing the order.");
+      setStep(2);
+      return;
+    }
+
+    if (stockChanges.length > 0 && !stockChangesAccepted) {
+      setPaymentError("Please acknowledge the latest stock adjustment before placing the order.");
+      setStep(2);
       return;
     }
 
@@ -506,14 +551,28 @@ export default function CheckoutPage() {
 
     if (!validateDelivery() || !validatePayment()) return;
 
-    const cartStillValid = await verifyCartBeforeOrder();
-    if (!cartStillValid) return;
-
     setPlacing(true);
 
     try {
+      const cartStillValid = await verifyCartBeforeOrder();
+      if (!cartStillValid) return;
+
+      const freshCart = getCartTotals(store.id, 0);
+      if (!freshCart.items.length) {
+        navigate({ to: "/shop", search: { store: subdomain } });
+        return;
+      }
+
+      const freshSubtotal = freshCart.subtotal;
+      const freshTotalBeforeDiscount = freshSubtotal + deliveryCharge;
+      const freshDiscountAmount = Math.min(
+        Math.max(0, Number(appliedCoupon?.discount_amount || 0)),
+        freshTotalBeforeDiscount
+      );
+      const freshTotal = Math.max(0, freshTotalBeforeDiscount - freshDiscountAmount);
+
       const publicOrderId = makeOrderId();
-      const orderItems = items.map((item) => ({
+      const orderItems = freshCart.items.map((item) => ({
         product_id: item.productId,
         title: item.title,
         variant_id: item.variantId,
@@ -535,7 +594,7 @@ export default function CheckoutPage() {
         p_payment_status: paymentMethod === "cod" ? "pending" : "pending_verification",
         p_txn_id: txnId || null,
         p_items: orderItems,
-        p_total: total,
+        p_total: freshTotal,
         p_coupon_code: appliedCoupon?.code || null,
       });
 
@@ -548,17 +607,36 @@ export default function CheckoutPage() {
         storeId: store.id,
         eventType: "order_completed",
         path: window.location.pathname,
-        metadata: { order_id: createdOrderId, subtotal, delivery_charge: deliveryCharge, discount_amount: discountAmount, coupon_code: appliedCoupon?.code || null, total, payment_method: paymentMethod },
+        metadata: {
+          order_id: createdOrderId,
+          subtotal: freshSubtotal,
+          delivery_charge: deliveryCharge,
+          discount_amount: freshDiscountAmount,
+          coupon_code: appliedCoupon?.code || null,
+          total: freshTotal,
+          payment_method: paymentMethod,
+        },
       });
 
       clearCart(store.id);
+      clearCheckoutDraft(store.id);
       setOrderId(createdOrderId);
       setCartVersion((value) => value + 1);
     } catch (err) {
+      const message = err?.message || "Unknown error";
+      const isCartConflict = /only\s+\d+\s+left|product unavailable|selected variant is unavailable|order total changed|cart is empty/i.test(message);
+
+      if (isCartConflict) {
+        await refreshCartFromServer({ finalCheck: true });
+        setPaymentError("Price or stock changed before the order was finalized. Review the updated cart and try again.");
+        setStep(2);
+        return;
+      }
+
       alert(
         "Could not place the order: " +
-        (err.message || "Unknown error") +
-        "\n\nMake sure supabase-order-rpc-fix.sql has been run in Supabase SQL Editor."
+        message +
+        "\n\nMake sure the current customer checkout migration has been applied in Supabase."
       );
     } finally {
       setPlacing(false);
@@ -624,6 +702,35 @@ export default function CheckoutPage() {
         <p className="text-sm text-[var(--muted-foreground)] mb-8">{store?.shop_name}</p>
 
         <StepIndicator current={step} />
+
+        {checkoutNotice && (
+          <div className="mb-5 rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/30 p-4 text-sm text-green-800 dark:text-green-200">
+            <div className="flex items-center justify-between gap-3">
+              <span>{checkoutNotice}</span>
+              <button type="button" className="text-xs font-medium underline" onClick={() => setCheckoutNotice("")}>Dismiss</button>
+            </div>
+          </div>
+        )}
+
+        {stockChanges.length > 0 && (
+          <div className="mb-5 rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/30 p-4 text-sm text-orange-800 dark:text-orange-200">
+            <div className="flex items-center gap-2 font-semibold mb-2">
+              <AlertTriangle className="h-4 w-4" /> Stock changed while checking out
+            </div>
+            <ul className="list-disc list-inside space-y-1">
+              {stockChanges.map((change) => <li key={`${change.key}-${change.type}`}>{change.message}</li>)}
+            </ul>
+            <Button
+              type="button"
+              size="sm"
+              variant={stockChangesAccepted ? "outline" : "default"}
+              className="mt-3"
+              onClick={() => setStockChangesAccepted(true)}
+            >
+              {stockChangesAccepted ? "Stock update acknowledged" : "Acknowledge stock update"}
+            </Button>
+          </div>
+        )}
 
         {priceChanges.length > 0 && (
           <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/30 p-4 text-sm text-amber-800 dark:text-amber-200">

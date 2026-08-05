@@ -1,0 +1,102 @@
+{
+  "project": "BazarHQ",
+  "artifact": "Current SQL Migration Pack",
+  "type": "existing-database upgrade",
+  "migration_order": [
+    "0000_preflight.sql",
+    "0001_notifications_analytics.sql",
+    "0002_customer_checkout.sql",
+    "0003_payments.sql",
+    "0004_themes_policies.sql",
+    "0005_merchant_security_lifecycle.sql",
+    "0006_superadmin_production.sql",
+    "0007_rls_security.sql"
+  ],
+  "files": [
+    {
+      "path": "BazarHQ_CURRENT_ALL_IN_ONE.sql",
+      "bytes": 149147,
+      "sha256": "710c3fefcf845733bd8586a1b41e59868ae94a2a25efb414dc9e348d016d202e"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6831,
+      "sha256": "55d45771ae85a0d6e71e74c8804fadce0e964371e63c59684c0a932edc0c5ec4"
+    },
+    {
+      "path": "docs/CURRENT_SCHEMA_MANIFEST.md",
+      "bytes": 2502,
+      "sha256": "e6b53702cdb9d603a2629ff581d0c6a1e84b78c3adef2cdd77dcf40edcfde799"
+    },
+    {
+      "path": "docs/MIGRATION_MAP.md",
+      "bytes": 2494,
+      "sha256": "f5018b2814aa95c0e535e0e811d3284c512193f6233b31338100c54ded3bb27c"
+    },
+    {
+      "path": "docs/REMOVED_OR_REPLACED.md",
+      "bytes": 1233,
+      "sha256": "b2b66e70746a36243dece2d1e0a5930ac2f653316c92e1308a5c4e7785ef1851"
+    },
+    {
+      "path": "docs/STATIC_VALIDATION_REPORT.md",
+      "bytes": 2410,
+      "sha256": "ed1ab35206fdac2875c9f325a702888fa922172808e66b53443c5613ff8dbc19"
+    },
+    {
+      "path": "migrations/0000_preflight.sql",
+      "bytes": 1128,
+      "sha256": "12c263357152940a9ed432ceb061ab3a19ee1b2fb0a6f264570eba4a51bee63d"
+    },
+    {
+      "path": "migrations/0001_notifications_analytics.sql",
+      "bytes": 20807,
+      "sha256": "f3c2ebf340c19076a40eb826f87553a18d4522cba83fd95f5b2697b2df62263d"
+    },
+    {
+      "path": "migrations/0002_customer_checkout.sql",
+      "bytes": 29253,
+      "sha256": "99e8eae1cd9fe8d46e1569ff050891551eeafce8772abade32a049ebc576f05e"
+    },
+    {
+      "path": "migrations/0003_payments.sql",
+      "bytes": 10406,
+      "sha256": "b805a9e604ac21ad5d4e82227482091ea8d73ccdd8adf0c618ae06de1cdd2467"
+    },
+    {
+      "path": "migrations/0004_themes_policies.sql",
+      "bytes": 17247,
+      "sha256": "a36132a35a0db0d2db2dce39b1e8a2879e6d3b48a3566d6f6759e23b276de2af"
+    },
+    {
+      "path": "migrations/0005_merchant_security_lifecycle.sql",
+      "bytes": 16404,
+      "sha256": "f0db8060b87b25b0469f929b904e9d01e843a4c14f6df45faa56390ff36b1931"
+    },
+    {
+      "path": "migrations/0006_superadmin_production.sql",
+      "bytes": 31225,
+      "sha256": "5b509e80fe8342947ff9cf6e09ea22117194b829d839b5886d507765b019e235"
+    },
+    {
+      "path": "migrations/0007_rls_security.sql",
+      "bytes": 20930,
+      "sha256": "905de4d219bafcf53ee220db37277f25c014fd23f8bdc2721e74ad5e1a9ba93f"
+    },
+    {
+      "path": "optional/legacy_public_tracking_policy.NOT_RECOMMENDED.sql",
+      "bytes": 1262,
+      "sha256": "e11dddf0343ad519855fb677828c59ab5b2e834f4343d97d2880ec6101904ce6"
+    },
+    {
+      "path": "optional/seed_superadmin.template.sql",
+      "bytes": 1028,
+      "sha256": "c9beb269bc8e00d1553fe4d42bc280cb8f4ffd3b0b62eadf99857e52a4033dc2"
+    },
+    {
+      "path": "verification/verify_current_schema.sql",
+      "bytes": 5557,
+      "sha256": "591b91c805d6487912acd6f233492ca5f4f4f2f260b7a8f946497dfd04e85897"
+    }
+  ]
+}

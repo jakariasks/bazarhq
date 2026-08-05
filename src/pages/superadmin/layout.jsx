@@ -1,17 +1,19 @@
 import { useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
-import { Activity, BarChart3, Bell, FileText, Gauge, LogOut, Megaphone, Palette, Shield, Store, TerminalSquare } from 'lucide-react'
+import { Activity, BarChart3, Bell, FileText, Gauge, LogOut, Megaphone, Palette, Shield, Store, TerminalSquare, LockKeyhole, FileSpreadsheet } from 'lucide-react'
 import { AdminGuard, useAdminAuth } from '@/hooks/use-admin-auth'
 
 const navItems = [
   { href: '/superadmin', label: 'Dashboard', icon: Gauge },
   { href: '/superadmin/merchants', label: 'Merchants', icon: Store },
   { href: '/superadmin/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/superadmin/reports', label: 'Reports', icon: FileSpreadsheet },
   { href: '/superadmin/system-health', label: 'System Health', icon: Activity },
   { href: '/superadmin/themes', label: 'Themes', icon: Palette },
   { href: '/superadmin/announcements', label: 'Announcements', icon: Megaphone },
   { href: '/superadmin/content', label: 'Content & Policies', icon: FileText },
   { href: '/superadmin/audit-log', label: 'Audit Log', icon: TerminalSquare },
+  { href: '/superadmin/security', label: 'Security', icon: LockKeyhole },
 ]
 
 function AdminShell() {
