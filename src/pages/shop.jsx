@@ -11,28 +11,21 @@ import {
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { getStoreTheme, getThemeCssVars, themeDataAttributes } from "@/lib/theme-system";
 import { Button } from "@/components/ui/button";
-import ProductImageGallery from "@/components/product-image-gallery";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   CreditCard,
   Filter,
-  Info,
-  MessageSquare,
   Minus,
   Package,
   Search,
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
-  SlidersHorizontal,
   Sparkles,
   Star,
-  Tag,
   Truck,
   User,
   X,
@@ -245,13 +238,19 @@ function SectionHeader({ eyebrow, title, description, action }) {
   );
 }
 
-function RatingStars() {
+function RatingStars({ product }) {
+  const rating = toNumber(product?.average_rating ?? product?.rating, 0);
+  const count = toNumber(product?.rating_count ?? product?.review_count, 0);
+  const rounded = Math.round(rating);
+
   return (
-    <div className="flex items-center gap-1 text-amber-400" aria-label="Rating placeholder">
+    <div className="flex items-center gap-1 text-amber-400" aria-label={count ? `${rating.toFixed(1)} from ${count} reviews` : "No reviews yet"}>
       {[0, 1, 2, 3, 4].map((item) => (
-        <Star key={item} className="h-3.5 w-3.5 fill-current" />
+        <Star key={item} className={`h-3.5 w-3.5 ${item < rounded ? "fill-current" : "text-slate-300"}`} />
       ))}
-      <span className="ml-1 text-xs font-semibold text-slate-500 dark:text-slate-400">4.8</span>
+      <span className="ml-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+        {count ? `${rating.toFixed(1)} (${count})` : "New"}
+      </span>
     </div>
   );
 }
@@ -308,8 +307,10 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
   const discount = getDiscount(product);
   const requiresVariant = hasVariants(product);
   const productParam = String(product.slug || product.id);
+  const detailsParams = { storeSlug, productId: productParam };
 
   async function handleAddToCart(event) {
+    event.preventDefault();
     event.stopPropagation();
     setError("");
 
@@ -334,67 +335,63 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
   }
 
   return (
-    <article className="group shop-hover-lift shop-themed-card overflow-hidden rounded-[1.45rem] border border-slate-200/80 bg-white shadow-sm transition-all duration-500 hover:border-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-slate-950">
-      <div className="relative">
-        <button type="button" className="block w-full text-left" onClick={() => onView(product)}>
-          <ProductImage product={product} className="aspect-[4/3]" />
-        </button>
+    <article className="group shop-hover-lift shop-themed-card relative overflow-hidden rounded-[1.55rem] border border-slate-200/85 bg-white shadow-[0_12px_34px_-26px_rgba(15,23,42,.35)] transition-all duration-500 hover:border-[var(--shop-primary-ring)] hover:shadow-[0_28px_70px_-38px_rgba(15,23,42,.38)] dark:border-white/10 dark:bg-slate-950">
+      <div className="relative overflow-hidden">
+        <Link to="/shop/$storeSlug/product/$productId" params={detailsParams} className="block" aria-label={`View ${product.title}`}>
+          <ProductImage product={product} className="aspect-square" />
+        </Link>
 
-        <div className="absolute left-3 top-3 flex flex-col gap-2">
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-2">
           {discount > 0 && (
-            <span className="inline-flex w-fit items-center rounded-full bg-rose-500 px-2.5 py-1 text-xs font-black text-white shadow-sm">
+            <span className="inline-flex w-fit items-center rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-black text-white shadow-sm">
               -{discount}%
             </span>
           )}
           {isFeatured(product) && (
-            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-slate-900 shadow-sm backdrop-blur">
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/92 px-2.5 py-1 text-[11px] font-black text-slate-900 shadow-sm backdrop-blur">
               <Sparkles className="h-3 w-3 text-[var(--shop-primary)]" /> Featured
             </span>
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onView(product);
-          }}
-          className="absolute right-3 top-3 translate-y-1 rounded-full bg-white/90 p-2 text-slate-700 opacity-0 shadow-sm backdrop-blur transition duration-300 hover:bg-white hover:text-[var(--shop-primary)] group-hover:translate-y-0 group-hover:opacity-100"
-          aria-label="Quick view"
+        <Link
+          to="/shop/$storeSlug/product/$productId"
+          params={detailsParams}
+          className="absolute bottom-3 left-3 right-3 flex translate-y-2 items-center justify-between rounded-2xl bg-slate-950/88 px-3.5 py-2.5 text-xs font-black text-white opacity-0 shadow-lg backdrop-blur transition duration-300 group-hover:translate-y-0 group-hover:opacity-100"
         >
-          <Search className="h-4 w-4" />
-        </button>
+          View product details <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
       <div className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <span className="max-w-[55%] truncate rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">
             {product.category || "General"}
           </span>
-          <RatingStars />
+          <RatingStars product={product} />
         </div>
 
-        <button type="button" className="block text-left" onClick={() => onView(product)}>
-          <h3 className="line-clamp-2 min-h-[2.6rem] text-sm font-bold leading-snug text-slate-950 transition hover:text-[var(--shop-primary)] dark:text-white">
+        <Link to="/shop/$storeSlug/product/$productId" params={detailsParams} className="block">
+          <h3 className="line-clamp-2 min-h-[2.7rem] text-[13px] font-black leading-[1.35rem] text-slate-950 transition group-hover:text-[var(--shop-primary)] dark:text-white sm:text-sm">
             {product.title}
           </h3>
-        </button>
+        </Link>
 
         <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-lg font-black text-[var(--shop-primary)]">{money(price, currency)}</p>
+          <div className="min-w-0">
+            <p className="truncate text-lg font-black text-[var(--shop-primary)]">{money(price, currency)}</p>
             {compareAt > price && (
               <p className="text-xs font-semibold text-slate-400 line-through">{money(compareAt, currency)}</p>
             )}
           </div>
-          <span className={`text-xs font-bold ${outOfStock ? "text-rose-500" : lowStock ? "text-amber-600" : "text-emerald-600"}`}>
-            {outOfStock ? "Out of stock" : lowStock ? `${stock} left` : "In stock"}
+          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${outOfStock ? "bg-rose-50 text-rose-600" : lowStock ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+            {outOfStock ? "Out" : lowStock ? `${stock} left` : "In stock"}
           </span>
         </div>
 
         {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{error}</p>}
 
-        <div className="grid grid-cols-[1fr_auto] gap-2">
+        <div className="grid grid-cols-[1fr_auto] gap-2 border-t border-slate-100 pt-3 dark:border-white/10">
           <Button
             size="sm"
             className="rounded-xl bg-[var(--shop-primary)] text-white transition duration-300 hover:-translate-y-0.5 hover:opacity-90"
@@ -403,24 +400,14 @@ function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChan
           >
             {outOfStock ? "Out of stock" : requiresVariant ? "Choose option" : flash ? "Added" : adding ? "Adding..." : "Add to cart"}
           </Button>
-          {storeSlug ? (
-            <Link
-              to="/shop/$storeSlug/product/$productId"
-              params={{ storeSlug, productId: productParam }}
-              className="inline-flex h-9 items-center justify-center rounded-xl border border-input bg-background px-3 text-sm font-medium transition duration-300 hover:-translate-y-0.5 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)]"
-            >
-              Details
-            </Link>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              className="rounded-xl transition duration-300 hover:-translate-y-0.5 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)]"
-              onClick={() => onView(product)}
-            >
-              Details
-            </Button>
-          )}
+          <Link
+            to="/shop/$storeSlug/product/$productId"
+            params={detailsParams}
+            className="inline-flex h-9 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+            aria-label="Open product details"
+          >
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </div>
     </article>
@@ -508,100 +495,6 @@ function HeroSlider({ slides, activeSlide, setActiveSlide, shopName, className =
   );
 }
 
-function FiltersSidebar({
-  categories,
-  category,
-  setCategory,
-  sort,
-  setSort,
-  priceMin,
-  setPriceMin,
-  priceMax,
-  setPriceMax,
-  inStockOnly,
-  setInStockOnly,
-  discountOnly,
-  setDiscountOnly,
-  clearFilters,
-  showMobile,
-  onClose,
-}) {
-  const activeCount = Number(category !== "all") + Number(Boolean(priceMin)) + Number(Boolean(priceMax)) + Number(inStockOnly) + Number(discountOnly);
-
-  return (
-    <aside className={`${showMobile ? "block" : "hidden"} lg:block`}>
-      <div className="shop-animate sticky top-36 rounded-[1.35rem] border border-slate-200 bg-white p-4 shadow-sm transition duration-300 hover:shadow-lg dark:border-white/10 dark:bg-slate-950">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--shop-primary)]">Filters</p>
-            <h3 className="mt-1 text-base font-black text-slate-950 dark:text-white">Refine</h3>
-          </div>
-          <button type="button" className="rounded-full p-2 text-slate-500 hover:bg-slate-100 lg:hidden dark:hover:bg-white/10" onClick={onClose} aria-label="Close filters">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="shop-category-filter" className="mb-2 block text-xs font-black text-slate-950 dark:text-white">Category</label>
-            <select
-              id="shop-category-filter"
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-[var(--shop-primary)] focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-slate-950"
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-            >
-              {categories.map((item) => (
-                <option key={item.name} value={item.name}>
-                  {item.name === "all" ? "All products" : item.name} ({item.count})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="shop-sort-filter" className="mb-2 block text-xs font-black text-slate-950 dark:text-white">Sort</label>
-            <select
-              id="shop-sort-filter"
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-[var(--shop-primary)] focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-slate-950"
-              value={sort}
-              onChange={(event) => setSort(event.target.value)}
-            >
-              <option value="newest">Newest first</option>
-              <option value="price-asc">Price: low to high</option>
-              <option value="price-desc">Price: high to low</option>
-              <option value="discount">Best discount</option>
-              <option value="name">Name A-Z</option>
-            </select>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-black text-slate-950 dark:text-white">Price</p>
-            <div className="space-y-2">
-              <Input className="h-10 rounded-xl text-sm" placeholder="Min" type="number" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
-              <Input className="h-10 rounded-xl text-sm" placeholder="Max" type="number" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold transition hover:border-[var(--shop-primary)] dark:border-white/10">
-              <input type="checkbox" checked={inStockOnly} onChange={(event) => setInStockOnly(event.target.checked)} />
-              In stock only
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold transition hover:border-[var(--shop-primary)] dark:border-white/10">
-              <input type="checkbox" checked={discountOnly} onChange={(event) => setDiscountOnly(event.target.checked)} />
-              On offer only
-            </label>
-          </div>
-
-          <Button variant="outline" className="h-10 w-full rounded-xl text-sm" onClick={clearFilters}>
-            <Filter className="h-4 w-4" /> Clear {activeCount > 0 ? `(${activeCount})` : ""}
-          </Button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 function OfferSection({ store, product, currency, onView }) {
   if (store?.offer_enabled === false) return null;
 
@@ -623,7 +516,7 @@ function OfferSection({ store, product, currency, onView }) {
       : "Explore current offers, featured picks, and customer-friendly checkout from this merchant."
   );
   const badge = clampText(store?.offer_badge, "Limited offer");
-  const buttonText = clampText(store?.offer_button_text, product ? "Quick view" : "Shop products");
+  const buttonText = clampText(store?.offer_button_text, product ? "View product" : "Shop products");
 
   function handleAction() {
     if (product) onView(product);
@@ -664,297 +557,6 @@ function OfferSection({ store, product, currency, onView }) {
         </div>
       </div>
     </section>
-  );
-}
-
-function ProductModal({ product, currency, storeId, storeSlug, allProducts = [], onClose, onCartChange, onOpenCart }) {
-  const variants = normalizeVariants(product);
-  const [selectedVariantId, setSelectedVariantId] = useState(variants[0]?.id || null);
-  const [qty, setQty] = useState(1);
-  const [error, setError] = useState("");
-  const [flash, setFlash] = useState(false);
-  const [reviews, setReviews] = useState([]);
-  const [reviewLoading, setReviewLoading] = useState(true);
-
-  const selectedVariant = variants.find((variant) => variant.id === selectedVariantId) || null;
-  const currentStock = toNumber(selectedVariant?.stock ?? product.stock, 0);
-  const currentPrice = toNumber(selectedVariant?.price ?? product.price, 0);
-  const outOfStock = currentStock <= 0;
-  const images = getImages(product);
-  const routeProductId = String(product.slug || product.id);
-  const tags = getTags(product);
-
-  const relatedProducts = useMemo(() => {
-    const category = String(product.category || "").trim().toLowerCase();
-    return (allProducts || [])
-      .filter((item) => item?.id && item.id !== product.id)
-      .sort((a, b) => {
-        const aCategory = String(a.category || "").trim().toLowerCase();
-        const bCategory = String(b.category || "").trim().toLowerCase();
-        const aCategoryScore = category && aCategory === category ? 1 : 0;
-        const bCategoryScore = category && bCategory === category ? 1 : 0;
-        const aFeatured = isFeatured(a) ? 1 : 0;
-        const bFeatured = isFeatured(b) ? 1 : 0;
-        return (bCategoryScore - aCategoryScore) || (bFeatured - aFeatured) || (toNumber(b.stock, 0) - toNumber(a.stock, 0));
-      })
-      .slice(0, 4);
-  }, [allProducts, product.id, product.category]);
-
-  const reviewStats = useMemo(() => {
-    const count = reviews.length;
-    const average = count
-      ? reviews.reduce((sum, review) => sum + toNumber(review.rating, 0), 0) / count
-      : toNumber(product.average_rating, 0);
-    return { count: count || toNumber(product.rating_count, 0), average };
-  }, [reviews, product.average_rating, product.rating_count]);
-
-  useEffect(() => {
-    const nextVariants = normalizeVariants(product);
-    setSelectedVariantId(nextVariants.find((variant) => toNumber(variant.stock, 0) > 0)?.id || nextVariants[0]?.id || null);
-    setQty(1);
-    setError("");
-  }, [product.id]);
-
-  useEffect(() => {
-    setQty(1);
-    setError("");
-  }, [selectedVariantId]);
-
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    async function loadReviews() {
-      setReviewLoading(true);
-      const { data, error: reviewError } = await supabase
-        .from("product_reviews")
-        .select("id, rating, comment, customer_name, created_at")
-        .eq("product_id", product.id)
-        .eq("status", "approved")
-        .order("created_at", { ascending: false })
-        .limit(3);
-
-      if (!active) return;
-      if (reviewError) {
-        console.warn("[shop-quick-view] review load failed:", reviewError.message);
-        setReviews([]);
-      } else {
-        setReviews(data || []);
-      }
-      setReviewLoading(false);
-    }
-    loadReviews();
-    return () => { active = false; };
-  }, [product.id]);
-
-  function handleAddToCart() {
-    setError("");
-    const result = addToCart(storeId, getCartProduct(product), selectedVariant, qty);
-
-    if (!result.success) {
-      setError(result.message);
-      return;
-    }
-
-    setFlash(true);
-    onCartChange?.();
-    onOpenCart?.();
-    setTimeout(() => {
-      setFlash(false);
-      onClose();
-    }, 600);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/68 p-3 backdrop-blur-sm sm:p-5" onClick={onClose}>
-      <div className="shop-modal-enter max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl dark:bg-slate-950" onClick={(event) => event.stopPropagation()}>
-        <div className="grid lg:grid-cols-[1.02fr_.98fr]">
-          <div className="relative bg-slate-100 p-4 dark:bg-slate-900 sm:p-6">
-            <div className="lg:sticky lg:top-4">
-              <ProductImageGallery
-                images={images}
-                fallbackImage={product.image_url}
-                alt={product.title}
-                objectFit="contain"
-              />
-              {getDiscount(product) > 0 && <span className="absolute left-7 top-7 z-20 rounded-full bg-rose-500 px-3 py-1.5 text-sm font-black text-white">-{getDiscount(product)}%</span>}
-              <p className="mt-3 text-center text-xs font-semibold text-slate-500">Move your cursor over any part of the image to zoom that exact area.</p>
-            </div>
-          </div>
-
-          <div className="p-6 sm:p-8">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--shop-primary)]">{product.category || "General"}</p>
-                <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl dark:text-white">{product.title}</h2>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-1 text-amber-400">
-                    {[0, 1, 2, 3, 4].map((item) => (
-                      <Star key={item} className={`h-4 w-4 ${item < Math.round(reviewStats.average || 0) ? "fill-current" : ""}`} />
-                    ))}
-                  </div>
-                  <span className="text-xs font-bold text-slate-500">
-                    {reviewStats.count ? `${reviewStats.average.toFixed(1)} from ${reviewStats.count} review${reviewStats.count === 1 ? "" : "s"}` : "No reviews yet"}
-                  </span>
-                </div>
-              </div>
-              <button type="button" className="rounded-full border border-slate-200 p-2 transition hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10" onClick={onClose}>
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mt-6 space-y-5">
-              <div>
-                <p className="text-3xl font-black text-[var(--shop-primary)]">{money(currentPrice, currency)}</p>
-                {toNumber(product.compare_at_price, 0) > currentPrice && <p className="mt-1 text-sm font-semibold text-slate-400 line-through">{money(product.compare_at_price, currency)}</p>}
-              </div>
-
-              <div className={`flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold ${outOfStock ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}`}>
-                {outOfStock ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                {outOfStock ? "This item is currently out of stock." : `${currentStock} item${currentStock === 1 ? "" : "s"} available`}
-              </div>
-
-              {variants.length > 0 && (
-                <div>
-                  <p className="mb-3 text-sm font-black text-slate-950 dark:text-white">Choose option</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {variants.map((variant) => {
-                      const variantStock = toNumber(variant.stock, 0);
-                      const disabled = variantStock <= 0;
-                      const selected = selectedVariantId === variant.id;
-                      return (
-                        <button
-                          key={variant.id}
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => setSelectedVariantId(variant.id)}
-                          className={`rounded-2xl border px-4 py-3 text-left transition duration-300 disabled:cursor-not-allowed disabled:opacity-45 ${selected ? "border-[var(--shop-primary)] bg-[var(--shop-primary-soft)] text-[var(--shop-primary)]" : "border-slate-200 hover:border-[var(--shop-primary)] dark:border-white/10"}`}
-                        >
-                          <span className="block text-sm font-black">{variant.label}</span>
-                          <span className="mt-1 block text-xs text-slate-500">{money(variant.price, currency)} · {variantStock} available</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {!outOfStock && (
-                <div className="flex items-center justify-between rounded-2xl border border-slate-200 p-3 dark:border-white/10">
-                  <span className="text-sm font-black text-slate-950 dark:text-white">Quantity</span>
-                  <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-                    <button type="button" className="px-3 py-2 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10" disabled={qty <= 1} onClick={() => setQty((value) => Math.max(1, value - 1))}>
-                      <Minus className="h-4 w-4" />
-                    </button>
-                    <span className="min-w-10 text-center text-sm font-black">{qty}</span>
-                    <button type="button" className="px-3 py-2 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10" disabled={qty >= currentStock} onClick={() => setQty((value) => Math.min(currentStock, value + 1))}>+</button>
-                  </div>
-                </div>
-              )}
-
-              <div className="rounded-[1.45rem] border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
-                <div className="flex items-center gap-2">
-                  <Info className="h-4 w-4 text-[var(--shop-primary)]" />
-                  <p className="text-sm font-black text-slate-950 dark:text-white">Product information</p>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">Category</p><p className="mt-1 font-black text-slate-800 dark:text-white">{product.category || "General"}</p></div>
-                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">SKU</p><p className="mt-1 truncate font-black text-slate-800 dark:text-white">{product.sku || "Not provided"}</p></div>
-                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">Availability</p><p className="mt-1 font-black text-slate-800 dark:text-white">{outOfStock ? "Out of stock" : `${currentStock} available`}</p></div>
-                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">Images</p><p className="mt-1 font-black text-slate-800 dark:text-white">{Math.max(images.length, 1)} product image{images.length === 1 ? "" : "s"}</p></div>
-                </div>
-                {product.description && <p className="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-300">{product.description}</p>}
-                {tags.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {tags.slice(0, 8).map((tag) => <span key={tag} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-600 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300">{tag}</span>)}
-                  </div>
-                )}
-              </div>
-
-              {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Button className="h-12 rounded-2xl bg-[var(--shop-primary)] text-white transition hover:-translate-y-0.5 hover:opacity-90" disabled={outOfStock} onClick={handleAddToCart}>
-                  <ShoppingCart className="h-4 w-4" /> {flash ? "Added to cart" : outOfStock ? "Out of stock" : "Add to cart"}
-                </Button>
-                <Link
-                  to="/shop/$storeSlug/product/$productId"
-                  params={{ storeSlug, productId: routeProductId }}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 transition hover:-translate-y-0.5 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950 dark:text-white"
-                >
-                  Full details & reviews <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-
-              <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 dark:bg-white/5 dark:text-slate-300">
-                <div className="flex items-center gap-2"><Truck className="h-4 w-4 text-[var(--shop-primary)]" /> Fast local delivery</div>
-                <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[var(--shop-primary)]" /> Secure checkout</div>
-                <div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-[var(--shop-primary)]" /> bKash, Nagad, Rocket and COD supported</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-200 px-5 py-6 dark:border-white/10 sm:px-8">
-          <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
-            <section>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.16em] text-[var(--shop-primary)]"><MessageSquare className="h-4 w-4" /> Recent reviews</p>
-                  <h3 className="mt-2 text-xl font-black text-slate-950 dark:text-white">What customers say</h3>
-                </div>
-                <Link to="/shop/$storeSlug/product/$productId" params={{ storeSlug, productId: routeProductId }} className="text-xs font-black text-[var(--shop-primary)]">View all</Link>
-              </div>
-              <div className="mt-4 space-y-3">
-                {reviewLoading ? (
-                  <div className="h-24 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/5" />
-                ) : reviews.length ? reviews.map((review) => (
-                  <article key={review.id} className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-                    <div className="flex items-start justify-between gap-3">
-                      <div><p className="text-sm font-black text-slate-900 dark:text-white">{review.customer_name || "Verified customer"}</p><p className="mt-1 text-[11px] text-slate-400">{new Date(review.created_at).toLocaleDateString()}</p></div>
-                      <div className="flex gap-0.5 text-amber-400">{[0, 1, 2, 3, 4].map((item) => <Star key={item} className={`h-3.5 w-3.5 ${item < toNumber(review.rating, 0) ? "fill-current" : ""}`} />)}</div>
-                    </div>
-                    <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{review.comment}</p>
-                  </article>
-                )) : (
-                  <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-white/10">No approved review yet. Open full details to be the first verified reviewer.</div>
-                )}
-              </div>
-            </section>
-
-            <section>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[.16em] text-[var(--shop-primary)]">Recommended from this shop</p>
-                  <h3 className="mt-2 text-xl font-black text-slate-950 dark:text-white">You may also like</h3>
-                </div>
-                <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-1 text-xs font-black text-[var(--shop-primary)]">Shop all <ChevronRight className="h-3.5 w-3.5" /></Link>
-              </div>
-              {relatedProducts.length ? (
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-                  {relatedProducts.map((item) => {
-                    const image = getImage(item);
-                    return (
-                      <Link key={item.id} to="/shop/$storeSlug/product/$productId" params={{ storeSlug, productId: String(item.slug || item.id) }} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-1 hover:border-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950">
-                        <div className="aspect-square overflow-hidden bg-slate-100 dark:bg-white/5">{image ? <img src={image} alt={item.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center"><Package className="h-8 w-8 text-slate-300" /></div>}</div>
-                        <div className="p-3"><p className="line-clamp-2 min-h-9 text-xs font-black text-slate-900 dark:text-white">{item.title}</p><p className="mt-2 text-sm font-black text-[var(--shop-primary)]">{money(item.price, currency)}</p></div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-white/10">No other published products are available from this shop yet.</div>
-              )}
-            </section>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1108,8 +710,6 @@ export default function ShopPage() {
   const [priceMax, setPriceMax] = useState("");
   const [inStockOnly, setInStockOnly] = useState(false);
   const [discountOnly, setDiscountOnly] = useState(false);
-  const [showFilter, setShowFilter] = useState(false);
-  const [viewProduct, setViewProduct] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
 
@@ -1224,7 +824,7 @@ export default function ShopPage() {
     const byDiscount = [...products].sort((a, b) => getDiscount(b) - getDiscount(a));
 
     return {
-      featured: (featured.length ? featured : byNewest).slice(0, 4),
+      featured: (featured.length ? featured : byNewest).slice(0, 6),
       deal: byDiscount.find((product) => getDiscount(product) > 0) || products.find((product) => getStock(product) > 0) || null,
     };
   }, [products]);
@@ -1330,6 +930,14 @@ export default function ShopPage() {
     return () => observer.disconnect();
   }, [status, filtered.length, products.length, category, search, sort, priceMin, priceMax, inStockOnly, discountOnly]);
 
+
+  const openProductDetails = useCallback((product) => {
+    if (!product || !subdomain) return;
+    navigate({
+      to: "/shop/$storeSlug/product/$productId",
+      params: { storeSlug: subdomain, productId: String(product.slug || product.id) },
+    });
+  }, [navigate, subdomain]);
 
   function clearFilters() {
     setSearch("");
@@ -1447,13 +1055,14 @@ export default function ShopPage() {
            theme rules so the merchant-selected theme cannot revert the updated
            hero size or marketplace-style grid. */
         .shop-hero-shell {
-          width: 90% !important;
-          max-width: 1520px !important;
-          min-height: 390px !important;
-          margin: 1rem auto 0 !important;
-          border-radius: 2rem !important;
+          width: 100% !important;
+          max-width: none !important;
+          min-height: 420px !important;
+          margin: 0 !important;
+          border-radius: 0 !important;
+          border-inline: 0 !important;
         }
-        .shop-hero-inner { min-height: 390px !important; }
+        .shop-hero-inner { min-height: 420px !important; }
         .shop-featured-grid,
         .shop-product-grid {
           display: grid !important;
@@ -1479,13 +1088,13 @@ export default function ShopPage() {
         }
         @media (max-width: 767px) {
           .shop-hero-shell {
-            width: calc(100% - 1rem) !important;
-            min-height: 420px !important;
-            margin-top: .5rem !important;
-            border-radius: 1.4rem !important;
+            width: 100% !important;
+            min-height: 390px !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
           }
           .shop-hero-inner {
-            min-height: 420px !important;
+            min-height: 390px !important;
             padding-top: 2.25rem !important;
             padding-bottom: 2.25rem !important;
           }
@@ -1495,6 +1104,17 @@ export default function ShopPage() {
           .shop-featured-grid .shop-themed-card > div:last-child { padding: .85rem !important; }
           .shop-product-grid .shop-themed-card h3,
           .shop-featured-grid .shop-themed-card h3 { font-size: .82rem !important; line-height: 1.25rem !important; }
+        }
+        .shop-themed-card { overflow: hidden; }
+        .shop-themed-card img { transform-origin: center; }
+        .shop-category-strip { scrollbar-width: thin; scrollbar-color: var(--shop-primary) transparent; }
+        .shop-inline-filter select,
+        .shop-inline-filter input { min-width: 0; }
+        @media (max-width: 639px) {
+          .shop-product-grid .shop-themed-card > div:last-child,
+          .shop-featured-grid .shop-themed-card > div:last-child { padding: .72rem !important; }
+          .shop-product-grid .shop-themed-card h3,
+          .shop-featured-grid .shop-themed-card h3 { font-size: .78rem !important; line-height: 1.12rem !important; }
         }
         [data-theme-layout="minimal"] .shop-hero-copy { color: var(--shop-text) !important; }
         [data-theme-layout="minimal"] .shop-hero-copy h1, [data-theme-layout="minimal"] .shop-hero-copy p { color: var(--shop-text) !important; }
@@ -1638,30 +1258,81 @@ export default function ShopPage() {
         </section>
       )}
 
-      <section className="sticky top-16 z-30 border-y border-slate-200 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/95">
-        <div className="mx-auto w-[90%] max-w-[92rem] py-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-              <Input
-                placeholder="Search products, category, or tags..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-12 pr-12 text-base transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5"
-              />
-              {search && (
-                <button className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" onClick={() => setSearch("")} type="button">
-                  <X className="h-5 w-5" />
+      <section className="border-y border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950">
+        <div className="mx-auto w-[94%] max-w-[92rem] py-4">
+          <div className="shop-category-strip flex items-center gap-2 overflow-x-auto pb-2">
+            {categories.map((item) => {
+              const active = category === item.name;
+              return (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() => setCategory(item.name)}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs font-black transition ${active ? "border-[var(--shop-primary)] bg-[var(--shop-primary)] text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-300"}`}
+                >
+                  {item.name === "all" ? "All categories" : item.name}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/18 text-white" : "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300"}`}>{item.count}</span>
                 </button>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              className="h-12 rounded-2xl lg:hidden"
-              onClick={() => setShowFilter((value) => !value)}
+              );
+            })}
+          </div>
+
+          <div className="relative mt-3">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Input
+              placeholder="Search products, category, or tags..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="h-13 rounded-2xl border-slate-200 bg-slate-50 pl-12 pr-12 text-base font-semibold transition focus:bg-white focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5"
+            />
+            {search && (
+              <button className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-200" onClick={() => setSearch("")} type="button" aria-label="Clear search">
+                <X className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+
+          <div className="shop-inline-filter mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-white/10 dark:bg-white/5">
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value)}
+              className="h-10 min-w-[150px] flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold outline-none focus:border-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950 sm:flex-none"
+              aria-label="Sort products"
             >
-              <SlidersHorizontal className="h-4 w-4" /> Filter <ChevronDown className={`h-4 w-4 transition ${showFilter ? "rotate-180" : ""}`} />
-            </Button>
+              <option value="newest">Newest first</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="price-desc">Price: high to low</option>
+              <option value="discount">Best discount</option>
+              <option value="name">Name A-Z</option>
+            </select>
+
+            <Input className="h-10 w-[112px] rounded-xl bg-white text-xs dark:bg-slate-950" placeholder="Min price" type="number" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
+            <Input className="h-10 w-[112px] rounded-xl bg-white text-xs dark:bg-slate-950" placeholder="Max price" type="number" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
+
+            <button
+              type="button"
+              onClick={() => setInStockOnly((value) => !value)}
+              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${inStockOnly ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
+            >
+              In stock
+            </button>
+            <button
+              type="button"
+              onClick={() => setDiscountOnly((value) => !value)}
+              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${discountOnly ? "border-rose-500 bg-rose-500 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-rose-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
+            >
+              On offer
+            </button>
+
+            {(search || category !== "all" || sort !== "newest" || priceMin || priceMax || inStockOnly || discountOnly) && (
+              <button type="button" onClick={clearFilters} className="h-10 rounded-xl px-3 text-xs font-black text-[var(--shop-primary)] transition hover:bg-[var(--shop-primary-soft)]">
+                Clear all
+              </button>
+            )}
+
+            <span className="ml-auto rounded-full bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm dark:bg-slate-950 dark:text-slate-300">
+              {filtered.length} result{filtered.length === 1 ? "" : "s"}
+            </span>
           </div>
         </div>
       </section>
@@ -1674,7 +1345,7 @@ export default function ShopPage() {
             currency={currency}
             storeId={store.id}
             storeSlug={subdomain}
-            onView={setViewProduct}
+            onView={openProductDetails}
             onCartChange={refreshCartCount}
             onOpenCart={() => setCartOpen(true)}
           />
@@ -1692,58 +1363,37 @@ export default function ShopPage() {
             }
           />
 
-          <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)]">
-            <FiltersSidebar
-              categories={categories}
-              category={category}
-              setCategory={setCategory}
-              sort={sort}
-              setSort={setSort}
-              priceMin={priceMin}
-              setPriceMin={setPriceMin}
-              priceMax={priceMax}
-              setPriceMax={setPriceMax}
-              inStockOnly={inStockOnly}
-              setInStockOnly={setInStockOnly}
-              discountOnly={discountOnly}
-              setDiscountOnly={setDiscountOnly}
-              clearFilters={clearFilters}
-              showMobile={showFilter}
-              onClose={() => setShowFilter(false)}
-            />
-
-            <div>
-              {filtered.length === 0 ? (
-                <div className="shop-product-surface rounded-[2rem] border border-dashed border-slate-300 bg-white p-12 text-center dark:border-white/10 dark:bg-slate-950">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--shop-primary-soft)] text-[var(--shop-primary)]">
-                    <Search className="h-8 w-8" />
+          <div>
+            {filtered.length === 0 ? (
+              <div className="shop-product-surface rounded-[2rem] border border-dashed border-slate-300 bg-white p-12 text-center dark:border-white/10 dark:bg-slate-950">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--shop-primary-soft)] text-[var(--shop-primary)]">
+                  <Search className="h-8 w-8" />
+                </div>
+                <h3 className="text-lg font-black">No products found</h3>
+                <p className="mt-2 text-sm text-slate-500">Try another category, keyword, price range, or filter.</p>
+                <Button className="mt-5 rounded-xl" variant="outline" onClick={clearFilters}>Reset filters</Button>
+              </div>
+            ) : (
+              <div className="shop-product-grid grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                {filtered.map((product, index) => (
+                  <div key={product.id} className="shop-animate" style={{ animationDelay: `${Math.min(index, 8) * 55}ms` }}>
+                    <ProductCard
+                      product={product}
+                      currency={currency}
+                      storeId={store.id}
+                      storeSlug={subdomain}
+                      onView={openProductDetails}
+                      onCartChange={refreshCartCount}
+                      onOpenCart={() => setCartOpen(true)}
+                    />
                   </div>
-                  <h3 className="text-lg font-black">No products found</h3>
-                  <p className="mt-2 text-sm text-slate-500">Try a different keyword, category, price range, or filter.</p>
-                  <Button className="mt-5 rounded-xl" variant="outline" onClick={clearFilters}>Reset search</Button>
-                </div>
-              ) : (
-                <div className="shop-product-grid grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                  {filtered.map((product, index) => (
-                    <div key={product.id} className="shop-animate" style={{ animationDelay: `${Math.min(index, 8) * 55}ms` }}>
-                      <ProductCard
-                        product={product}
-                        currency={currency}
-                        storeId={store.id}
-                        storeSlug={subdomain}
-                        onView={setViewProduct}
-                        onCartChange={refreshCartCount}
-                        onOpenCart={() => setCartOpen(true)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
-        <OfferSection store={store} product={collections.deal} currency={currency} onView={setViewProduct} />
+        <OfferSection store={store} product={collections.deal} currency={currency} onView={openProductDetails} />
       </main>
 
       <footer className="shop-scroll-reveal border-t border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950">
@@ -1788,18 +1438,6 @@ export default function ShopPage() {
         </div>
       </footer>
 
-      {viewProduct && (
-        <ProductModal
-          product={viewProduct}
-          currency={currency}
-          storeId={store.id}
-          storeSlug={subdomain}
-          allProducts={products}
-          onClose={() => setViewProduct(null)}
-          onCartChange={refreshCartCount}
-          onOpenCart={() => setCartOpen(true)}
-        />
-      )}
 
       <CartDrawer
         open={cartOpen}
