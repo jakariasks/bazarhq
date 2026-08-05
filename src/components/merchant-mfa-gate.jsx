@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Copy, KeyRound, Loader2, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Copy, KeyRound, Loader2, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/integrations/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,13 @@ import {
   generateRecoveryCodes,
   getRecoveryStatus,
   heartbeatMerchantSession,
+  isMerchantAuthMissing,
+  isMerchantSessionRevoked,
   recoverMfaWithCode,
 } from '@/lib/merchant-security-api'
+
+const HEARTBEAT_INTERVAL_MS = 120_000
+const FAILURE_WARNING_THRESHOLD = 3
 
 function verifiedTotp(data) {
   return [...(data?.totp || []), ...(data?.factors || [])]
@@ -34,14 +39,37 @@ export function MerchantMfaGate({ user, children }) {
   const [submitting, setSubmitting] = useState(false)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
   const [allowed, setAllowed] = useState(false)
+  const [securityError, setSecurityError] = useState('')
   const [enrollData, setEnrollData] = useState(null)
   const [recoveryCodes, setRecoveryCodes] = useState([])
   const [codesSaved, setCodesSaved] = useState(false)
+  const redirectingRef = useRef(false)
+  const heartbeatFailuresRef = useRef(0)
+  const heartbeatWarningShownRef = useRef(false)
 
   const cleanCode = useMemo(() => code.replace(/\s/g, '').toUpperCase(), [code])
 
+  const redirectToLogin = useCallback(async () => {
+    if (redirectingRef.current) return
+    redirectingRef.current = true
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => supabase.auth.signOut().catch(() => null))
+    window.location.replace('/login')
+  }, [])
+
+  const localSessionExists = useCallback(async () => {
+    const { data } = await supabase.auth.getSession().catch(() => ({ data: null }))
+    return Boolean(data?.session)
+  }, [])
+
+  const shouldEndSession = useCallback(async (error) => {
+    if (isMerchantSessionRevoked(error)) return true
+    if (!isMerchantAuthMissing(error)) return false
+    return !(await localSessionExists())
+  }, [localSessionExists])
+
   const inspect = useCallback(async () => {
     setLoading(true)
+    setSecurityError('')
     try {
       const [{ data: assurance, error: assuranceError }, { data: factors, error: factorsError }, recovery] = await Promise.all([
         supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
@@ -50,6 +78,7 @@ export function MerchantMfaGate({ user, children }) {
       ])
       if (assuranceError) throw assuranceError
       if (factorsError) throw factorsError
+
       const totp = verifiedTotp(factors)
       setFactor(totp || null)
       setRecoveryRequired(Boolean(recovery?.recoveryRequired))
@@ -65,36 +94,95 @@ export function MerchantMfaGate({ user, children }) {
         return
       }
 
-      await heartbeatMerchantSession().catch((error) => {
-        if (/revoked/i.test(error.message)) throw error
-      })
+      try {
+        const heartbeat = await heartbeatMerchantSession({ force: true })
+        if (heartbeat?.revoked) throw Object.assign(new Error('Session revoked'), { code: 'SESSION_REVOKED' })
+        heartbeatFailuresRef.current = 0
+        heartbeatWarningShownRef.current = false
+      } catch (heartbeatError) {
+        if (await shouldEndSession(heartbeatError)) {
+          await redirectToLogin()
+          return
+        }
+        // Session registry/network failure must never sign out a valid merchant.
+        console.warn('Merchant session heartbeat is temporarily unavailable:', heartbeatError?.message)
+      }
+
       setAllowed(true)
     } catch (error) {
-      if (/revoked|unauthorized/i.test(error?.message || '')) {
-        await supabase.auth.signOut().catch(() => null)
-        window.location.href = '/login'
+      if (await shouldEndSession(error)) {
+        await redirectToLogin()
         return
       }
-      toast.error(error?.message || 'Could not verify account security.')
+      setAllowed(false)
+      setSecurityError(error?.message || 'Account security could not be verified right now.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [redirectToLogin, shouldEndSession])
 
   useEffect(() => { inspect() }, [inspect, user?.id])
 
   useEffect(() => {
     if (!allowed) return undefined
-    const timer = window.setInterval(() => {
-      heartbeatMerchantSession().then((data) => {
-        if (data?.revoked) throw new Error('Session revoked')
-      }).catch(async () => {
-        await supabase.auth.signOut().catch(() => null)
-        window.location.href = '/login'
-      })
-    }, 60_000)
-    return () => window.clearInterval(timer)
-  }, [allowed])
+
+    let cancelled = false
+    let timerId = null
+
+    const schedule = () => {
+      if (cancelled) return
+      timerId = window.setTimeout(runHeartbeat, HEARTBEAT_INTERVAL_MS)
+    }
+
+    const runHeartbeat = async () => {
+      if (cancelled) return
+      if (document.visibilityState === 'hidden' || navigator.onLine === false) {
+        schedule()
+        return
+      }
+
+      try {
+        const data = await heartbeatMerchantSession()
+        if (data?.revoked) throw Object.assign(new Error('Session revoked'), { code: 'SESSION_REVOKED' })
+        heartbeatFailuresRef.current = 0
+        heartbeatWarningShownRef.current = false
+      } catch (error) {
+        if (await shouldEndSession(error)) {
+          await redirectToLogin()
+          return
+        }
+
+        heartbeatFailuresRef.current += 1
+        console.warn('Merchant heartbeat failed without ending the local session:', error?.message)
+
+        if (
+          heartbeatFailuresRef.current >= FAILURE_WARNING_THRESHOLD &&
+          !heartbeatWarningShownRef.current
+        ) {
+          heartbeatWarningShownRef.current = true
+          toast.warning('Session status could not be refreshed. You are still signed in; BazarHQ will retry automatically.')
+        }
+      } finally {
+        schedule()
+      }
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') heartbeatMerchantSession().catch(() => null)
+    }
+    const onOnline = () => heartbeatMerchantSession({ force: true }).catch(() => null)
+
+    schedule()
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('online', onOnline)
+
+    return () => {
+      cancelled = true
+      if (timerId) window.clearTimeout(timerId)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [allowed, redirectToLogin, shouldEndSession])
 
   async function verifyTotp() {
     if (!factor || !/^\d{6}$/.test(cleanCode)) return toast.error('Enter the 6-digit authenticator code.')
@@ -118,8 +206,7 @@ export function MerchantMfaGate({ user, children }) {
     try {
       const data = await recoverMfaWithCode(cleanCode)
       toast.success(data?.message || 'Authenticator reset. Sign in again.')
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => supabase.auth.signOut())
-      window.location.href = '/login'
+      await redirectToLogin()
     } catch (error) {
       toast.error(error?.message || 'Invalid or already used recovery code.')
     } finally {
@@ -176,6 +263,19 @@ export function MerchantMfaGate({ user, children }) {
   if (loading) return <GateCard><div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div></GateCard>
   if (allowed) return <>{children}</>
 
+  if (securityError) {
+    return (
+      <GateCard>
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-700"><AlertTriangle className="h-7 w-7" /></div>
+        <h1 className="mt-5 text-center text-2xl font-semibold">Security check temporarily unavailable</h1>
+        <p className="mt-2 text-center text-sm leading-6 text-muted-foreground">{securityError}</p>
+        <p className="mt-2 text-center text-xs leading-5 text-muted-foreground">Your account was not signed out. Retry after checking your internet connection.</p>
+        <Button className="mt-6 w-full gap-2" onClick={inspect}><RefreshCw className="h-4 w-4" />Retry security check</Button>
+        <Button variant="ghost" className="mt-2 w-full" onClick={redirectToLogin}>Sign out</Button>
+      </GateCard>
+    )
+  }
+
   if (mode === 'reenroll' || (!factor && recoveryRequired)) {
     return (
       <GateCard>
@@ -203,7 +303,7 @@ export function MerchantMfaGate({ user, children }) {
             <Button className="w-full" disabled={!codesSaved} onClick={finishRecovery}>Continue to dashboard</Button>
           </div>
         )}
-        <Button variant="ghost" className="mt-2 w-full" onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login' }}>Sign out</Button>
+        <Button variant="ghost" className="mt-2 w-full" onClick={redirectToLogin}>Sign out</Button>
       </GateCard>
     )
   }
@@ -228,7 +328,7 @@ export function MerchantMfaGate({ user, children }) {
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === 'totp' ? <ShieldCheck className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
         {mode === 'totp' ? 'Verify and continue' : 'Reset authenticator'}
       </Button>
-      <Button variant="ghost" className="mt-2 w-full" onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login' }}>Sign out</Button>
+      <Button variant="ghost" className="mt-2 w-full" onClick={redirectToLogin}>Sign out</Button>
     </GateCard>
   )
 }

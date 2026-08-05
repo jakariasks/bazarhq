@@ -13,6 +13,10 @@ export function json(body: unknown, status = 200) {
   })
 }
 
+function authError(code: string, message: string, status = 401) {
+  return json({ error: message, code, retryable: false }, status)
+}
+
 export function adminClient(): SupabaseClient {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -40,10 +44,12 @@ export function decodeJwt(token: string): Record<string, unknown> {
 
 export async function requireUser(req: Request) {
   const token = bearer(req)
-  if (!token) throw new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  if (!token) throw authError('AUTH_MISSING', 'Login session is missing.')
+
   const admin = adminClient()
   const { data, error } = await admin.auth.getUser(token)
-  if (error || !data.user) throw new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  if (error || !data.user) throw authError('AUTH_INVALID', 'Login session is invalid or expired.')
+
   return { admin, user: data.user as User, token, claims: decodeJwt(token) }
 }
 
