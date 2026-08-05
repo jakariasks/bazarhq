@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Settings2, Eye, EyeOff, Loader2, AlertCircle, Lock, CreditCard, ShieldCheck } from 'lucide-react'
+import { Check, Settings2, Eye, EyeOff, Loader2, AlertCircle, Lock, CreditCard, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Switch } from '@/components/ui/switch'
@@ -14,44 +14,17 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 
 const METHODS = [
+  { id: 'bkash', name: 'bKash', logo: '🔴', color: '#E2136E', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
+  { id: 'nagad', name: 'Nagad', logo: '🟠', color: '#F7941D', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
+  { id: 'rocket', name: 'Rocket (DBBL)', logo: '🟣', color: '#8B3FC8', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
   {
-    id: 'bkash',
-    name: 'bKash',
-    logo: '🔴',
-    color: '#E2136E',
-    fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }],
-  },
-  {
-    id: 'nagad',
-    name: 'Nagad',
-    logo: '🟠',
-    color: '#F7941D',
-    fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }],
-  },
-  {
-    id: 'rocket',
-    name: 'Rocket (DBBL)',
-    logo: '🟣',
-    color: '#8B3FC8',
-    fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }],
-  },
-  {
-    id: 'ssl',
-    name: 'SSLCommerz (Cards)',
-    logo: '💳',
-    color: '#2563EB',
+    id: 'ssl', name: 'SSLCommerz (Cards)', logo: '💳', color: '#2563EB',
     fields: [
-      { key: 'ssl_store_id', label: 'SSL Store ID', placeholder: 'your_ssl_store_id' },
-      { key: 'store_password', label: 'SSL Store Password', placeholder: '••••••••', secret: true },
+      { key: 'ssl_store_id', label: 'SSL Store ID', placeholder: 'Your SSLCommerz Store ID' },
+      { key: 'store_password', label: 'SSL Store Password', placeholder: 'Enter the gateway password', secret: true },
     ],
   },
-  {
-    id: 'cod',
-    name: 'Cash on Delivery',
-    logo: '💵',
-    color: '#16A34A',
-    fields: [],
-  },
+  { id: 'cod', name: 'Cash on Delivery', logo: '💵', color: '#16A34A', fields: [] },
 ]
 
 function maskValue(value) {
@@ -63,18 +36,9 @@ function maskValue(value) {
 
 function isConfigured(method, config) {
   if (!method) return false
+  if (method.id === 'ssl') return Boolean(config?.ssl_credentials_valid && config?.ssl_store_id)
   if (method.fields.length === 0) return true
   return method.fields.every((field) => String(config?.[field.key] || '').trim().length > 0)
-}
-
-function normalizeRow(row) {
-  return {
-    ...row,
-    enabled: !!row.enabled,
-    // Backward safety: old code accidentally displayed parent store_id as a credential.
-    // Only ssl_store_id is treated as SSLCommerz credential now.
-    ssl_store_id: row.ssl_store_id || '',
-  }
 }
 
 export default function PaymentsPage() {
@@ -88,31 +52,28 @@ export default function PaymentsPage() {
   const [activeMethod, setActiveMethod] = useState(null)
   const [fieldValues, setFieldValues] = useState({})
   const [showFields, setShowFields] = useState({})
+  const [sslLive, setSslLive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toggleSaving, setToggleSaving] = useState('')
 
-  const enabledCount = useMemo(
-    () => METHODS.filter((method) => configs[method.id]?.enabled).length,
-    [configs]
-  )
+  const enabledCount = useMemo(() => METHODS.filter((method) => configs[method.id]?.enabled).length, [configs])
 
   useEffect(() => {
     if (!store?.id) {
       setLoading(false)
       return
     }
-
     loadConfigs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store?.id])
 
   async function loadConfigs() {
     if (!store?.id) return
-
     setLoading(true)
+
     const { data, error } = await supabase
       .from('payment_configs')
-      .select('id, store_id, method, enabled, merchant_number, ssl_store_id, store_password, created_at, updated_at')
+      .select('id, store_id, method, enabled, merchant_number, ssl_store_id, is_live, ssl_credentials_valid, ssl_credentials_checked_at, ssl_credentials_error, created_at, updated_at')
       .eq('store_id', store.id)
       .order('created_at', { ascending: true })
 
@@ -124,29 +85,19 @@ export default function PaymentsPage() {
     }
 
     const map = {}
-    for (const row of data || []) map[row.method] = normalizeRow(row)
+    for (const row of data || []) map[row.method] = { ...row, enabled: Boolean(row.enabled) }
     setConfigs(map)
     setLoading(false)
   }
 
   async function saveRow(methodId, patch) {
     const existing = configs[methodId]
-
     if (existing?.id) {
-      const { error } = await supabase
-        .from('payment_configs')
-        .update({ ...patch, updated_at: new Date().toISOString() })
-        .eq('id', existing.id)
-        .eq('store_id', store.id)
-
+      const { error } = await supabase.from('payment_configs').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id).eq('store_id', store.id)
       if (error) throw error
       return
     }
-
-    const { error } = await supabase
-      .from('payment_configs')
-      .insert({ store_id: store.id, method: methodId, ...patch })
-
+    const { error } = await supabase.from('payment_configs').insert({ store_id: store.id, method: methodId, ...patch })
     if (error) throw error
   }
 
@@ -157,26 +108,33 @@ export default function PaymentsPage() {
     qc.invalidateQueries({ queryKey: ['dashboard-payment-count', store?.id] })
   }
 
+  function openConfig(method) {
+    setActiveMethod(method)
+    const existing = configs[method.id] || {}
+    const values = {}
+    for (const field of method.fields) values[field.key] = field.secret ? '' : (existing[field.key] || '')
+    setFieldValues(values)
+    setSslLive(Boolean(existing.is_live))
+    setShowFields({})
+    setConfigOpen(true)
+  }
+
   async function toggleMethod(methodId, enabled) {
     if (!store) return
-
     const method = METHODS.find((item) => item.id === methodId)
     const existing = configs[methodId]
-
     if (!method) return
 
     if (enabled && !isConfigured(method, existing)) {
       openConfig(method)
       return
     }
-
     if (!enabled && existing?.enabled && enabledCount <= 1) {
       toast.error('Keep at least one payment method active.')
       return
     }
 
     setToggleSaving(methodId)
-
     try {
       await saveRow(methodId, { enabled })
       toast.success(enabled ? `${method.name} enabled` : `${method.name} disabled`)
@@ -186,18 +144,6 @@ export default function PaymentsPage() {
     } finally {
       setToggleSaving('')
     }
-  }
-
-  function openConfig(method) {
-    setActiveMethod(method)
-    const existing = configs[method.id] || {}
-    const values = {}
-
-    for (const field of method.fields) values[field.key] = existing[field.key] || ''
-
-    setFieldValues(values)
-    setShowFields({})
-    setConfigOpen(true)
   }
 
   async function saveConfig() {
@@ -220,13 +166,30 @@ export default function PaymentsPage() {
     }
 
     setSaving(true)
-
     try {
-      const payload = { enabled: true }
-      for (const field of activeMethod.fields) payload[field.key] = String(fieldValues[field.key] || '').trim()
+      if (activeMethod.id === 'ssl') {
+        const { data, error } = await supabase.functions.invoke('sslcommerz-validate-config', {
+          body: {
+            store_id: store.id,
+            ssl_store_id: String(fieldValues.ssl_store_id || '').trim(),
+            store_password: String(fieldValues.store_password || '').trim(),
+            is_live: sslLive,
+          },
+        })
 
-      await saveRow(activeMethod.id, payload)
-      toast.success(`${activeMethod.name} is ready`)
+        if (error || !data?.valid) {
+          await refreshAfterChange()
+          throw new Error(data?.message || 'SSLCommerz credentials could not be verified. Online payment has been disabled.')
+        }
+
+        toast.success(`SSLCommerz ${sslLive ? 'live' : 'sandbox'} credentials verified and enabled`)
+      } else {
+        const payload = { enabled: true }
+        for (const field of activeMethod.fields) payload[field.key] = String(fieldValues[field.key] || '').trim()
+        await saveRow(activeMethod.id, payload)
+        toast.success(`${activeMethod.name} is ready`)
+      }
+
       setConfigOpen(false)
       await refreshAfterChange()
     } catch (error) {
@@ -237,14 +200,7 @@ export default function PaymentsPage() {
   }
 
   if (isLoading || loading) {
-    return (
-      <div className="space-y-5">
-        <Skeleton className="h-10 w-64 rounded-xl" />
-        <div className="grid gap-4 lg:grid-cols-2">
-          {[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-36 rounded-2xl" />)}
-        </div>
-      </div>
-    )
+    return <div className="space-y-5"><Skeleton className="h-10 w-64 rounded-xl" /><div className="grid gap-4 lg:grid-cols-2">{[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-36 rounded-2xl" />)}</div></div>
   }
 
   return (
@@ -252,134 +208,88 @@ export default function PaymentsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Payment Methods</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Enable at least one method for checkout.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Enable at least one verified method for checkout.</p>
         </div>
         <Badge variant="secondary" className={enabledCount > 0 ? 'w-fit gap-1 text-success' : 'w-fit gap-1 text-amber-600'}>
-          {enabledCount > 0 ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
-          {enabledCount} active
+          {enabledCount > 0 ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}{enabledCount} active
         </Badge>
       </div>
 
       {enabledCount === 0 ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
-          <AlertCircle className="h-5 w-5 shrink-0" />
-          <p className="text-sm font-medium">Choose one payment method. Cash on Delivery is enough for the free version.</p>
-        </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800"><AlertCircle className="h-5 w-5 shrink-0" /><p className="text-sm font-medium">Choose one payment method. Cash on Delivery is enough to publish.</p></div>
       ) : (
-        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-800">
-          <ShieldCheck className="h-5 w-5 shrink-0" />
-          <p className="text-sm font-medium">Payment setup complete. One active method is enough; you can enable more anytime.</p>
-        </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-800"><ShieldCheck className="h-5 w-5 shrink-0" /><p className="text-sm font-medium">Payment setup complete. Customers see only enabled and valid methods.</p></div>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {METHODS.map((method) => {
           const config = configs[method.id]
-          const enabled = !!config?.enabled
+          const enabled = Boolean(config?.enabled)
           const configured = isConfigured(method, config)
           const busy = toggleSaving === method.id
+          const sslInvalid = method.id === 'ssl' && config?.ssl_store_id && !config?.ssl_credentials_valid
 
           return (
             <div key={method.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div
-                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-2xl"
-                    style={{ background: `${method.color}18`, border: `1.5px solid ${method.color}40` }}
-                  >
-                    {method.logo}
-                  </div>
-
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-2xl" style={{ background: `${method.color}18`, border: `1.5px solid ${method.color}40` }}>{method.logo}</div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold">{method.name}</h3>
                       {enabled && <Badge variant="secondary" className="gap-1 text-[10px] text-success"><Check className="h-3 w-3" />Active</Badge>}
-                      {!configured && <Badge variant="secondary" className="text-[10px] text-amber-600">Setup needed</Badge>}
+                      {method.id === 'ssl' && config?.ssl_credentials_valid && <Badge variant="secondary" className="text-[10px] text-blue-600">{config.is_live ? 'Live verified' : 'Sandbox verified'}</Badge>}
+                      {sslInvalid && <Badge variant="secondary" className="gap-1 text-[10px] text-red-600"><ShieldAlert className="h-3 w-3" />Invalid / disabled</Badge>}
+                      {!configured && !sslInvalid && <Badge variant="secondary" className="text-[10px] text-amber-600">Setup needed</Badge>}
                     </div>
-
-                    {config?.merchant_number && (
-                      <p className="mt-1 text-xs text-muted-foreground">Number: <span className="font-mono">{maskValue(config.merchant_number)}</span></p>
-                    )}
-                    {method.id === 'ssl' && config?.ssl_store_id && (
-                      <p className="mt-1 text-xs text-muted-foreground">SSL Store ID: <span className="font-mono">{maskValue(config.ssl_store_id)}</span></p>
-                    )}
+                    {config?.merchant_number && <p className="mt-1 text-xs text-muted-foreground">Number: <span className="font-mono">{maskValue(config.merchant_number)}</span></p>}
+                    {method.id === 'ssl' && config?.ssl_store_id && <p className="mt-1 text-xs text-muted-foreground">Store ID: <span className="font-mono">{maskValue(config.ssl_store_id)}</span></p>}
+                    {method.id === 'ssl' && config?.ssl_credentials_checked_at && <p className="mt-1 text-[11px] text-muted-foreground">Checked {new Date(config.ssl_credentials_checked_at).toLocaleString()}</p>}
                     {method.fields.length === 0 && <p className="mt-1 text-xs text-muted-foreground">No credentials needed</p>}
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                  <Switch checked={enabled} disabled={busy || saving} onCheckedChange={(value) => toggleMethod(method.id, value)} />
-                </div>
+                <div className="flex items-center gap-2">{busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}<Switch checked={enabled} disabled={busy || saving || (method.id === 'ssl' && !configured)} onCheckedChange={(value) => toggleMethod(method.id, value)} /></div>
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Lock className="h-3 w-3" /> {method.fields.length ? 'Credentials are private' : 'Ready for checkout'}
-                </div>
-
-                {method.fields.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={() => openConfig(method)} className="gap-1.5">
-                    <Settings2 className="h-3.5 w-3.5" />{configured ? 'Update' : 'Configure'}
-                  </Button>
-                )}
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Lock className="h-3 w-3" />{method.id === 'ssl' ? 'Password is verified server-side and never exposed to checkout' : method.fields.length ? 'Credentials are private' : 'Ready for checkout'}</div>
+                {method.fields.length > 0 && <Button variant="outline" size="sm" onClick={() => openConfig(method)} className="gap-1.5"><Settings2 className="h-3.5 w-3.5" />{configured ? 'Revalidate' : 'Configure'}</Button>}
               </div>
             </div>
           )
         })}
       </div>
 
-      <div className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><CreditCard className="h-5 w-5" /></div>
-          <div>
-            <p className="font-semibold">Checkout rule</p>
-            <p className="mt-1 text-sm text-muted-foreground">Customers will only see active methods. Keep at least one active method for a live store.</p>
-          </div>
-        </div>
-      </div>
+      <div className="rounded-2xl border border-border bg-card p-5"><div className="flex items-start gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><CreditCard className="h-5 w-5" /></div><div><p className="font-semibold">SSLCommerz security rule</p><p className="mt-1 text-sm text-muted-foreground">Card payment is shown only after the credentials pass server-side validation. Invalid credentials automatically disable SSLCommerz without exposing the gateway error to customers.</p></div></div></div>
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Configure {activeMethod?.name}</DialogTitle>
-          </DialogHeader>
-
+          <DialogHeader><DialogTitle>Configure {activeMethod?.name}</DialogTitle></DialogHeader>
           {activeMethod && (
             <div className="space-y-4 py-2">
+              {activeMethod.id === 'ssl' && (
+                <div className="rounded-xl border border-border bg-muted/30 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div><Label>Gateway environment</Label><p className="mt-1 text-xs text-muted-foreground">Use Sandbox until every callback and IPN test passes.</p></div>
+                    <div className="flex items-center gap-2 text-sm"><span className={!sslLive ? 'font-semibold text-blue-600' : 'text-muted-foreground'}>Sandbox</span><Switch checked={sslLive} onCheckedChange={setSslLive} /><span className={sslLive ? 'font-semibold text-green-600' : 'text-muted-foreground'}>Live</span></div>
+                  </div>
+                </div>
+              )}
+
               {activeMethod.fields.map((field) => (
                 <div key={field.key} className="grid gap-2">
                   <Label>{field.label} <span className="text-destructive">*</span></Label>
                   <div className="relative">
-                    <Input
-                      type={field.secret && !showFields[field.key] ? 'password' : 'text'}
-                      autoComplete="off"
-                      value={fieldValues[field.key] || ''}
-                      onChange={(event) => setFieldValues((current) => ({ ...current, [field.key]: event.target.value }))}
-                      placeholder={field.placeholder}
-                      className="font-mono"
-                    />
-                    {field.secret && (
-                      <button
-                        type="button"
-                        onClick={() => setShowFields((current) => ({ ...current, [field.key]: !current[field.key] }))}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        {showFields[field.key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    )}
+                    <Input type={field.secret && !showFields[field.key] ? 'password' : 'text'} autoComplete="new-password" value={fieldValues[field.key] || ''} onChange={(event) => setFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} className="font-mono" />
+                    {field.secret && <button type="button" aria-label="Show or hide password" onClick={() => setShowFields((current) => ({ ...current, [field.key]: !current[field.key] }))} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">{showFields[field.key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>}
                   </div>
                 </div>
               ))}
+
+              {activeMethod.id === 'ssl' && <p className="text-xs leading-5 text-muted-foreground">Save runs a real credential check against the selected SSLCommerz environment. Failure keeps online payment disabled.</p>}
             </div>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfigOpen(false)}>Cancel</Button>
-            <Button onClick={saveConfig} disabled={saving} className="bg-gradient-primary">
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save & Enable
-            </Button>
-          </DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setConfigOpen(false)}>Cancel</Button><Button onClick={saveConfig} disabled={saving} className="bg-gradient-primary">{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{activeMethod?.id === 'ssl' ? 'Validate & Enable' : 'Save & Enable'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

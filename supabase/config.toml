@@ -1,29 +1,29 @@
-[functions.admin-login]
+[functions.process-notification-queue]
 verify_jwt = false
 
-[functions.admin-verify-session]
+[functions.run-pending-order-reminders]
 verify_jwt = false
 
-[functions.admin-logout]
+[functions.cleanup-deleted-accounts]
 verify_jwt = false
 
-[functions.admin-audit]
+# Customer and merchant calls. Supabase must require a valid user JWT.
+[functions.sslcommerz-initiate]
+verify_jwt = true
+
+[functions.sslcommerz-validate-config]
+verify_jwt = true
+
+# SSLCommerz calls these URLs directly, so JWT verification must be disabled.
+# Each callback is independently verified against the gateway validation/query API.
+[functions.sslcommerz-success]
 verify_jwt = false
 
-[functions.admin-totp-setup]
+[functions.sslcommerz-fail]
 verify_jwt = false
 
-[functions.admin-disable-totp]
+[functions.sslcommerz-cancel]
 verify_jwt = false
 
-[functions.admin-health-monitor]
-verify_jwt = false
-
-[functions.admin-report-worker]
-verify_jwt = false
-
-[functions.admin-send-announcement]
-verify_jwt = false
-
-[functions.admin-policy-workflow]
+[functions.sslcommerz-ipn]
 verify_jwt = false

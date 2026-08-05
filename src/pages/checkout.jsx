@@ -433,10 +433,6 @@ export default function CheckoutPage() {
     }
 
     const method = availableMethods.find((item) => item.id === paymentMethod);
-    if (method?.id === "ssl") {
-      setPaymentError("Online card payment is not configured yet. Please choose another payment method.");
-      return false;
-    }
     if (method?.needsTxn && !txnId.trim()) {
       setPaymentError("Enter the transaction ID after payment.");
       return false;
@@ -591,7 +587,11 @@ export default function CheckoutPage() {
         p_district: delivery.district,
         p_delivery_note: delivery.note || null,
         p_payment_method: paymentMethod,
-        p_payment_status: paymentMethod === "cod" ? "pending" : "pending_verification",
+        p_payment_status: paymentMethod === "ssl"
+          ? "pending_gateway"
+          : paymentMethod === "cod"
+            ? "pending"
+            : "pending_verification",
         p_txn_id: txnId || null,
         p_items: orderItems,
         p_total: freshTotal,
@@ -617,6 +617,30 @@ export default function CheckoutPage() {
           payment_method: paymentMethod,
         },
       });
+
+      if (paymentMethod === "ssl") {
+        const { data: gateway, error: gatewayError } = await supabase.functions.invoke("sslcommerz-initiate", {
+          body: {
+            order_id: createdOrderId,
+            store_slug: subdomain,
+          },
+        });
+
+        clearCart(store.id);
+        clearCheckoutDraft(store.id);
+        setCartVersion((value) => value + 1);
+
+        if (gatewayError || !gateway?.gateway_url) {
+          const reason = gateway?.code || "gateway-init-failed";
+          window.location.assign(
+            `/payment/fail?store=${encodeURIComponent(subdomain)}&order=${encodeURIComponent(createdOrderId)}&reason=${encodeURIComponent(reason)}`
+          );
+          return;
+        }
+
+        window.location.assign(gateway.gateway_url);
+        return;
+      }
 
       clearCart(store.id);
       clearCheckoutDraft(store.id);
@@ -1060,7 +1084,12 @@ export default function CheckoutPage() {
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
               <Button disabled={placing} onClick={placeOrder}>
-                {placing ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Placing...</> : isLoggedIn ? "Place order" : "Log in to order"}
+                {placing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    {paymentMethod === "ssl" ? "Opening secure payment..." : "Placing..."}
+                  </>
+                ) : isLoggedIn ? (paymentMethod === "ssl" ? "Pay securely" : "Place order") : "Log in to order"}
               </Button>
             </div>
 
