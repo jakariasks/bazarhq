@@ -18,8 +18,11 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   CreditCard,
   Filter,
+  Info,
+  MessageSquare,
   Minus,
   Package,
   Search,
@@ -664,23 +667,58 @@ function OfferSection({ store, product, currency, onView }) {
   );
 }
 
-function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpenCart }) {
+function ProductModal({ product, currency, storeId, storeSlug, allProducts = [], onClose, onCartChange, onOpenCart }) {
   const variants = normalizeVariants(product);
   const [selectedVariantId, setSelectedVariantId] = useState(variants[0]?.id || null);
   const [qty, setQty] = useState(1);
   const [error, setError] = useState("");
   const [flash, setFlash] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(true);
 
   const selectedVariant = variants.find((variant) => variant.id === selectedVariantId) || null;
   const currentStock = toNumber(selectedVariant?.stock ?? product.stock, 0);
   const currentPrice = toNumber(selectedVariant?.price ?? product.price, 0);
   const outOfStock = currentStock <= 0;
   const images = getImages(product);
+  const routeProductId = String(product.slug || product.id);
+  const tags = getTags(product);
+
+  const relatedProducts = useMemo(() => {
+    const category = String(product.category || "").trim().toLowerCase();
+    return (allProducts || [])
+      .filter((item) => item?.id && item.id !== product.id)
+      .sort((a, b) => {
+        const aCategory = String(a.category || "").trim().toLowerCase();
+        const bCategory = String(b.category || "").trim().toLowerCase();
+        const aCategoryScore = category && aCategory === category ? 1 : 0;
+        const bCategoryScore = category && bCategory === category ? 1 : 0;
+        const aFeatured = isFeatured(a) ? 1 : 0;
+        const bFeatured = isFeatured(b) ? 1 : 0;
+        return (bCategoryScore - aCategoryScore) || (bFeatured - aFeatured) || (toNumber(b.stock, 0) - toNumber(a.stock, 0));
+      })
+      .slice(0, 4);
+  }, [allProducts, product.id, product.category]);
+
+  const reviewStats = useMemo(() => {
+    const count = reviews.length;
+    const average = count
+      ? reviews.reduce((sum, review) => sum + toNumber(review.rating, 0), 0) / count
+      : toNumber(product.average_rating, 0);
+    return { count: count || toNumber(product.rating_count, 0), average };
+  }, [reviews, product.average_rating, product.rating_count]);
+
+  useEffect(() => {
+    const nextVariants = normalizeVariants(product);
+    setSelectedVariantId(nextVariants.find((variant) => toNumber(variant.stock, 0) > 0)?.id || nextVariants[0]?.id || null);
+    setQty(1);
+    setError("");
+  }, [product.id]);
 
   useEffect(() => {
     setQty(1);
     setError("");
-  }, [product.id, selectedVariantId]);
+  }, [selectedVariantId]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -688,6 +726,31 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
       document.body.style.overflow = "";
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadReviews() {
+      setReviewLoading(true);
+      const { data, error: reviewError } = await supabase
+        .from("product_reviews")
+        .select("id, rating, comment, customer_name, created_at")
+        .eq("product_id", product.id)
+        .eq("status", "approved")
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      if (!active) return;
+      if (reviewError) {
+        console.warn("[shop-quick-view] review load failed:", reviewError.message);
+        setReviews([]);
+      } else {
+        setReviews(data || []);
+      }
+      setReviewLoading(false);
+    }
+    loadReviews();
+    return () => { active = false; };
+  }, [product.id]);
 
   function handleAddToCart() {
     setError("");
@@ -708,18 +771,20 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="shop-modal-enter max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl dark:bg-slate-950" onClick={(event) => event.stopPropagation()}>
-        <div className="grid lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="relative bg-slate-100 p-4 dark:bg-slate-900 sm:p-5">
-            <ProductImageGallery
-              images={images}
-              fallbackImage={product.image_url}
-              alt={product.title}
-              compact
-              objectFit="cover"
-            />
-            {getDiscount(product) > 0 && <span className="absolute left-7 top-7 z-10 rounded-full bg-rose-500 px-3 py-1.5 text-sm font-black text-white">-{getDiscount(product)}%</span>}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/68 p-3 backdrop-blur-sm sm:p-5" onClick={onClose}>
+      <div className="shop-modal-enter max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl dark:bg-slate-950" onClick={(event) => event.stopPropagation()}>
+        <div className="grid lg:grid-cols-[1.02fr_.98fr]">
+          <div className="relative bg-slate-100 p-4 dark:bg-slate-900 sm:p-6">
+            <div className="lg:sticky lg:top-4">
+              <ProductImageGallery
+                images={images}
+                fallbackImage={product.image_url}
+                alt={product.title}
+                objectFit="contain"
+              />
+              {getDiscount(product) > 0 && <span className="absolute left-7 top-7 z-20 rounded-full bg-rose-500 px-3 py-1.5 text-sm font-black text-white">-{getDiscount(product)}%</span>}
+              <p className="mt-3 text-center text-xs font-semibold text-slate-500">Move your cursor over any part of the image to zoom that exact area.</p>
+            </div>
           </div>
 
           <div className="p-6 sm:p-8">
@@ -727,7 +792,16 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--shop-primary)]">{product.category || "General"}</p>
                 <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl dark:text-white">{product.title}</h2>
-                <div className="mt-3"><RatingStars /></div>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1 text-amber-400">
+                    {[0, 1, 2, 3, 4].map((item) => (
+                      <Star key={item} className={`h-4 w-4 ${item < Math.round(reviewStats.average || 0) ? "fill-current" : ""}`} />
+                    ))}
+                  </div>
+                  <span className="text-xs font-bold text-slate-500">
+                    {reviewStats.count ? `${reviewStats.average.toFixed(1)} from ${reviewStats.count} review${reviewStats.count === 1 ? "" : "s"}` : "No reviews yet"}
+                  </span>
+                </div>
               </div>
               <button type="button" className="rounded-full border border-slate-200 p-2 transition hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10" onClick={onClose}>
                 <X className="h-5 w-5" />
@@ -762,9 +836,7 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
                           className={`rounded-2xl border px-4 py-3 text-left transition duration-300 disabled:cursor-not-allowed disabled:opacity-45 ${selected ? "border-[var(--shop-primary)] bg-[var(--shop-primary-soft)] text-[var(--shop-primary)]" : "border-slate-200 hover:border-[var(--shop-primary)] dark:border-white/10"}`}
                         >
                           <span className="block text-sm font-black">{variant.label}</span>
-                          <span className="mt-1 block text-xs text-slate-500">
-                            {money(variant.price, currency)} · {variantStock} available
-                          </span>
+                          <span className="mt-1 block text-xs text-slate-500">{money(variant.price, currency)} · {variantStock} available</span>
                         </button>
                       );
                     })}
@@ -776,48 +848,47 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
                 <div className="flex items-center justify-between rounded-2xl border border-slate-200 p-3 dark:border-white/10">
                   <span className="text-sm font-black text-slate-950 dark:text-white">Quantity</span>
                   <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-                    <button
-                      type="button"
-                      className="px-3 py-2 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10"
-                      disabled={qty <= 1}
-                      onClick={() => setQty((value) => Math.max(1, value - 1))}
-                    >
+                    <button type="button" className="px-3 py-2 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10" disabled={qty <= 1} onClick={() => setQty((value) => Math.max(1, value - 1))}>
                       <Minus className="h-4 w-4" />
                     </button>
                     <span className="min-w-10 text-center text-sm font-black">{qty}</span>
-                    <button
-                      type="button"
-                      className="px-3 py-2 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10"
-                      disabled={qty >= currentStock}
-                      onClick={() => setQty((value) => Math.min(currentStock, value + 1))}
-                    >
-                      +
-                    </button>
+                    <button type="button" className="px-3 py-2 transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10" disabled={qty >= currentStock} onClick={() => setQty((value) => Math.min(currentStock, value + 1))}>+</button>
                   </div>
                 </div>
               )}
 
-              {product.description && (
-                <div>
-                  <p className="mb-2 text-sm font-black text-slate-950 dark:text-white">Description</p>
-                  <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{product.description}</p>
+              <div className="rounded-[1.45rem] border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center gap-2">
+                  <Info className="h-4 w-4 text-[var(--shop-primary)]" />
+                  <p className="text-sm font-black text-slate-950 dark:text-white">Product information</p>
                 </div>
-              )}
+                <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">Category</p><p className="mt-1 font-black text-slate-800 dark:text-white">{product.category || "General"}</p></div>
+                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">SKU</p><p className="mt-1 truncate font-black text-slate-800 dark:text-white">{product.sku || "Not provided"}</p></div>
+                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">Availability</p><p className="mt-1 font-black text-slate-800 dark:text-white">{outOfStock ? "Out of stock" : `${currentStock} available`}</p></div>
+                  <div className="rounded-xl bg-white p-3 dark:bg-slate-950"><p className="font-bold text-slate-400">Images</p><p className="mt-1 font-black text-slate-800 dark:text-white">{Math.max(images.length, 1)} product image{images.length === 1 ? "" : "s"}</p></div>
+                </div>
+                {product.description && <p className="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-300">{product.description}</p>}
+                {tags.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {tags.slice(0, 8).map((tag) => <span key={tag} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-600 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300">{tag}</span>)}
+                  </div>
+                )}
+              </div>
 
               {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <Button
-                  className="h-12 rounded-2xl bg-[var(--shop-primary)] text-white transition hover:-translate-y-0.5 hover:opacity-90"
-                  disabled={outOfStock}
-                  onClick={handleAddToCart}
+                <Button className="h-12 rounded-2xl bg-[var(--shop-primary)] text-white transition hover:-translate-y-0.5 hover:opacity-90" disabled={outOfStock} onClick={handleAddToCart}>
+                  <ShoppingCart className="h-4 w-4" /> {flash ? "Added to cart" : outOfStock ? "Out of stock" : "Add to cart"}
+                </Button>
+                <Link
+                  to="/shop/$storeSlug/product/$productId"
+                  params={{ storeSlug, productId: routeProductId }}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 transition hover:-translate-y-0.5 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950 dark:text-white"
                 >
-                  <ShoppingCart className="h-4 w-4" />
-                  {flash ? "Added to cart" : outOfStock ? "Out of stock" : "Add to cart"}
-                </Button>
-                <Button className="h-12 rounded-2xl transition hover:-translate-y-0.5" variant="outline" onClick={onClose}>
-                  Continue shopping
-                </Button>
+                  Full details & reviews <ArrowRight className="h-4 w-4" />
+                </Link>
               </div>
 
               <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 dark:bg-white/5 dark:text-slate-300">
@@ -826,6 +897,60 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
                 <div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-[var(--shop-primary)]" /> bKash, Nagad, Rocket and COD supported</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 px-5 py-6 dark:border-white/10 sm:px-8">
+          <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.16em] text-[var(--shop-primary)]"><MessageSquare className="h-4 w-4" /> Recent reviews</p>
+                  <h3 className="mt-2 text-xl font-black text-slate-950 dark:text-white">What customers say</h3>
+                </div>
+                <Link to="/shop/$storeSlug/product/$productId" params={{ storeSlug, productId: routeProductId }} className="text-xs font-black text-[var(--shop-primary)]">View all</Link>
+              </div>
+              <div className="mt-4 space-y-3">
+                {reviewLoading ? (
+                  <div className="h-24 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/5" />
+                ) : reviews.length ? reviews.map((review) => (
+                  <article key={review.id} className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                    <div className="flex items-start justify-between gap-3">
+                      <div><p className="text-sm font-black text-slate-900 dark:text-white">{review.customer_name || "Verified customer"}</p><p className="mt-1 text-[11px] text-slate-400">{new Date(review.created_at).toLocaleDateString()}</p></div>
+                      <div className="flex gap-0.5 text-amber-400">{[0, 1, 2, 3, 4].map((item) => <Star key={item} className={`h-3.5 w-3.5 ${item < toNumber(review.rating, 0) ? "fill-current" : ""}`} />)}</div>
+                    </div>
+                    <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{review.comment}</p>
+                  </article>
+                )) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-white/10">No approved review yet. Open full details to be the first verified reviewer.</div>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-[var(--shop-primary)]">Recommended from this shop</p>
+                  <h3 className="mt-2 text-xl font-black text-slate-950 dark:text-white">You may also like</h3>
+                </div>
+                <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-1 text-xs font-black text-[var(--shop-primary)]">Shop all <ChevronRight className="h-3.5 w-3.5" /></Link>
+              </div>
+              {relatedProducts.length ? (
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+                  {relatedProducts.map((item) => {
+                    const image = getImage(item);
+                    return (
+                      <Link key={item.id} to="/shop/$storeSlug/product/$productId" params={{ storeSlug, productId: String(item.slug || item.id) }} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-1 hover:border-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950">
+                        <div className="aspect-square overflow-hidden bg-slate-100 dark:bg-white/5">{image ? <img src={image} alt={item.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="flex h-full items-center justify-center"><Package className="h-8 w-8 text-slate-300" /></div>}</div>
+                        <div className="p-3"><p className="line-clamp-2 min-h-9 text-xs font-black text-slate-900 dark:text-white">{item.title}</p><p className="mt-2 text-sm font-black text-[var(--shop-primary)]">{money(item.price, currency)}</p></div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-white/10">No other published products are available from this shop yet.</div>
+              )}
+            </section>
           </div>
         </div>
       </div>
@@ -1668,6 +1793,8 @@ export default function ShopPage() {
           product={viewProduct}
           currency={currency}
           storeId={store.id}
+          storeSlug={subdomain}
+          allProducts={products}
           onClose={() => setViewProduct(null)}
           onCartChange={refreshCartCount}
           onOpenCart={() => setCartOpen(true)}
