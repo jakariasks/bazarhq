@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Copy, KeyRound, Loader2, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, KeyRound, Loader2, LockKeyhole, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/integrations/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,21 @@ import {
 
 const HEARTBEAT_INTERVAL_MS = 120_000
 const FAILURE_WARNING_THRESHOLD = 3
+const SECURITY_CHECK_TIMEOUT_MS = 12_000
+const HEARTBEAT_STARTUP_TIMEOUT_MS = 5_000
+
+function withTimeout(promise, timeoutMs, message) {
+  let timeoutId
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      const error = new Error(message)
+      error.code = 'SECURITY_CHECK_TIMEOUT'
+      reject(error)
+    }, timeoutMs)
+  })
+
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId))
+}
 
 function verifiedTotp(data) {
   return [...(data?.totp || []), ...(data?.factors || [])]
@@ -25,14 +40,66 @@ function verifiedTotp(data) {
 
 function GateCard({ children }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-mesh p-4">
-      <div className="w-full max-w-md rounded-3xl border border-border bg-card p-7 shadow-elegant sm:p-8">{children}</div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-mesh px-4 py-10">
+      <div className="pointer-events-none absolute -left-24 top-12 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 bottom-8 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
+      <div className="relative w-full max-w-md rounded-3xl border border-border/80 bg-card/95 p-7 shadow-2xl backdrop-blur sm:p-8">{children}</div>
     </div>
+  )
+}
+
+const LOADING_STEPS = [
+  { key: 'signin', label: 'Confirming your sign-in' },
+  { key: 'security', label: 'Checking account security' },
+  { key: 'dashboard', label: 'Preparing your dashboard' },
+]
+
+function SecureLoginLoading({ stage, slow }) {
+  const activeIndex = Math.max(0, LOADING_STEPS.findIndex((item) => item.key === stage))
+
+  return (
+    <GateCard>
+      <div role="status" aria-live="polite" className="text-center">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm">
+          <LockKeyhole className="h-8 w-8" />
+        </div>
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight">Signing you in securely</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">BazarHQ is verifying your merchant session and security settings before opening the dashboard.</p>
+
+        <div className="mt-7 space-y-3 rounded-2xl border border-border/70 bg-muted/30 p-4 text-left">
+          {LOADING_STEPS.map((item, index) => {
+            const complete = index < activeIndex
+            const active = index === activeIndex
+            return (
+              <div key={item.key} className="flex items-center gap-3">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${complete ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : active ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground'}`}>
+                  {complete ? <CheckCircle2 className="h-4 w-4" /> : active ? <Loader2 className="h-4 w-4 animate-spin" /> : <span className="text-xs font-semibold">{index + 1}</span>}
+                </div>
+                <span className={`text-sm ${active ? 'font-medium text-foreground' : complete ? 'text-foreground' : 'text-muted-foreground'}`}>{item.label}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full w-2/3 animate-pulse rounded-full bg-primary transition-all duration-500" />
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">This usually takes only a few seconds.</p>
+
+        {slow && (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-left text-xs leading-5 text-amber-900">
+            This is taking a little longer than usual. A slow network or a cold-starting security function can cause a short delay. Your account is still safe.
+          </div>
+        )}
+      </div>
+    </GateCard>
   )
 }
 
 export function MerchantMfaGate({ user, children }) {
   const [loading, setLoading] = useState(true)
+  const [loadingStage, setLoadingStage] = useState('signin')
+  const [slowLoading, setSlowLoading] = useState(false)
   const [mode, setMode] = useState('totp')
   const [factor, setFactor] = useState(null)
   const [code, setCode] = useState('')
@@ -69,13 +136,37 @@ export function MerchantMfaGate({ user, children }) {
 
   const inspect = useCallback(async () => {
     setLoading(true)
+    setAllowed(false)
     setSecurityError('')
+    setLoadingStage('signin')
+    setSlowLoading(false)
+
+    const stageSecurityTimer = window.setTimeout(() => setLoadingStage('security'), 700)
+    const stageDashboardTimer = window.setTimeout(() => setLoadingStage('dashboard'), 2_100)
+    const slowTimer = window.setTimeout(() => setSlowLoading(true), 4_500)
+
     try {
-      const [{ data: assurance, error: assuranceError }, { data: factors, error: factorsError }, recovery] = await Promise.all([
-        supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
-        supabase.auth.mfa.listFactors(),
-        getRecoveryStatus().catch(() => ({ recoveryRequired: false })),
-      ])
+      const securityChecks = withTimeout(
+        Promise.all([
+          supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+          supabase.auth.mfa.listFactors(),
+          getRecoveryStatus(),
+        ]),
+        SECURITY_CHECK_TIMEOUT_MS,
+        'The merchant security check timed out. Please retry.',
+      )
+
+      // Session registration is useful but non-blocking. Running it in parallel
+      // removes an unnecessary second wait after MFA checks finish.
+      const heartbeatCheck = withTimeout(
+        heartbeatMerchantSession({ force: true }),
+        HEARTBEAT_STARTUP_TIMEOUT_MS,
+        'Merchant session registration timed out.',
+      ).then((data) => ({ data, error: null })).catch((error) => ({ data: null, error }))
+
+      const [securityResult, heartbeatResult] = await Promise.all([securityChecks, heartbeatCheck])
+      const [{ data: assurance, error: assuranceError }, { data: factors, error: factorsError }, recovery] = securityResult
+
       if (assuranceError) throw assuranceError
       if (factorsError) throw factorsError
 
@@ -94,20 +185,22 @@ export function MerchantMfaGate({ user, children }) {
         return
       }
 
-      try {
-        const heartbeat = await heartbeatMerchantSession({ force: true })
-        if (heartbeat?.revoked) throw Object.assign(new Error('Session revoked'), { code: 'SESSION_REVOKED' })
-        heartbeatFailuresRef.current = 0
-        heartbeatWarningShownRef.current = false
-      } catch (heartbeatError) {
-        if (await shouldEndSession(heartbeatError)) {
+      if (heartbeatResult.error) {
+        if (await shouldEndSession(heartbeatResult.error)) {
           await redirectToLogin()
           return
         }
-        // Session registry/network failure must never sign out a valid merchant.
-        console.warn('Merchant session heartbeat is temporarily unavailable:', heartbeatError?.message)
+        console.warn('Merchant session heartbeat is temporarily unavailable:', heartbeatResult.error?.message)
+      } else {
+        if (heartbeatResult.data?.revoked) {
+          await redirectToLogin()
+          return
+        }
+        heartbeatFailuresRef.current = 0
+        heartbeatWarningShownRef.current = false
       }
 
+      setLoadingStage('dashboard')
       setAllowed(true)
     } catch (error) {
       if (await shouldEndSession(error)) {
@@ -117,6 +210,9 @@ export function MerchantMfaGate({ user, children }) {
       setAllowed(false)
       setSecurityError(error?.message || 'Account security could not be verified right now.')
     } finally {
+      window.clearTimeout(stageSecurityTimer)
+      window.clearTimeout(stageDashboardTimer)
+      window.clearTimeout(slowTimer)
       setLoading(false)
     }
   }, [redirectToLogin, shouldEndSession])
@@ -260,7 +356,7 @@ export function MerchantMfaGate({ user, children }) {
     await inspect()
   }
 
-  if (loading) return <GateCard><div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div></GateCard>
+  if (loading) return <SecureLoginLoading stage={loadingStage} slow={slowLoading} />
   if (allowed) return <>{children}</>
 
   if (securityError) {
