@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ArrowLeft, CheckCircle2, MessageSquare, Minus, Package, Plus, ShieldCheck, ShoppingCart, Star, Truck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, MessageSquare, Minus, Package, Plus, Scale, ShieldCheck, ShoppingCart, Star, Store, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/integrations/supabase/client'
 import { addToCart, getCartTotals } from '@/lib/cart'
 import { getTheme, themeCssVars } from '@/lib/preview-themes'
 import { trackStoreEvent } from '@/lib/analytics-tracker'
 import { useCustomerAuth } from '@/hooks/use-customer-auth'
+import ProductImageGallery from '@/components/product-image-gallery'
+import MarketplaceProductCard from '@/components/marketplace-product-card'
+import { fetchMarketplaceProductRecommendations } from '@/lib/marketplace-api'
 
 function toNumber(value, fallback = 0) {
   const number = Number(value)
@@ -139,7 +143,6 @@ export default function ShopProductPage() {
   const [status, setStatus] = useState('loading')
   const [store, setStore] = useState(null)
   const [product, setProduct] = useState(null)
-  const [selectedImage, setSelectedImage] = useState(0)
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [qty, setQty] = useState(1)
   const [message, setMessage] = useState('')
@@ -152,6 +155,14 @@ export default function ShopProductPage() {
   const [reviewComment, setReviewComment] = useState('')
   const [reviewMessage, setReviewMessage] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
+
+  const recommendationQuery = useQuery({
+    queryKey: ['marketplace-product-recommendations', product?.id],
+    queryFn: () => fetchMarketplaceProductRecommendations(product.id, 12),
+    enabled: Boolean(product?.id),
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+  })
 
   useEffect(() => {
     let mounted = true
@@ -339,24 +350,11 @@ export default function ShopProductPage() {
         </button>
 
         <section className="grid gap-8 lg:grid-cols-[1.05fr_.95fr]">
-          <div className="space-y-4">
-            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-              {images[selectedImage] ? (
-                <img src={images[selectedImage]} alt={getProductTitle(product)} className="aspect-square w-full object-contain p-6" />
-              ) : (
-                <div className="flex aspect-square items-center justify-center text-slate-300"><Package className="h-20 w-20" /></div>
-              )}
-            </div>
-            {images.length > 1 && (
-              <div className="grid grid-cols-5 gap-3">
-                {images.slice(0, 5).map((image, index) => (
-                  <button key={image} onClick={() => setSelectedImage(index)} className={`overflow-hidden rounded-2xl border bg-white p-1 transition ${selectedImage === index ? 'border-[var(--shop-primary)] ring-2 ring-[var(--shop-primary)]/20' : 'border-slate-200 hover:border-[var(--shop-primary)]'}`}>
-                    <img src={image} alt="" className="aspect-square w-full rounded-xl object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ProductImageGallery
+            images={images}
+            fallbackImage={product.image_url}
+            alt={getProductTitle(product)}
+          />
 
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
             <div className="flex flex-wrap items-center gap-2">
@@ -413,6 +411,55 @@ export default function ShopProductPage() {
             </div>
           </div>
         </section>
+
+        {(recommendationQuery.data?.same_product?.length > 0 || recommendationQuery.data?.recommended?.length > 0) && (
+          <section className="mt-8 space-y-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+            {recommendationQuery.data?.same_product?.length > 0 && (
+              <div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-indigo-700">
+                      <Scale className="h-3.5 w-3.5" /> Cross-shop price comparison
+                    </p>
+                    <h2 className="mt-3 text-2xl font-black tracking-tight">Same product from other shops</h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Compared across {recommendationQuery.data.comparison?.shop_count || recommendationQuery.data.same_product.length + 1} shops.
+                      {Number(recommendationQuery.data.comparison?.saving || 0) > 0
+                        ? ` Potential saving: ${money(recommendationQuery.data.comparison.saving, currency)}.`
+                        : ' Prices are currently close.'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-right">
+                    <p className="text-xs font-bold text-emerald-700">Best marketplace price</p>
+                    <p className="mt-1 text-xl font-black text-emerald-700">{money(recommendationQuery.data.comparison?.best_price, currency)}</p>
+                  </div>
+                </div>
+                <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {recommendationQuery.data.same_product.slice(0, 6).map((item) => (
+                    <MarketplaceProductCard key={`same-${item.id}`} product={{ ...item, comparison_count: recommendationQuery.data.comparison?.shop_count, best_price: recommendationQuery.data.comparison?.best_price, highest_price: recommendationQuery.data.comparison?.highest_price }} comparison />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {recommendationQuery.data?.recommended?.length > 0 && (
+              <div className="border-t border-slate-200 pt-8">
+                <div>
+                  <p className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
+                    <Store className="h-3.5 w-3.5" /> Marketplace recommendations
+                  </p>
+                  <h2 className="mt-3 text-2xl font-black tracking-tight">Similar products you may like</h2>
+                  <p className="mt-2 text-sm text-slate-500">Relevant products from other active BazarHQ shops.</p>
+                </div>
+                <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                  {recommendationQuery.data.recommended.slice(0, 8).map((item) => (
+                    <MarketplaceProductCard key={`recommended-${item.id}`} product={item} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

@@ -11,6 +11,7 @@ import {
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { getStoreTheme, getThemeCssVars, themeDataAttributes } from "@/lib/theme-system";
 import { Button } from "@/components/ui/button";
+import ProductImageGallery from "@/components/product-image-gallery";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle,
@@ -76,6 +77,19 @@ function getImage(product) {
   if (Array.isArray(product?.images) && product.images.length > 0) return product.images[0];
   if (product?.image_url) return product.image_url;
   return null;
+}
+
+function getImages(product) {
+  if (Array.isArray(product?.images)) return product.images.filter(Boolean);
+  if (typeof product?.images === "string" && product.images.trim()) {
+    try {
+      const parsed = JSON.parse(product.images);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    } catch {
+      return product.images.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return product?.image_url ? [product.image_url] : [];
 }
 
 function getCartProduct(product) {
@@ -240,18 +254,35 @@ function RatingStars() {
 }
 
 function ProductImage({ product, className = "" }) {
-  const image = getImage(product);
+  const images = getImages(product);
+  const image = images[0] || null;
+  const alternate = images[1] || image;
   const outOfStock = getStock(product) <= 0;
 
   return (
     <div className={`relative overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 ${className}`}>
       {image ? (
-        <img
-          src={image}
-          alt={product.title}
-          className={`h-full w-full object-cover transition duration-700 ease-out group-hover:scale-110 ${outOfStock ? "opacity-60 grayscale" : ""}`}
-          loading="lazy"
-        />
+        <>
+          <img
+            src={image}
+            alt={product.title}
+            className={`absolute inset-0 h-full w-full object-cover transition duration-700 ease-out ${images.length > 1 ? "group-hover:scale-105 group-hover:opacity-0" : "group-hover:scale-110"} ${outOfStock ? "opacity-60 grayscale" : ""}`}
+            loading="lazy"
+          />
+          {images.length > 1 && (
+            <img
+              src={alternate}
+              alt=""
+              className={`absolute inset-0 h-full w-full scale-105 object-cover opacity-0 transition duration-700 ease-out group-hover:scale-100 group-hover:opacity-100 ${outOfStock ? "grayscale" : ""}`}
+              loading="lazy"
+            />
+          )}
+          {images.length > 1 && (
+            <span className="absolute bottom-3 right-3 rounded-full bg-white/92 px-2.5 py-1 text-[11px] font-black text-slate-700 shadow-sm backdrop-blur">
+              {images.length} images
+            </span>
+          )}
+        </>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-slate-300 dark:text-slate-700">
           <Package className="h-12 w-12" />
@@ -644,7 +675,7 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
   const currentStock = toNumber(selectedVariant?.stock ?? product.stock, 0);
   const currentPrice = toNumber(selectedVariant?.price ?? product.price, 0);
   const outOfStock = currentStock <= 0;
-  const image = getImage(product);
+  const images = getImages(product);
 
   useEffect(() => {
     setQty(1);
@@ -680,13 +711,15 @@ function ProductModal({ product, currency, storeId, onClose, onCartChange, onOpe
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="shop-modal-enter max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[2rem] bg-white shadow-2xl dark:bg-slate-950" onClick={(event) => event.stopPropagation()}>
         <div className="grid lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="relative min-h-[320px] bg-slate-100 dark:bg-slate-900">
-            {image ? (
-              <img src={image} alt={product.title} className="h-full min-h-[320px] w-full object-cover" />
-            ) : (
-              <div className="flex h-full min-h-[320px] items-center justify-center text-slate-300"><Package className="h-20 w-20" /></div>
-            )}
-            {getDiscount(product) > 0 && <span className="absolute left-5 top-5 rounded-full bg-rose-500 px-3 py-1.5 text-sm font-black text-white">-{getDiscount(product)}%</span>}
+          <div className="relative bg-slate-100 p-4 dark:bg-slate-900 sm:p-5">
+            <ProductImageGallery
+              images={images}
+              fallbackImage={product.image_url}
+              alt={product.title}
+              compact
+              objectFit="cover"
+            />
+            {getDiscount(product) > 0 && <span className="absolute left-7 top-7 z-10 rounded-full bg-rose-500 px-3 py-1.5 text-sm font-black text-white">-{getDiscount(product)}%</span>}
           </div>
 
           <div className="p-6 sm:p-8">
