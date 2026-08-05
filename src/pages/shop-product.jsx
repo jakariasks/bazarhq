@@ -366,9 +366,16 @@ export default function ShopProductPage() {
   const theme = getTheme(store?.theme_id)
   const primary = store?.brand_color || theme.swatch || '#4f46e5'
   const vars = { ...themeCssVars(theme), '--shop-primary': primary }
-  const currentProductPath = `/shop/${encodeURIComponent(storeSlug)}/product/${encodeURIComponent(String(product.slug || product.id))}`
-  const shopHomePath = `/shop/${encodeURIComponent(storeSlug)}`
-  const aboutPath = `${shopHomePath}/about`
+  // Route paths must be safe during the initial loading render. At this point
+  // `product` and even `storeSlug` can still be null/undefined while Supabase is
+  // resolving the storefront and product.
+  const safeStoreSlug = typeof storeSlug === 'string' ? storeSlug.trim() : ''
+  const shopHomePath = safeStoreSlug ? `/shop/${encodeURIComponent(safeStoreSlug)}` : '/'
+  const productRouteValue = product?.slug || product?.id || ''
+  const currentProductPath = productRouteValue
+    ? `${shopHomePath}/product/${encodeURIComponent(String(productRouteValue))}`
+    : shopHomePath
+  const aboutPath = safeStoreSlug ? `${shopHomePath}/about` : '/'
 
   function addSelectedToCart() {
     if (!store?.id || !product) return
