@@ -1,7 +1,7 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, Loader2, Store } from 'lucide-react'
+import { Eye, EyeOff, Loader2, ShieldCheck, Store } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,7 @@ import {
   ROLE_MERCHANT,
   clearAllRoleIntents,
   getUserRole,
+  safeInternalPath,
   setStoredIntent,
 } from '@/lib/auth-roles'
 
@@ -109,7 +110,7 @@ function AuthShell({ children }) {
 
 export default function Login() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, wrongRole, loading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -118,10 +119,40 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [showResend, setShowResend] = useState(false)
+  const [preparingMerchantLogin, setPreparingMerchantLogin] = useState(false)
+  const [roleSwitchError, setRoleSwitchError] = useState('')
+  const roleSwitchStartedRef = useRef(false)
+
+  const redirectTo = useMemo(() => {
+    const value = new URLSearchParams(window.location.search).get('redirect')
+    return safeInternalPath(value, '/merchant')
+  }, [])
 
   useEffect(() => {
-    if (user) navigate({ to: '/merchant' })
-  }, [user, navigate])
+    if (user) {
+      navigate({ to: redirectTo, replace: true })
+      return
+    }
+
+    if (authLoading || !wrongRole || roleSwitchStartedRef.current) return
+
+    roleSwitchStartedRef.current = true
+    setPreparingMerchantLogin(true)
+    setRoleSwitchError('')
+    clearAllRoleIntents()
+
+    supabase.auth.signOut({ scope: 'local' }).then(({ error }) => {
+      if (error && error.name !== 'AuthSessionMissingError') {
+        roleSwitchStartedRef.current = false
+        setRoleSwitchError(error.message || 'Could not close the active customer session.')
+      }
+    }).catch((error) => {
+      roleSwitchStartedRef.current = false
+      setRoleSwitchError(error?.message || 'Could not close the active customer session.')
+    }).finally(() => {
+      setPreparingMerchantLogin(false)
+    })
+  }, [user, wrongRole, authLoading, navigate, redirectTo])
 
   const emailCheck = useMemo(() => validateRealEmail(email), [email])
   const formReady = emailCheck.ok && password.length > 0 && !!captchaToken
@@ -145,6 +176,16 @@ export default function Login() {
     }
 
     setLoading(true)
+    setRoleSwitchError('')
+
+    clearAllRoleIntents()
+    const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' })
+    if (signOutError && signOutError.name !== 'AuthSessionMissingError') {
+      setLoading(false)
+      resetCaptcha()
+      toast.error('Could not clear the previous browser session. Please retry.')
+      return
+    }
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailCheck.email,
@@ -171,19 +212,19 @@ export default function Login() {
     }
 
     setLoading(false)
-    navigate({ to: '/merchant' })
+    navigate({ to: redirectTo, replace: true })
   }
 
   const signInWithGoogle = async () => {
     setGoogleLoading(true)
-    await supabase.auth.signOut()
+    await supabase.auth.signOut({ scope: 'local' })
     clearAllRoleIntents()
-    setStoredIntent(MERCHANT_OAUTH_INTENT_KEY, { redirectTo: '/merchant' })
+    setStoredIntent(MERCHANT_OAUTH_INTENT_KEY, { redirectTo })
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/merchant`,
+        redirectTo: `${window.location.origin}${redirectTo}`,
         queryParams: { prompt: 'select_account' },
       },
     })
@@ -193,6 +234,41 @@ export default function Login() {
       toast.error(error.message)
       setGoogleLoading(false)
     }
+  }
+
+  if (authLoading || preparingMerchantLogin) {
+    return (
+      <AuthShell>
+        <div className="rounded-[2rem] border border-border/80 bg-card/95 p-8 text-center shadow-xl shadow-slate-200/70 backdrop-blur">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <ShieldCheck className="h-7 w-7" />
+          </div>
+          <h1 className="mt-5 text-xl font-semibold">Preparing merchant sign-in</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {wrongRole
+              ? 'Closing the active customer session in this browser.'
+              : 'Checking the current browser session.'}
+          </p>
+          <Loader2 className="mx-auto mt-5 h-6 w-6 animate-spin text-primary" />
+        </div>
+      </AuthShell>
+    )
+  }
+
+  if (roleSwitchError) {
+    return (
+      <AuthShell>
+        <div className="rounded-[2rem] border border-border/80 bg-card/95 p-8 text-center shadow-xl shadow-slate-200/70 backdrop-blur">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+            <ShieldCheck className="h-7 w-7" />
+          </div>
+          <h1 className="mt-5 text-xl font-semibold">Could not switch accounts</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{roleSwitchError}</p>
+          <Button className="mt-6 w-full" onClick={() => window.location.reload()}>Retry</Button>
+          <Button variant="outline" className="mt-3 w-full" onClick={() => navigate({ to: '/shop' })}>Return to storefront</Button>
+        </div>
+      </AuthShell>
+    )
   }
 
   return (
