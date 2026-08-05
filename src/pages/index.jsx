@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   ChevronRight,
   Download,
+  ExternalLink,
+  Mail,
   Menu,
   Search,
   ShieldCheck,
@@ -32,6 +34,63 @@ import { fetchMarketplaceHome } from '@/lib/marketplace-api'
 import { useAuth } from '@/hooks/use-auth'
 
 const APK_DOWNLOAD_URL = import.meta.env.VITE_BAZARHQ_APK_URL || '/downloads/bazarhq.apk'
+
+const SUPPORT_EMAIL = 'info.softthinkers@gmail.com'
+
+function GithubBrandIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49v-1.86c-2.78.62-3.37-1.22-3.37-1.22-.45-1.2-1.12-1.52-1.12-1.52-.92-.64.07-.63.07-.63 1.02.08 1.55 1.08 1.55 1.08.9 1.58 2.36 1.12 2.94.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.04-2.75-.1-.26-.45-1.31.1-2.71 0 0 .85-.28 2.78 1.05A9.4 9.4 0 0 1 12 6.98c.86 0 1.72.12 2.53.34 1.92-1.33 2.77-1.05 2.77-1.05.56 1.4.21 2.45.11 2.71.65.72 1.04 1.63 1.04 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.94.68 1.9v2.78c0 .27.18.59.69.49A10.1 10.1 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" />
+    </svg>
+  )
+}
+
+function FacebookBrandIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.19 8.44 9.94v-7.03H7.9v-2.91h2.54V9.84c0-2.52 1.5-3.91 3.77-3.91 1.1 0 2.24.2 2.24.2v2.47h-1.26c-1.24 0-1.63.78-1.63 1.57v1.89h2.78l-.44 2.91h-2.34V22C18.34 21.25 22 17.08 22 12.06Z" />
+    </svg>
+  )
+}
+
+function LinkedinBrandIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M20.45 20.45h-3.56v-5.58c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.68H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.26 2.37 4.26 5.46v6.28ZM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12ZM7.12 20.45H3.56V9h3.56v11.45ZM22.23 0H1.77C.8 0 0 .77 0 1.72v20.56C0 23.23.8 24 1.77 24h20.46c.98 0 1.77-.77 1.77-1.72V1.72C24 .77 23.2 0 22.23 0Z" />
+    </svg>
+  )
+}
+
+function InstagramBrandIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <rect x="3" y="3" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
+      <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" />
+    </svg>
+  )
+}
+
+function XBrandIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M18.9 2.75h3.1l-6.77 7.75 7.96 10.75h-6.24l-4.89-6.53-5.6 6.53H3.35l7.24-8.43L2.96 2.75h6.4l4.42 5.96 5.12-5.96Zm-1.09 16.6h1.72L8.42 4.56H6.57l11.24 14.8Z" />
+    </svg>
+  )
+}
+
+function MailBrandIcon(props) {
+  return <Mail aria-hidden="true" {...props} />
+}
+
+const socialLinks = [
+  { label: 'GitHub', href: import.meta.env.VITE_GITHUB_URL || 'https://github.com/jakariasks', Icon: GithubBrandIcon },
+  { label: 'Facebook', href: import.meta.env.VITE_FACEBOOK_PAGE_URL || 'https://www.facebook.com/jakaria.sks', Icon: FacebookBrandIcon },
+  { label: 'LinkedIn', href: import.meta.env.VITE_LINKEDIN_URL || 'https://www.linkedin.com/in/jakaria-sks/', Icon: LinkedinBrandIcon },
+  { label: 'Instagram', href: import.meta.env.VITE_INSTAGRAM_URL || '#', Icon: InstagramBrandIcon },
+  { label: 'X', href: import.meta.env.VITE_X_URL || '#', Icon: XBrandIcon },
+  { label: 'Email', href: `mailto:${SUPPORT_EMAIL}`, Icon: MailBrandIcon },
+]
 
 const fadeUp = {
   initial: { opacity: 0, y: 22 },
@@ -206,6 +265,151 @@ function LoadingGrid({ count = 4, className = 'sm:grid-cols-2 lg:grid-cols-4' })
     <div className={`grid gap-5 ${className}`}>
       {Array.from({ length: count }).map((_, index) => <div key={index} className="h-80 animate-pulse rounded-[1.6rem] bg-slate-100" />)}
     </div>
+  )
+}
+
+
+function SocialButton({ link }) {
+  const isPlaceholder = link.href === '#'
+  const Icon = link.Icon
+  const icon = (
+    <span className="group/social flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/8 text-slate-200 shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-1 hover:border-white/25 hover:bg-white/14 hover:text-white hover:shadow-[0_16px_34px_rgba(15,23,42,0.32)]">
+      <Icon className="h-5 w-5 transition-transform duration-200 group-hover/social:scale-110" />
+    </span>
+  )
+
+  if (isPlaceholder) {
+    return <span title={`${link.label} link not added yet`} aria-label={link.label} className="opacity-55">{icon}</span>
+  }
+
+  return (
+    <a
+      href={link.href}
+      target={link.href.startsWith('mailto:') ? undefined : '_blank'}
+      rel={link.href.startsWith('mailto:') ? undefined : 'noreferrer'}
+      aria-label={link.label}
+      title={link.label}
+      className="inline-flex"
+    >
+      {icon}
+    </a>
+  )
+}
+
+const footerGroups = [
+  {
+    title: 'Marketplace',
+    links: [
+      { label: 'Explore products', href: '#marketplace' },
+      { label: 'Top shops', href: '#top-shops' },
+      { label: 'Top products', href: '#top-products' },
+      { label: 'Compare prices', href: '#compare' },
+      { label: 'Mobile app', href: APK_DOWNLOAD_URL },
+    ],
+  },
+  {
+    title: 'Access',
+    links: [
+      { label: 'Merchant login', href: '/login' },
+      { label: 'Create merchant account', href: '/signup' },
+      { label: 'Customer login', href: '/customer/login' },
+      { label: 'Track order', href: '/track' },
+    ],
+  },
+  {
+    title: 'Platform',
+    links: [
+      { label: 'Start selling', href: '/signup' },
+      { label: 'Buyer account', href: '/customer/account' },
+      { label: 'Seller dashboard', href: '/merchant' },
+      { label: 'Support email', href: `mailto:${SUPPORT_EMAIL}?subject=BazarHQ%20Support` },
+    ],
+  },
+]
+
+function Footer() {
+  const quickLinks = [
+    { label: 'Download app', href: APK_DOWNLOAD_URL },
+    { label: 'Support', href: `mailto:${SUPPORT_EMAIL}?subject=BazarHQ%20Support` },
+    { label: 'Contact', href: `mailto:${SUPPORT_EMAIL}?subject=BazarHQ%20Support` },
+    { label: '.', href: '/superadmin/login' },
+  ]
+
+  return (
+    <footer className="relative overflow-hidden bg-slate-950 text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.28),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.18),transparent_34%)]" />
+      <div className="relative mx-auto max-w-7xl px-4 pb-10 pt-16 sm:px-6 sm:pb-12 sm:pt-20 lg:px-8 lg:pb-14 lg:pt-24">
+        <div className="grid gap-12 lg:grid-cols-[1.05fr_2fr] lg:items-start">
+          <div>
+            <Logo size="lg" className="text-white" />
+            <p className="mt-6 max-w-md text-sm leading-7 text-slate-300">
+              A modern Bangladesh-focused marketplace where customers discover and compare products, while merchants launch storefronts, accept local payments, and manage orders from one platform.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {['Secure accounts', 'Local payments', 'Multi-store marketplace'].map((label) => (
+                <span key={label} className="rounded-full border border-white/10 bg-white/7 px-3 py-1.5 text-xs font-semibold text-slate-200 backdrop-blur">
+                  {label}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-8">
+              <p className="text-sm font-semibold text-white">Connect with us</p>
+              <a
+                href={`mailto:${SUPPORT_EMAIL}?subject=BazarHQ%20Support`}
+                className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-slate-200 transition-colors hover:text-white"
+              >
+                <Mail className="h-4 w-4 text-indigo-400" />
+                {SUPPORT_EMAIL}
+              </a>
+            </div>
+          </div>
+
+          <div className="space-y-10">
+            <div className="grid gap-8 sm:grid-cols-3 lg:pt-1">
+              {footerGroups.map((group) => (
+                <div key={group.title}>
+                  <div className="mb-4 text-sm font-semibold text-white">{group.title}</div>
+                  <ul className="space-y-3 text-sm text-slate-400">
+                    {group.links.map((link) => (
+                      <li key={link.label}>
+                        <a href={link.href} className="group inline-flex items-center gap-1.5 transition-colors hover:text-white">
+                          {link.label}
+                          {link.href.startsWith('http') || link.href.startsWith('mailto:') ? (
+                            <ExternalLink className="h-3 w-3 opacity-60 transition-transform group-hover:translate-x-0.5" />
+                          ) : null}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-1">
+              <p className="mb-4 text-sm font-semibold text-white">Follow BazarHQ</p>
+              <div className="flex flex-wrap gap-3">
+                {socialLinks.map((link) => <SocialButton key={link.label} link={link} />)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr className="my-10 border-white/10" />
+        <div className="flex flex-col gap-3 text-xs text-slate-500 lg:flex-row lg:items-end lg:justify-between">
+          <div className="leading-6">
+            <p className="font-semibold text-slate-300">© {new Date().getFullYear()} BazarHQ. All rights reserved.</p>
+            <p className="mt-1 max-w-xl">Designed and maintained by SoftThinkers (CSE-15 BRUR) for modern online commerce in Bangladesh.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 font-medium text-slate-400 lg:justify-end">
+            {quickLinks.map((link) => (
+              <a key={link.label} href={link.href} className="transition-colors hover:text-white">{link.label}</a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </footer>
   )
 }
 
@@ -447,14 +651,7 @@ export default function MarketplaceLandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.2fr_.8fr_.8fr] lg:px-8">
-          <div><Logo size="md" /><p className="mt-4 max-w-md text-sm leading-7 text-slate-500">A Bangladesh-focused marketplace where independent shops sell and customers compare, discover and buy.</p></div>
-          <div><p className="font-black">Marketplace</p><div className="mt-4 space-y-2 text-sm font-semibold text-slate-500"><a href="#top-shops" className="block hover:text-indigo-600">Top shops</a><a href="#top-products" className="block hover:text-indigo-600">Top products</a><a href="#compare" className="block hover:text-indigo-600">Compare prices</a><Link to="/track" className="block hover:text-indigo-600">Track order</Link></div></div>
-          <div><p className="font-black">Get BazarHQ</p><a href={APK_DOWNLOAD_URL} className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700"><Download className="h-4 w-4" /> Download APK</a><p className="mt-3 text-xs leading-5 text-slate-400">Set VITE_BAZARHQ_APK_URL to your hosted APK file.</p></div>
-        </div>
-        <div className="border-t border-slate-200 py-5 text-center text-xs font-semibold text-slate-400">© {new Date().getFullYear()} BazarHQ. Marketplace commerce for Bangladesh.</div>
-      </footer>
+      <Footer />
     </div>
   )
 }
