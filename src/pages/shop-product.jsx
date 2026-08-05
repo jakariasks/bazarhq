@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ArrowLeft, CheckCircle2, MessageSquare, Minus, Package, Plus, Scale, ShieldCheck, ShoppingCart, Star, Store, Truck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ChevronRight, MessageSquare, Minus, Package, Plus, Scale, ShieldCheck, ShoppingCart, Star, Store, Tag, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/integrations/supabase/client'
 import { addToCart, getCartTotals } from '@/lib/cart'
@@ -41,6 +41,57 @@ function parseArrayValue(value) {
     if (Array.isArray(parsed)) return parsed
   } catch {}
   return []
+}
+
+function normalizeTagList(value) {
+  return parseArrayValue(value)
+    .map((item) => typeof item === 'string' ? item.trim() : String(item?.name || item?.label || '').trim())
+    .filter(Boolean)
+}
+
+function buildReviewStats(rows) {
+  const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  for (const row of rows) {
+    const rating = Math.min(5, Math.max(1, Number(row?.rating || 0)))
+    if (distribution[rating] != null) distribution[rating] += 1
+  }
+  const count = rows.length
+  const avg = count ? rows.reduce((sum, row) => sum + Number(row.rating || 0), 0) / count : 0
+  return { avg, count, distribution }
+}
+
+function RelatedProductCard({ storeSlug, product, primary, currency = 'BDT' }) {
+  const routeProductId = String(product.slug || product.id)
+  const image = getImage(product)
+  const price = toNumber(product.price, 0)
+  const compareAt = toNumber(product.compare_at_price, 0)
+  const discount = getDiscount(product)
+  return (
+    <Link
+      to="/shop/$storeSlug/product/$productId"
+      params={{ storeSlug, productId: routeProductId }}
+      className="group overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[var(--shop-primary)]/20 hover:shadow-md"
+    >
+      <div className="relative aspect-[4/3] overflow-hidden bg-slate-50">
+        {image ? (
+          <img src={image} alt={getProductTitle(product)} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+        ) : (
+          <div className="flex h-full items-center justify-center text-slate-300"><Package className="h-10 w-10" /></div>
+        )}
+        {discount > 0 && <span className="absolute left-3 top-3 rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-black text-white">-{discount}%</span>}
+      </div>
+      <div className="space-y-2 p-4">
+        <p className="line-clamp-2 min-h-[2.6rem] text-sm font-black leading-snug text-slate-900 group-hover:text-[var(--shop-primary)]">{getProductTitle(product)}</p>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-base font-black text-[var(--shop-primary)]">{money(price, currency)}</p>
+            {compareAt > price && <p className="text-xs font-semibold text-slate-400 line-through">{money(compareAt, currency)}</p>}
+          </div>
+          <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500">View <ChevronRight className="h-3.5 w-3.5" /></span>
+        </div>
+      </div>
+    </Link>
+  )
 }
 
 
@@ -149,7 +200,8 @@ export default function ShopProductPage() {
   const [cartCount, setCartCount] = useState(0)
   const { customer, isLoggedIn } = useCustomerAuth()
   const [reviews, setReviews] = useState([])
-  const [reviewStats, setReviewStats] = useState({ avg: 0, count: 0 })
+  const [reviewStats, setReviewStats] = useState({ avg: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } })
+  const [relatedProducts, setRelatedProducts] = useState([])
   const [canReview, setCanReview] = useState(false)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
@@ -203,8 +255,20 @@ export default function ShopProductPage() {
         return
       }
 
+      const related = (productRows || [])
+        .filter((row) => row.id !== productData.id)
+        .sort((a, b) => {
+          const sameCategoryA = String(a.category || '').toLowerCase() === String(productData.category || '').toLowerCase() ? 1 : 0
+          const sameCategoryB = String(b.category || '').toLowerCase() === String(productData.category || '').toLowerCase() ? 1 : 0
+          const featuredA = a.is_featured ? 1 : 0
+          const featuredB = b.is_featured ? 1 : 0
+          return (sameCategoryB - sameCategoryA) || (featuredB - featuredA) || (toNumber(b.created_at ? new Date(b.created_at).getTime() : 0) - toNumber(a.created_at ? new Date(a.created_at).getTime() : 0))
+        })
+        .slice(0, 8)
+
       setStore(storeData)
       setProduct(productData)
+      setRelatedProducts(related)
       setStatus('ok')
       const variants = normalizeVariants(productData)
       if (variants.length) setSelectedVariantId(variants.find(v => v.stock > 0)?.id || variants[0].id)
@@ -232,9 +296,7 @@ export default function ShopProductPage() {
       if (!mounted) return
       const rows = data || []
       setReviews(rows)
-      const count = rows.length
-      const avg = count ? rows.reduce((sum, row) => sum + Number(row.rating || 0), 0) / count : 0
-      setReviewStats({ avg, count })
+      setReviewStats(buildReviewStats(rows))
     }
     loadReviews()
     return () => { mounted = false }
@@ -286,9 +348,7 @@ export default function ShopProductPage() {
       .order('created_at', { ascending: false })
     const rows = data || []
     setReviews(rows)
-    const count = rows.length
-    const avg = count ? rows.reduce((sum, row) => sum + Number(row.rating || 0), 0) / count : 0
-    setReviewStats({ avg, count })
+    setReviewStats(buildReviewStats(rows))
   }
 
 
@@ -301,6 +361,7 @@ export default function ShopProductPage() {
   const lowStock = stock > 0 && stock <= 5
   const outOfStock = stock <= 0
   const discount = getDiscount(product)
+  const tagList = normalizeTagList(product?.tags)
   const theme = getTheme(store?.theme_id)
   const primary = store?.brand_color || theme.swatch || '#4f46e5'
   const vars = { ...themeCssVars(theme), '--shop-primary': primary }
@@ -409,8 +470,63 @@ export default function ShopProductPage() {
                 </div>
               ))}
             </div>
+
+            <div className="mt-8 rounded-[1.6rem] border border-slate-200 bg-slate-50 p-5">
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-[var(--shop-primary)]" />
+                <h3 className="text-sm font-black text-slate-950">More product information</h3>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Category</p>
+                  <p className="mt-2 text-sm font-bold text-slate-900">{product.category || 'General'}</p>
+                </div>
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">SKU</p>
+                  <p className="mt-2 text-sm font-bold text-slate-900">{product.sku || 'Not provided'}</p>
+                </div>
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Availability</p>
+                  <p className="mt-2 text-sm font-bold text-slate-900">{outOfStock ? 'Out of stock' : `${stock} available now`}</p>
+                </div>
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Store</p>
+                  <p className="mt-2 text-sm font-bold text-slate-900">{store.shop_name}</p>
+                </div>
+              </div>
+              {tagList.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Tags</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {tagList.slice(0, 10).map((tag) => (
+                      <span key={tag} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </section>
+
+        {relatedProducts.length > 0 && (
+          <section className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-indigo-700">
+                  <Store className="h-3.5 w-3.5" /> More from this shop
+                </p>
+                <h2 className="mt-3 text-2xl font-black tracking-tight">Related products from {store.shop_name}</h2>
+                <p className="mt-2 text-sm text-slate-500">Explore more products from the same seller before you checkout.</p>
+              </div>
+              <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-2 text-sm font-black text-[var(--shop-primary)]">Visit store <ChevronRight className="h-4 w-4" /></Link>
+            </div>
+            <div className="mt-6 grid gap-5 grid-cols-2 lg:grid-cols-4">
+              {relatedProducts.slice(0, 8).map((item) => (
+                <RelatedProductCard key={`store-related-${item.id}`} storeSlug={storeSlug} product={item} primary={primary} currency={currency} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {(recommendationQuery.data?.same_product?.length > 0 || recommendationQuery.data?.recommended?.length > 0) && (
           <section className="mt-8 space-y-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
@@ -477,9 +593,38 @@ export default function ShopProductPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="font-bold">Write a review</h3>
+          <div className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-slate-900">Average rating</p>
+                    <p className="mt-1 text-3xl font-black text-[var(--shop-primary)]">{reviewStats.count ? reviewStats.avg.toFixed(1) : '0.0'}</p>
+                  </div>
+                  <div className="text-right text-xs font-semibold text-slate-500">
+                    <p>{reviewStats.count} review{reviewStats.count === 1 ? '' : 's'}</p>
+                    <p>Verified customer feedback</p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  {[5,4,3,2,1].map((value) => {
+                    const count = reviewStats.distribution?.[value] || 0
+                    const width = reviewStats.count ? `${(count / reviewStats.count) * 100}%` : '0%'
+                    return (
+                      <div key={value} className="grid grid-cols-[32px_1fr_36px] items-center gap-2 text-xs font-bold text-slate-500">
+                        <span>{value}★</span>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                          <div className="h-full rounded-full bg-[var(--shop-primary)]" style={{ width }} />
+                        </div>
+                        <span className="text-right">{count}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <h3 className="font-bold">Write a review</h3>
               <p className="mt-1 text-xs leading-5 text-slate-500">Only verified customers who ordered this product can submit a review.</p>
               <div className="mt-4 flex gap-1 text-amber-400">
                 {[1,2,3,4,5].map(value => (
@@ -499,6 +644,7 @@ export default function ShopProductPage() {
                 {submittingReview ? 'Submitting...' : 'Submit review'}
               </Button>
               {reviewMessage && <p className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-600">{reviewMessage}</p>}
+              </div>
             </div>
 
             <div className="space-y-3">

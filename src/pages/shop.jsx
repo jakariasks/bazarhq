@@ -434,7 +434,7 @@ function ProductRail({ title, products, currency, storeId, storeSlug, onView, on
         title={title}
         description="Handpicked products from this store for a smoother shopping experience."
       />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="shop-featured-grid grid gap-4">
         {products.map((product, index) => (
           <div key={`${title}-${product.id}`} className="shop-animate" style={{ animationDelay: `${index * 70}ms` }}>
             <ProductCard
@@ -1317,11 +1317,60 @@ export default function ShopPage() {
         [data-theme-hero="editorial"] .shop-hero-grid { grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr) !important; }
         [data-theme-hero="editorial"] .shop-hero-copy { color: white !important; }
         [data-theme-layout="marketplace"] .shop-main { max-width: 92rem !important; }
-        [data-theme-layout="marketplace"] .shop-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
-        @media (min-width: 768px){ [data-theme-layout="marketplace"] .shop-product-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
-        @media (min-width: 1280px){ [data-theme-layout="marketplace"] .shop-product-grid, [data-theme-grid="four"] .shop-product-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-        [data-theme-grid="two"] .shop-product-grid { grid-template-columns: repeat(1,minmax(0,1fr)); }
-        @media (min-width: 640px){ [data-theme-grid="two"] .shop-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+        /* Explicit storefront polish rules. These are intentionally placed after
+           theme rules so the merchant-selected theme cannot revert the updated
+           hero size or marketplace-style grid. */
+        .shop-hero-shell {
+          width: 90% !important;
+          max-width: 1520px !important;
+          min-height: 390px !important;
+          margin: 1rem auto 0 !important;
+          border-radius: 2rem !important;
+        }
+        .shop-hero-inner { min-height: 390px !important; }
+        .shop-featured-grid,
+        .shop-product-grid {
+          display: grid !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+        .shop-product-grid .shop-themed-card,
+        .shop-featured-grid .shop-themed-card { min-width: 0; }
+        @media (min-width: 768px) {
+          .shop-featured-grid,
+          .shop-product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+        }
+        @media (min-width: 1024px) {
+          .shop-featured-grid,
+          .shop-product-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+        }
+        @media (min-width: 1280px) {
+          .shop-featured-grid,
+          .shop-product-grid { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+        }
+        @media (min-width: 1536px) {
+          .shop-featured-grid,
+          .shop-product-grid { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+        }
+        @media (max-width: 767px) {
+          .shop-hero-shell {
+            width: calc(100% - 1rem) !important;
+            min-height: 420px !important;
+            margin-top: .5rem !important;
+            border-radius: 1.4rem !important;
+          }
+          .shop-hero-inner {
+            min-height: 420px !important;
+            padding-top: 2.25rem !important;
+            padding-bottom: 2.25rem !important;
+          }
+        }
+        @media (min-width: 1280px) {
+          .shop-product-grid .shop-themed-card > div:last-child,
+          .shop-featured-grid .shop-themed-card > div:last-child { padding: .85rem !important; }
+          .shop-product-grid .shop-themed-card h3,
+          .shop-featured-grid .shop-themed-card h3 { font-size: .82rem !important; line-height: 1.25rem !important; }
+        }
         [data-theme-layout="minimal"] .shop-hero-copy { color: var(--shop-text) !important; }
         [data-theme-layout="minimal"] .shop-hero-copy h1, [data-theme-layout="minimal"] .shop-hero-copy p { color: var(--shop-text) !important; }
         [data-theme-layout="tech"] .shop-hero-copy h1 { color: white !important; }
@@ -1405,7 +1454,7 @@ export default function ShopPage() {
       </header>
 
       {heroVisible && (
-        <section className="relative isolate min-h-[520px] w-full overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <section className="shop-hero-shell relative isolate overflow-hidden border border-slate-200/70 bg-slate-50 shadow-[0_24px_70px_-42px_rgba(15,23,42,.35)] dark:border-white/10 dark:bg-slate-950">
           <HeroSlider
             slides={heroSlides}
             activeSlide={activeSlide}
@@ -1417,21 +1466,21 @@ export default function ShopPage() {
           <div className="shop-float-soft absolute -left-24 top-20 z-0 h-72 w-72 rounded-full bg-[var(--shop-primary-ring)] blur-3xl opacity-55" />
           <div className="shop-float-soft absolute right-16 top-8 z-0 h-64 w-64 rounded-full bg-white/55 blur-3xl opacity-60 [animation-delay:1.2s]" />
 
-          <div className="relative z-10 mx-auto flex min-h-[520px] w-full max-w-[1500px] items-center px-6 py-16 sm:px-10 lg:px-16 xl:px-20 2xl:px-24">
+          <div className="shop-hero-inner relative z-10 mx-auto flex w-full max-w-[1380px] items-center px-6 py-8 sm:px-8 lg:px-12 xl:px-16 2xl:px-20">
             <div className="shop-scroll-reveal max-w-2xl">
               <span className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-[var(--shop-primary)] shadow-[0_16px_45px_rgba(15,23,42,.08)] backdrop-blur-xl dark:bg-white/12 dark:text-white/90">
                 <Sparkles className="h-3.5 w-3.5" /> Digital shop
               </span>
 
-              <h1 className="max-w-3xl text-5xl font-black leading-[0.95] tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-7xl dark:text-white">
+              <h1 className="max-w-3xl text-4xl font-black leading-[0.96] tracking-[-0.05em] text-slate-950 sm:text-5xl lg:text-6xl dark:text-white">
                 {shopName}
               </h1>
 
-              <p className="mt-6 max-w-xl text-base font-semibold leading-8 text-slate-600 sm:text-lg dark:text-slate-200">
+              <p className="mt-4 max-w-xl text-sm font-semibold leading-7 text-slate-600 sm:text-base dark:text-slate-200">
                 {tagline}
               </p>
 
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Button
                   className="h-12 rounded-full bg-[var(--shop-primary)] px-8 font-black text-white shadow-[0_18px_46px_var(--shop-primary-ring)] transition duration-300 hover:-translate-y-0.5 hover:bg-[var(--shop-primary)]/90"
                   onClick={() => document.getElementById("products")?.scrollIntoView({ behavior: "smooth" })}
@@ -1454,7 +1503,7 @@ export default function ShopPage() {
                 </Button>
               </div>
 
-              <div className="mt-8 flex flex-wrap gap-x-5 gap-y-3 text-xs font-bold text-slate-600 dark:text-slate-200/90">
+              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3 text-xs font-bold text-slate-600 dark:text-slate-200/90">
                 <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-[var(--shop-primary)]" /> Secure checkout</span>
                 <span className="inline-flex items-center gap-1.5"><Truck className="h-4 w-4 text-[var(--shop-primary)]" /> Local delivery</span>
                 <span className="inline-flex items-center gap-1.5"><ShoppingBag className="h-4 w-4 text-[var(--shop-primary)]" /> Curated products</span>
@@ -1465,7 +1514,7 @@ export default function ShopPage() {
       )}
 
       <section className="sticky top-16 z-30 border-y border-slate-200 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/95">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto w-[90%] max-w-[92rem] py-4">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -1492,7 +1541,7 @@ export default function ShopPage() {
         </div>
       </section>
 
-      <main className="shop-main mx-auto max-w-7xl space-y-12 px-4 py-10 sm:px-6 lg:px-8">
+      <main className="shop-main mx-auto w-[94%] max-w-[92rem] space-y-12 px-0 py-10">
         <div id="featured">
           <ProductRail
             title="Featured products"
@@ -1549,7 +1598,7 @@ export default function ShopPage() {
                   <Button className="mt-5 rounded-xl" variant="outline" onClick={clearFilters}>Reset search</Button>
                 </div>
               ) : (
-                <div className="shop-product-grid grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="shop-product-grid grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                   {filtered.map((product, index) => (
                     <div key={product.id} className="shop-animate" style={{ animationDelay: `${Math.min(index, 8) * 55}ms` }}>
                       <ProductCard

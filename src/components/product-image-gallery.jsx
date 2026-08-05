@@ -32,17 +32,14 @@ export default function ProductImageGallery({
   compact = false,
   objectFit = 'contain',
 }) {
-  const normalizedImages = useMemo(
-    () => normalizeProductImages(images, fallbackImage),
-    [images, fallbackImage],
-  )
+  const normalizedImages = useMemo(() => normalizeProductImages(images, fallbackImage), [images, fallbackImage])
   const [activeIndex, setActiveIndex] = useState(0)
-  const [zoom, setZoom] = useState({ active: false, x: 50, y: 50 })
+  const [zoom, setZoom] = useState({ active: false, x: 50, y: 50, lensX: 50, lensY: 50 })
   const mainRef = useRef(null)
 
   useEffect(() => {
     setActiveIndex(0)
-    setZoom({ active: false, x: 50, y: 50 })
+    setZoom({ active: false, x: 50, y: 50, lensX: 50, lensY: 50 })
   }, [normalizedImages.join('|')])
 
   const activeImage = normalizedImages[activeIndex] || null
@@ -51,7 +48,7 @@ export default function ProductImageGallery({
   function move(direction) {
     if (!normalizedImages.length) return
     setActiveIndex((current) => (current + direction + normalizedImages.length) % normalizedImages.length)
-    setZoom({ active: false, x: 50, y: 50 })
+    setZoom({ active: false, x: 50, y: 50, lensX: 50, lensY: 50 })
   }
 
   function handlePointerMove(event) {
@@ -59,9 +56,13 @@ export default function ProductImageGallery({
     const rect = mainRef.current?.getBoundingClientRect()
     if (!rect?.width || !rect?.height) return
 
-    const x = Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100))
-    const y = Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100))
-    setZoom({ active: true, x, y })
+    const rawX = ((event.clientX - rect.left) / rect.width) * 100
+    const rawY = ((event.clientY - rect.top) / rect.height) * 100
+    const x = Math.min(100, Math.max(0, rawX))
+    const y = Math.min(100, Math.max(0, rawY))
+    const lensX = Math.min(88, Math.max(12, x))
+    const lensY = Math.min(88, Math.max(12, y))
+    setZoom({ active: true, x, y, lensX, lensY })
   }
 
   return (
@@ -80,20 +81,27 @@ export default function ProductImageGallery({
             <img
               src={activeImage}
               alt={`${alt} ${activeIndex + 1}`}
-              className={`h-full w-full select-none ${objectFit === 'cover' ? 'object-cover' : 'object-contain p-5 sm:p-7'}`}
+              className={`h-full w-full select-none transition duration-500 ${objectFit === 'cover' ? 'object-cover' : 'object-contain p-5 sm:p-7'}`}
               draggable="false"
             />
 
             {!compact && (
-              <div
-                aria-hidden="true"
-                className={`pointer-events-none absolute inset-0 hidden bg-white bg-no-repeat transition-opacity duration-150 lg:block ${zoom.active ? 'opacity-100' : 'opacity-0'}`}
-                style={{
-                  backgroundImage: `url("${activeImage.replaceAll('"', '%22')}")`,
-                  backgroundPosition: `${zoom.x}% ${zoom.y}%`,
-                  backgroundSize: '240%',
-                }}
-              />
+              <>
+                <div
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-0 hidden bg-white bg-no-repeat transition-opacity duration-150 lg:block ${zoom.active ? 'opacity-100' : 'opacity-0'}`}
+                  style={{
+                    backgroundImage: `url("${activeImage.replaceAll('"', '%22')}")`,
+                    backgroundPosition: `${zoom.x}% ${zoom.y}%`,
+                    backgroundSize: objectFit === 'cover' ? '260%' : '300%',
+                  }}
+                />
+                <div
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute hidden h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/90 bg-white/15 shadow-[0_18px_40px_rgba(15,23,42,.22)] ring-1 ring-slate-200/70 backdrop-blur-[1px] transition-opacity duration-150 lg:block ${zoom.active ? 'opacity-100' : 'opacity-0'}`}
+                  style={{ left: `${zoom.lensX}%`, top: `${zoom.lensY}%` }}
+                />
+              </>
             )}
           </>
         ) : (
@@ -104,7 +112,7 @@ export default function ProductImageGallery({
 
         <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 rounded-full bg-slate-950/75 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">
           {compact ? <Expand className="h-3.5 w-3.5" /> : <ZoomIn className="h-3.5 w-3.5" />}
-          {compact ? `${activeIndex + 1} / ${Math.max(normalizedImages.length, 1)}` : 'Hover to zoom'}
+          {compact ? `${activeIndex + 1} / ${Math.max(normalizedImages.length, 1)}` : 'Hover any part to zoom'}
         </div>
 
         {hasMultiple && (
@@ -143,7 +151,7 @@ export default function ProductImageGallery({
               type="button"
               onClick={() => {
                 setActiveIndex(index)
-                setZoom({ active: false, x: 50, y: 50 })
+                setZoom({ active: false, x: 50, y: 50, lensX: 50, lensY: 50 })
               }}
               className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border-2 bg-white p-1 transition ${
                 index === activeIndex
