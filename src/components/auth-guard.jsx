@@ -1,5 +1,4 @@
-// src/components/auth-guard.jsx
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { Loader2, Mail, RefreshCw, ShieldCheck, Store } from 'lucide-react'
 import { toast } from 'sonner'
@@ -7,21 +6,15 @@ import { useAuth } from '@/hooks/use-auth'
 import { supabase } from '@/integrations/supabase/client'
 import { Button } from '@/components/ui/button'
 import { MerchantMfaGate } from '@/components/merchant-mfa-gate'
-import { clearAllRoleIntents, safeInternalPath } from '@/lib/auth-roles'
 
-function merchantLoginUrl(pathname) {
-  const redirect = safeInternalPath(pathname, '/merchant')
-  return `/login?redirect=${encodeURIComponent(redirect)}&switched=customer`
-}
-
-function FullPageLoader({ title = 'Opening merchant sign-in', description = 'Please wait a moment.' }) {
+function FullPageLoader({ title = 'Checking your account', description = 'BazarHQ is confirming your secure session.' }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-mesh p-4">
       <div className="pointer-events-none absolute -left-24 top-12 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
       <div className="pointer-events-none absolute -right-20 bottom-8 h-72 w-72 rounded-full bg-cyan-400/10 blur-3xl" />
       <div className="relative w-full max-w-md rounded-3xl border border-border/80 bg-card/95 p-8 text-center shadow-2xl backdrop-blur">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-          <Store className="h-8 w-8" />
+          <ShieldCheck className="h-8 w-8" />
         </div>
         <h1 className="mt-5 text-2xl font-semibold tracking-tight">{title}</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
@@ -32,90 +25,54 @@ function FullPageLoader({ title = 'Opening merchant sign-in', description = 'Ple
 }
 
 export function AuthGuard({ children }) {
-  const { user, loading, emailVerified, wrongRole, signOut } = useAuth()
+  const {
+    user,
+    rawUser,
+    loading,
+    roleError,
+    emailVerified,
+    wrongRole,
+    activateMerchantRole,
+    signOut,
+  } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [resending, setResending] = useState(false)
   const [resent, setResent] = useState(false)
-  const [switchError, setSwitchError] = useState('')
-  const switchingRef = useRef(false)
-
-  const switchCustomerToMerchantLogin = useCallback(async () => {
-    if (switchingRef.current) return
-    switchingRef.current = true
-    setSwitchError('')
-
-    try {
-      clearAllRoleIntents()
-
-      const { error } = await supabase.auth.signOut({ scope: 'local' })
-      if (error && error.name !== 'AuthSessionMissingError') throw error
-
-      window.location.replace(merchantLoginUrl(location.pathname))
-    } catch (error) {
-      switchingRef.current = false
-      setSwitchError(error?.message || 'The current customer session could not be cleared.')
-    }
-  }, [location.pathname])
+  const [activating, setActivating] = useState(false)
+  const [activationError, setActivationError] = useState('')
 
   useEffect(() => {
-    if (!loading && !user && !wrongRole) {
+    if (!loading && !rawUser) {
       navigate({ to: '/login', search: { redirect: location.pathname }, replace: true })
     }
-  }, [loading, user, wrongRole, navigate, location.pathname])
+  }, [loading, rawUser, navigate, location.pathname])
 
-  useEffect(() => {
-    if (!loading && wrongRole) {
-      switchCustomerToMerchantLogin()
-    }
-  }, [loading, wrongRole, switchCustomerToMerchantLogin])
+  if (loading) return <FullPageLoader />
+  if (!rawUser) return null
 
-  if (loading) {
-    return <FullPageLoader title="Checking your account" description="BazarHQ is confirming the current login session." />
-  }
-
-  if (wrongRole) {
-    if (!switchError) {
-      return (
-        <FullPageLoader
-          title="Switching to merchant sign-in"
-          description="A customer session was active in this browser. It is being closed safely before merchant login opens."
-        />
-      )
-    }
-
+  if (roleError) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-mesh p-4">
-        <div className="relative w-full max-w-md rounded-3xl border border-border/80 bg-card/95 p-8 text-center shadow-2xl backdrop-blur">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-mesh p-4">
+        <div className="w-full max-w-md rounded-3xl border border-red-200 bg-card p-8 text-center shadow-2xl">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-600">
             <ShieldCheck className="h-8 w-8" />
           </div>
-          <h1 className="mt-5 text-2xl font-semibold">Account switch paused</h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{switchError}</p>
-          <Button className="mt-6 w-full" onClick={switchCustomerToMerchantLogin}>
-            Retry merchant sign-in
-          </Button>
-          <Button
-            variant="outline"
-            className="mt-3 w-full"
-            onClick={() => navigate({ to: '/shop' })}
-          >
-            Return to storefront
-          </Button>
+          <h1 className="mt-5 text-2xl font-semibold">Account access could not be loaded</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{roleError}</p>
+          <Button className="mt-6 w-full" onClick={() => window.location.reload()}>Retry</Button>
         </div>
       </div>
     )
   }
-
-  if (!user) return null
 
   if (!emailVerified) {
     const handleResend = async () => {
       setResending(true)
       const { error } = await supabase.auth.resend({
         type: 'signup',
-        email: user.email,
-        options: { emailRedirectTo: `${window.location.origin}/merchant` },
+        email: rawUser.email,
+        options: { emailRedirectTo: `${window.location.origin}/login?verified=1&redirect=${encodeURIComponent(location.pathname)}` },
       })
       setResending(false)
 
@@ -136,23 +93,18 @@ export function AuthGuard({ children }) {
           </div>
           <h1 className="mt-4 text-2xl font-semibold">Verify your email</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            We sent a verification link to <strong className="text-foreground">{user.email}</strong>.
-            <br />Please verify before accessing your dashboard.
+            We sent a verification link to <strong className="text-foreground">{rawUser.email}</strong>.
+            <br />Verify it before accessing the merchant dashboard.
           </p>
           {resent ? (
-            <p className="mt-4 rounded-xl bg-success/10 px-4 py-3 text-sm text-success">
-              ✓ Verification email sent. Check your inbox.
-            </p>
+            <p className="mt-4 rounded-xl bg-success/10 px-4 py-3 text-sm text-success">✓ Verification email sent. Check your inbox.</p>
           ) : (
             <Button onClick={handleResend} disabled={resending} variant="outline" className="mt-6 gap-2">
               {resending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Resend verification email
             </Button>
           )}
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 block w-full text-center text-xs text-muted-foreground hover:text-foreground"
-          >
+          <button onClick={() => window.location.reload()} className="mt-4 block w-full text-center text-xs text-muted-foreground hover:text-foreground">
             Already verified? Refresh this page
           </button>
           <button
@@ -168,6 +120,61 @@ export function AuthGuard({ children }) {
       </div>
     )
   }
+
+
+  if (wrongRole) {
+    async function enableMerchantAccess() {
+      setActivating(true)
+      setActivationError('')
+      try {
+        await activateMerchantRole({
+          fullName: rawUser.user_metadata?.full_name || rawUser.user_metadata?.name,
+          phone: rawUser.user_metadata?.phone,
+        })
+        toast.success('Merchant access added to your BazarHQ account.')
+      } catch (error) {
+        setActivationError(error?.message || 'Merchant access could not be added.')
+      } finally {
+        setActivating(false)
+      }
+    }
+
+    return (
+      <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-mesh p-4">
+        <div className="relative w-full max-w-md rounded-3xl border border-border/80 bg-card/95 p-8 text-center shadow-2xl backdrop-blur">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+            <Store className="h-8 w-8" />
+          </div>
+          <p className="mt-5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">One account, multiple roles</p>
+          <h1 className="mt-2 text-2xl font-semibold">Add merchant access</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            <strong className="text-foreground">{rawUser.email}</strong> is already signed in. Add Merchant access to this same account without losing Customer orders, addresses, or checkout data.
+          </p>
+          {activationError && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{activationError}</p>}
+          <Button className="mt-6 w-full" onClick={enableMerchantAccess} disabled={activating}>
+            {activating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Store className="mr-2 h-4 w-4" />}
+            Add merchant access
+          </Button>
+          <Button
+            variant="outline"
+            className="mt-3 w-full"
+            onClick={async () => {
+              await signOut()
+              navigate({ to: '/login', search: { redirect: location.pathname }, replace: true })
+            }}
+          >
+            Use a different account
+          </Button>
+          <Button variant="ghost" className="mt-2 w-full" onClick={() => navigate({ to: '/customer/account' })}>
+            Continue as customer
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+
+  if (!user) return null
 
   return <MerchantMfaGate user={user}>{children}</MerchantMfaGate>
 }

@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, Search, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, PlusCircle, Store as StoreIcon, Sparkles } from 'lucide-react'
+import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, Search, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, PlusCircle, Store as StoreIcon, Sparkles, ShoppingBag } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import { StoreSwitcher } from '@/components/store-switcher'
 import { NotificationCenter } from '@/components/notification-center'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { DeletedStoreRecovery } from '@/components/merchant-lifecycle-card'
+import { ROLE_CUSTOMER, activateMyRole } from '@/lib/auth-roles'
 
 const nav = [
   { to: '/merchant', label: 'Dashboard', icon: LayoutDashboard, exact: true, noStore: true },
@@ -96,7 +97,7 @@ function MerchantLayout() {
   const location = useLocation()
   const path = location.pathname
   const [open, setOpen] = useState(false)
-  const { user, signOut } = useAuth()
+  const { user, signOut, hasCustomerRole, refreshRoles } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { store, isLoading: storeLoading } = useCurrentStore()
@@ -213,6 +214,27 @@ function MerchantLayout() {
                 ) : (
                   <DropdownMenuItem onClick={() => navigate({ to: '/merchant/settings' })}><Settings className="mr-2 h-4 w-4" /> Settings</DropdownMenuItem>
                 )}
+                <DropdownMenuItem
+                  onClick={async () => {
+                    try {
+                      if (!hasCustomerRole) {
+                        await activateMyRole(ROLE_CUSTOMER, {
+                          fullName: user?.user_metadata?.full_name || user?.user_metadata?.name,
+                          phone: user?.user_metadata?.phone,
+                        })
+                        await refreshRoles()
+                        toast.success('Customer access added to this account.')
+                      }
+                      navigate({ to: '/customer/account' })
+                    } catch (error) {
+                      toast.error(error?.message || 'Customer access could not be prepared.')
+                    }
+                  }}
+                >
+                  <ShoppingBag className="mr-2 h-4 w-4" />
+                  {hasCustomerRole ? 'Switch to customer account' : 'Add customer access'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={async () => { await signOut(); navigate({ to: '/' }) }}><LogOut className="mr-2 h-4 w-4" /> Sign out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

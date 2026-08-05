@@ -18,9 +18,11 @@ import {
   Star,
   Trash2,
   FileDown,
+  Store,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { openInvoicePdf } from "@/lib/invoice";
+import { useAuth } from "@/hooks/use-auth";
 
 const STATUS_COLORS = {
   pending: "bg-yellow-100 text-yellow-700",
@@ -484,6 +486,7 @@ function SettingsTab({ customer, profile, updateProfile, changePassword, deleteA
 
 export default function CustomerAccountPage() {
   const navigate = useNavigate();
+  const { isMerchant, activateMerchantRole } = useAuth();
   const {
     customer,
     profile,
@@ -492,6 +495,7 @@ export default function CustomerAccountPage() {
     signOut,
     updateProfile,
     changePassword,
+    refreshRoles: refreshCustomerRoles,
   } = useCustomerAuth();
 
   const [tab, setTab] = useState("orders");
@@ -521,8 +525,13 @@ export default function CustomerAccountPage() {
       return;
     }
 
-    await signOut();
-    navigate({ to: "/" });
+    await refreshCustomerRoles();
+    if (isMerchant) {
+      navigate({ to: "/merchant" });
+    } else {
+      await signOut();
+      navigate({ to: "/" });
+    }
   }
 
   const tabs = [
@@ -536,17 +545,39 @@ export default function CustomerAccountPage() {
       <header className="border-b border-[var(--border)] bg-[var(--card)] sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <Logo className="h-7" />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-[var(--muted-foreground)]"
-            onClick={async () => {
-              await signOut();
-              navigate({ to: "/" });
-            }}
-          >
-            <LogOut className="h-4 w-4" /> Logout
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-[var(--muted-foreground)]"
+              onClick={async () => {
+                try {
+                  if (!isMerchant) {
+                    await activateMerchantRole({
+                      fullName: profile?.full_name || customer?.user_metadata?.full_name,
+                      phone: profile?.phone || customer?.user_metadata?.phone,
+                    });
+                  }
+                  navigate({ to: "/merchant" });
+                } catch (error) {
+                  window.alert(error?.message || "Merchant access could not be prepared.");
+                }
+              }}
+            >
+              <Store className="h-4 w-4" /> {isMerchant ? "Merchant" : "Start selling"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-[var(--muted-foreground)]"
+              onClick={async () => {
+                await signOut();
+                navigate({ to: "/" });
+              }}
+            >
+              <LogOut className="h-4 w-4" /> Logout
+            </Button>
+          </div>
         </div>
       </header>
 

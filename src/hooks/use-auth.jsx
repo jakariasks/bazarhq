@@ -1,15 +1,16 @@
-// src/hooks/use-auth.jsx
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import {
   MERCHANT_OAUTH_INTENT_KEY,
   ROLE_CUSTOMER,
   ROLE_MERCHANT,
+  activateMyRole,
   clearAllRoleIntents,
   clearStoredIntent,
+  fetchMyRoles,
   getStoredIntent,
-  getUserRole,
+  hasRole,
 } from '@/lib/auth-roles'
 
 const Ctx = createContext({
@@ -17,11 +18,16 @@ const Ctx = createContext({
   user: null,
   rawSession: null,
   rawUser: null,
+  roles: [],
   loading: true,
+  roleError: '',
   emailVerified: false,
   isMerchant: false,
+  hasCustomerRole: false,
   wrongRole: false,
   wrongRoleEmail: null,
+  activateMerchantRole: async () => [],
+  refreshRoles: async () => [],
   signOut: async () => {},
 })
 
@@ -34,96 +40,55 @@ function getDisplayName(user) {
   )
 }
 
-async function ensureMerchantProfile(user) {
-  if (!user?.id || !user?.email) return
+async function resolveRoles(nextSession) {
+  const user = nextSession?.user || null
+  if (!user) return []
 
-  const profile = {
-    id: user.id,
-    email: user.email.toLowerCase(),
-    full_name: getDisplayName(user),
-    plan_tier: 'free',
-    updated_at: new Date().toISOString(),
-  }
-
-  const { error } = await supabase
-    .from('profiles')
-    .upsert(profile, { onConflict: 'id' })
-
-  if (error) {
-    console.warn('Unable to create/update merchant profile:', error.message)
-  }
-}
-
-async function hasMerchantRecord(userId) {
-  if (!userId) return false
-
-  const [{ data: profile }, { data: store }] = await Promise.all([
-    supabase.from('profiles').select('id').eq('id', userId).maybeSingle(),
-    supabase.from('stores').select('id').eq('owner_id', userId).limit(1).maybeSingle(),
-  ])
-
-  return !!profile || !!store
-}
-
-async function setMerchantMetadata(user) {
-  const metadata = {
-    ...user.user_metadata,
-    role: ROLE_MERCHANT,
-    full_name: getDisplayName(user),
-    signup_method: user.app_metadata?.provider === 'google' ? 'google' : user.user_metadata?.signup_method || 'email',
-  }
-
-  const { error } = await supabase.auth.updateUser({ data: metadata })
-  if (error) {
-    console.warn('Unable to update merchant metadata:', error.message)
-  }
-}
-
-async function resolveMerchantSession(session) {
-  const user = session?.user || null
-  if (!user) return { isMerchant: false, user: null, session: null, wrongRole: false }
-
-  const role = getUserRole(user)
+  let roles = await fetchMyRoles(user)
   const merchantIntent = getStoredIntent(MERCHANT_OAUTH_INTENT_KEY)
 
-  if (role === ROLE_CUSTOMER && !merchantIntent) {
-    return { isMerchant: false, user: null, session: null, wrongRole: true }
+  if (merchantIntent && !hasRole(roles, ROLE_MERCHANT)) {
+    roles = await activateMyRole(ROLE_MERCHANT, {
+      fullName: getDisplayName(user),
+    })
   }
 
-  if (role === ROLE_MERCHANT) {
-    clearStoredIntent(MERCHANT_OAUTH_INTENT_KEY)
-    await ensureMerchantProfile(user)
-    return { isMerchant: true, user, session, wrongRole: false }
-  }
-
-  const hasRecord = await hasMerchantRecord(user.id)
-
-  if (hasRecord || merchantIntent) {
-    await setMerchantMetadata(user)
-    await ensureMerchantProfile(user)
-    clearStoredIntent(MERCHANT_OAUTH_INTENT_KEY)
-    return { isMerchant: true, user, session, wrongRole: false }
-  }
-
-  return { isMerchant: false, user: null, session: null, wrongRole: true }
+  if (merchantIntent) clearStoredIntent(MERCHANT_OAUTH_INTENT_KEY)
+  return roles
 }
 
 export function AuthProvider({ children }) {
   const [rawSession, setRawSession] = useState(null)
-  const [session, setSession] = useState(null)
-  const [wrongRole, setWrongRole] = useState(false)
-  const [wrongRoleEmail, setWrongRoleEmail] = useState(null)
+  const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
+  const [roleError, setRoleError] = useState('')
   const queryClient = useQueryClient()
+  const resolutionRef = useRef(0)
 
   const applySession = useCallback(async (nextSession) => {
+    const resolutionId = ++resolutionRef.current
     setRawSession(nextSession || null)
+    setRoleError('')
 
-    const resolved = await resolveMerchantSession(nextSession)
-    setSession(resolved.session)
-    setWrongRole(resolved.wrongRole)
-    setWrongRoleEmail(resolved.wrongRole ? nextSession?.user?.email || null : null)
-    queryClient.invalidateQueries()
+    if (!nextSession?.user) {
+      setRoles([])
+      queryClient.invalidateQueries()
+      return []
+    }
+
+    try {
+      const nextRoles = await resolveRoles(nextSession)
+      if (resolutionId !== resolutionRef.current) return nextRoles
+      setRoles(nextRoles)
+      queryClient.invalidateQueries()
+      return nextRoles
+    } catch (error) {
+      if (resolutionId !== resolutionRef.current) return []
+      console.error('Merchant role resolution failed:', error)
+      setRoles([])
+      setRoleError(error?.message || 'Could not load account access.')
+      return []
+    }
   }, [queryClient])
 
   useEffect(() => {
@@ -150,33 +115,89 @@ export function AuthProvider({ children }) {
     }
   }, [applySession])
 
-  const user = session?.user ?? null
-  const rawUser = rawSession?.user ?? null
+  const refreshRoles = useCallback(async (sessionOverride = null) => {
+    const nextSession = sessionOverride || rawSession
+    if (!nextSession?.user) {
+      setRoles([])
+      return []
+    }
 
-  const emailVerified = user
-    ? user.email_confirmed_at != null || user.app_metadata?.provider === 'google'
+    const resolutionId = ++resolutionRef.current
+    const nextRoles = await resolveRoles(nextSession)
+    if (resolutionId !== resolutionRef.current) return nextRoles
+    setRoles(nextRoles)
+    setRoleError('')
+    queryClient.invalidateQueries()
+    return nextRoles
+  }, [rawSession, queryClient])
+
+  const activateMerchantRole = useCallback(async (details = {}) => {
+    const resolutionId = ++resolutionRef.current
+    if (!rawSession?.user) throw new Error('Sign in before adding merchant access.')
+
+    const nextRoles = await activateMyRole(ROLE_MERCHANT, {
+      fullName: details.fullName || getDisplayName(rawSession.user),
+      phone: details.phone || null,
+    })
+
+    if (resolutionId === resolutionRef.current) {
+      setRoles(nextRoles)
+      setRoleError('')
+      queryClient.invalidateQueries()
+    }
+    return nextRoles
+  }, [rawSession, queryClient])
+
+  const rawUser = rawSession?.user ?? null
+  const isMerchant = hasRole(roles, ROLE_MERCHANT)
+  const hasCustomerRole = hasRole(roles, ROLE_CUSTOMER)
+  const session = isMerchant ? rawSession : null
+  const user = session?.user ?? null
+  const wrongRole = !!rawUser && !isMerchant
+
+  const emailVerified = rawUser
+    ? rawUser.email_confirmed_at != null || rawUser.app_metadata?.provider === 'google'
     : false
 
-  const value = {
+  const value = useMemo(() => ({
     session,
     user,
     rawSession,
     rawUser,
+    roles,
     loading,
+    roleError,
     emailVerified,
-    isMerchant: !!user,
+    isMerchant,
+    hasCustomerRole,
     wrongRole,
-    wrongRoleEmail,
+    wrongRoleEmail: wrongRole ? rawUser?.email || null : null,
+    activateMerchantRole,
+    refreshRoles,
     signOut: async () => {
       clearAllRoleIntents()
       await supabase.auth.signOut()
       setRawSession(null)
-      setSession(null)
-      setWrongRole(false)
-      setWrongRoleEmail(null)
+      setRoles([])
+      setRoleError('')
       queryClient.clear()
     },
-  }
+  }), [
+    session,
+    user,
+    rawSession,
+    rawUser,
+    roles,
+    loading,
+    roleError,
+    emailVerified,
+    isMerchant,
+    hasCustomerRole,
+    wrongRole,
+    activateMerchantRole,
+    refreshRoles,
+    queryClient,
+  ])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

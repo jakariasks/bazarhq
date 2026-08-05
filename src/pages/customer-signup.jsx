@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
-import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, Phone, ShoppingBag, UserRound, XCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, Phone, ShoppingBag, Store, UserRound, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,16 +25,24 @@ function GoogleIcon() {
 }
 
 function Rule({ ok, children }) {
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${ok ? 'text-emerald-700' : 'text-slate-400'}`}>
-      {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-      {children}
-    </span>
-  )
+  return <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${ok ? 'text-emerald-700' : 'text-slate-400'}`}>{ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}{children}</span>
+}
+
+function isEmailNotConfirmed(error) {
+  const message = String(error?.message || '').toLowerCase()
+  return message.includes('email not confirmed') || message.includes('email_not_confirmed') || message.includes('verify your email')
 }
 
 export default function CustomerSignupPage() {
-  const { signUp, signInWithGoogle } = useCustomerAuth()
+  const {
+    customer,
+    rawUser,
+    loading: authLoading,
+    activateCustomerRole,
+    signUp,
+    signInWithGoogle,
+    signOut,
+  } = useCustomerAuth()
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -54,6 +62,31 @@ export default function CustomerSignupPage() {
   const phoneIsValid = !phone || /^01[3-9]\d{8}$/.test(phone)
   const formReady = fullName.trim().length >= 2 && email.trim() && passwordHasLength && passwordHasNumber && passwordsMatch && phoneIsValid
 
+  useEffect(() => {
+    if (!authLoading && customer) window.location.assign(redirectTo)
+  }, [authLoading, customer, redirectTo])
+
+  async function addToCurrentAccount() {
+    setError('')
+    setLoading(true)
+    try {
+      await activateCustomerRole({
+        fullName: fullName.trim() || rawUser?.user_metadata?.full_name || rawUser?.user_metadata?.name,
+        phone: phone || rawUser?.user_metadata?.phone,
+      })
+      window.location.assign(redirectTo)
+    } catch (activationError) {
+      if (isEmailNotConfirmed(activationError)) {
+        setEmail(rawUser?.email || '')
+        setVerificationMode(true)
+      } else {
+        setError(activationError?.message || 'Customer access could not be added.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSignup(event) {
     event.preventDefault()
     if (!formReady) {
@@ -65,20 +98,14 @@ export default function CustomerSignupPage() {
     setLoading(true)
     try {
       const data = await signUp({ email, password, fullName, phone, redirectTo })
-      if (data.user?.identities && data.user.identities.length === 0) {
-        setError('This email is already registered. Sign in or reset your password.')
-        return
-      }
       if (data.session) {
         window.location.assign(redirectTo)
         return
       }
       setVerificationMode(true)
     } catch (signupError) {
-      const message = String(signupError.message || '')
-      setError(message.toLowerCase().includes('already')
-        ? 'This email is already registered. Sign in or reset your password.'
-        : message || 'Registration failed. Please try again.')
+      if (isEmailNotConfirmed(signupError)) setVerificationMode(true)
+      else setError(signupError?.message || 'Registration failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -95,111 +122,66 @@ export default function CustomerSignupPage() {
     }
   }
 
+  if (authLoading || customer) return null
+
+  if (rawUser && !customer && !verificationMode) {
+    return (
+      <AuthPageShell
+        audience="customer"
+        eyebrow="One BazarHQ account"
+        title="Add shopping access to your merchant account."
+        description="Keep your store and use the same email for checkout, saved addresses, and order history."
+        points={['No second login', 'Merchant dashboard remains intact', 'Switch roles instantly']}
+        backTo="/shop"
+        backLabel="Browse stores"
+      >
+        <div className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-50 text-sky-700"><ShoppingBag className="h-8 w-8" /></div>
+          <h1 className="mt-5 text-2xl font-black text-slate-950">Add Customer access</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">You are signed in as <strong className="text-slate-900">{rawUser.email}</strong>.</p>
+          {error && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+          <Button className="mt-6 h-12 w-full rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={addToCurrentAccount} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShoppingBag className="mr-2 h-4 w-4" />}Add Customer access</Button>
+          <Button variant="outline" className="mt-3 h-12 w-full rounded-xl" onClick={() => window.location.assign('/merchant')}><Store className="mr-2 h-4 w-4" />Return to merchant dashboard</Button>
+          <button type="button" className="mt-5 text-sm font-semibold text-slate-600 hover:text-slate-950" onClick={async () => { await signOut(); window.location.reload() }}>Use another email</button>
+        </div>
+      </AuthPageShell>
+    )
+  }
+
   return (
     <AuthPageShell
       audience="customer"
       eyebrow="BazarHQ Customer"
-      title="Create one account for every BazarHQ store."
-      description="Save delivery addresses, complete checkout faster, and keep your order history together."
-      points={['One account across every store', 'Protected authenticated checkout', 'Secure order history and tracking']}
+      title="Create one account for shopping and selling."
+      description="A merchant email can add Customer access with its existing password."
+      points={['One account across every store', 'Protected authenticated checkout', 'Customer and Merchant roles together']}
       backTo="/shop"
       backLabel="Browse stores"
     >
       {verificationMode ? (
-        <ResendVerificationCard
-          defaultEmail={email}
-          role="customer"
-          redirectTo={redirectTo}
-          onBack={() => setVerificationMode(false)}
-        />
+        <ResendVerificationCard defaultEmail={email || rawUser?.email || ''} role="customer" redirectTo={redirectTo} onBack={() => setVerificationMode(false)} />
       ) : (
         <>
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
-              <ShoppingBag className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-600">Customer registration</p>
-              <h1 className="mt-1 text-3xl font-black tracking-[-0.035em] text-slate-950">Create your account</h1>
-              <p className="mt-1 text-sm leading-6 text-slate-600">Your cart and prepared checkout will remain available.</p>
-            </div>
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-600"><ShoppingBag className="h-6 w-6" /></div>
+            <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-600">Customer registration</p><h1 className="mt-1 text-3xl font-black tracking-[-0.035em] text-slate-950">Create or upgrade your account</h1><p className="mt-1 text-sm leading-6 text-slate-600">Existing BazarHQ users should enter their current password.</p></div>
           </div>
 
-          <Button type="button" variant="outline" className="mt-6 h-12 w-full gap-2 rounded-xl border-slate-200" onClick={handleGoogleSignup} disabled={googleLoading || loading}>
-            {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-            Continue with Google
-          </Button>
-
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-slate-200" />
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">or use email</span>
-            <div className="h-px flex-1 bg-slate-200" />
-          </div>
+          <Button type="button" variant="outline" className="mt-6 h-12 w-full gap-2 rounded-xl border-slate-200" onClick={handleGoogleSignup} disabled={googleLoading || loading}>{googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}Continue with Google</Button>
+          <div className="my-6 flex items-center gap-3"><div className="h-px flex-1 bg-slate-200" /><span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">or use email</span><div className="h-px flex-1 bg-slate-200" /></div>
 
           <form onSubmit={handleSignup} className="space-y-4">
-            <div>
-              <Label htmlFor="customer-name" className="text-slate-700">Full name</Label>
-              <div className="relative mt-1.5">
-                <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input id="customer-name" autoComplete="name" placeholder="Your full name" value={fullName} onChange={(event) => setFullName(event.target.value)} required className="h-12 rounded-xl border-slate-200 pl-10" />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="customer-phone" className="text-slate-700">Phone number <span className="font-normal text-slate-400">(optional)</span></Label>
-              <div className="relative mt-1.5">
-                <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input id="customer-phone" type="tel" autoComplete="tel" placeholder="01XXXXXXXXX" value={phone} onChange={(event) => setPhone(event.target.value.replace(/\s/g, ''))} className="h-12 rounded-xl border-slate-200 pl-10" />
-              </div>
-              {!phoneIsValid && <p className="mt-1.5 text-xs font-medium text-red-600">Enter a valid Bangladesh mobile number.</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="customer-signup-email" className="text-slate-700">Email address</Label>
-              <div className="relative mt-1.5">
-                <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input id="customer-signup-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required className="h-12 rounded-xl border-slate-200 pl-10" />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="customer-signup-password" className="text-slate-700">Password</Label>
-              <div className="relative mt-1.5">
-                <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input id="customer-signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="Create a strong password" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-12 rounded-xl border-slate-200 px-10" />
-                <button type="button" className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {password && (
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-                  <Rule ok={passwordHasLength}>8+ characters</Rule>
-                  <Rule ok={passwordHasNumber}>At least one number</Rule>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="customer-confirm-password" className="text-slate-700">Confirm password</Label>
-              <Input id="customer-confirm-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="Repeat your password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required className="mt-1.5 h-12 rounded-xl border-slate-200" />
-              {confirmPassword && <div className="mt-2"><Rule ok={passwordsMatch}>Passwords match</Rule></div>}
-            </div>
-
+            <div><Label htmlFor="customer-name" className="text-slate-700">Full name</Label><div className="relative mt-1.5"><UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input id="customer-name" autoComplete="name" placeholder="Your full name" value={fullName} onChange={(event) => setFullName(event.target.value)} required className="h-12 rounded-xl border-slate-200 pl-10" /></div></div>
+            <div><Label htmlFor="customer-phone" className="text-slate-700">Phone number <span className="font-normal text-slate-400">(optional)</span></Label><div className="relative mt-1.5"><Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input id="customer-phone" type="tel" autoComplete="tel" placeholder="01XXXXXXXXX" value={phone} onChange={(event) => setPhone(event.target.value.replace(/\s/g, ''))} className="h-12 rounded-xl border-slate-200 pl-10" /></div>{!phoneIsValid && <p className="mt-1.5 text-xs font-medium text-red-600">Enter a valid Bangladesh mobile number.</p>}</div>
+            <div><Label htmlFor="customer-signup-email" className="text-slate-700">Email address</Label><div className="relative mt-1.5"><Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input id="customer-signup-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required className="h-12 rounded-xl border-slate-200 pl-10" /></div></div>
+            <div><Label htmlFor="customer-signup-password" className="text-slate-700">Password</Label><div className="relative mt-1.5"><LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input id="customer-signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="New or existing account password" value={password} onChange={(event) => setPassword(event.target.value)} required className="h-12 rounded-xl border-slate-200 px-10" /><button type="button" className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2"><Rule ok={passwordHasLength}>8+ characters</Rule><Rule ok={passwordHasNumber}>At least one number</Rule></div></div>
+            <div><Label htmlFor="customer-confirm-password" className="text-slate-700">Confirm password</Label><Input id="customer-confirm-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="Repeat the password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required className="mt-1.5 h-12 rounded-xl border-slate-200" /><div className="mt-2"><Rule ok={passwordsMatch}>Passwords match</Rule></div></div>
             {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-700" role="alert">{error}</div>}
-
-            <Button type="submit" className="h-12 w-full rounded-xl bg-slate-950 text-white hover:bg-slate-800" disabled={!formReady || loading || googleLoading}>
-              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating account...</> : 'Create customer account'}
-            </Button>
+            <Button type="submit" className="h-12 w-full rounded-xl bg-slate-950 text-white hover:bg-slate-800" disabled={!formReady || loading || googleLoading}>{loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Preparing customer access...</> : 'Create or add Customer access'}</Button>
           </form>
 
-          <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-600">
-            Already have an account?{' '}
-            <Link to="/customer/login" search={loginSearch} className="font-bold text-sky-700 hover:underline">Sign in</Link>
-          </div>
-
-          <p className="mt-4 text-center text-xs text-slate-500">
-            Want to sell? <Link to="/signup" className="font-semibold text-slate-700 hover:underline">Create a merchant account</Link>
-          </p>
+          <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-600">Already have an account? <Link to="/customer/login" search={loginSearch} className="font-bold text-sky-700 hover:underline">Sign in</Link></div>
+          <p className="mt-4 text-center text-xs text-slate-500">Want to sell? <Link to="/signup" className="font-semibold text-slate-700 hover:underline">Merchant access</Link></p>
         </>
       )}
     </AuthPageShell>
