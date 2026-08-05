@@ -13,6 +13,19 @@ import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 
+const METHOD_ALIASES = {
+  sslcommerz: 'ssl',
+  cash_on_delivery: 'cod',
+  cashondelivery: 'cod',
+}
+
+function canonicalMethod(method) {
+  const value = String(method || '').trim().toLowerCase()
+  return METHOD_ALIASES[value] || value
+}
+
+const PAYMENT_CONFIG_SELECT = 'id, store_id, method, enabled, merchant_number, ssl_store_id, is_live, ssl_credentials_valid, ssl_credentials_checked_at, ssl_credentials_error, created_at, updated_at'
+
 const METHODS = [
   { id: 'bkash', name: 'bKash', logo: '🔴', color: '#E2136E', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
   { id: 'nagad', name: 'Nagad', logo: '🟠', color: '#F7941D', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
@@ -73,7 +86,7 @@ export default function PaymentsPage() {
 
     const { data, error } = await supabase
       .from('payment_configs')
-      .select('id, store_id, method, enabled, merchant_number, ssl_store_id, is_live, ssl_credentials_valid, ssl_credentials_checked_at, ssl_credentials_error, created_at, updated_at')
+      .select(PAYMENT_CONFIG_SELECT)
       .eq('store_id', store.id)
       .order('created_at', { ascending: true })
 
@@ -85,20 +98,70 @@ export default function PaymentsPage() {
     }
 
     const map = {}
-    for (const row of data || []) map[row.method] = { ...row, enabled: Boolean(row.enabled) }
+    for (const row of data || []) {
+      const method = canonicalMethod(row.method)
+      if (!METHODS.some((item) => item.id === method)) continue
+
+      const normalized = { ...row, method, enabled: Boolean(row.enabled) }
+      const current = map[method]
+
+      // A legacy database may contain both `sslcommerz` and `ssl`. Prefer the
+      // newest record until the old alias is removed by a database migration.
+      if (!current || new Date(normalized.updated_at || normalized.created_at || 0) >= new Date(current.updated_at || current.created_at || 0)) {
+        map[method] = normalized
+      }
+    }
     setConfigs(map)
     setLoading(false)
   }
 
   async function saveRow(methodId, patch) {
-    const existing = configs[methodId]
-    if (existing?.id) {
-      const { error } = await supabase.from('payment_configs').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', existing.id).eq('store_id', store.id)
-      if (error) throw error
-      return
+    if (!store?.id) throw new Error('No active store selected.')
+
+    const method = canonicalMethod(methodId)
+    const now = new Date().toISOString()
+    const payload = {
+      store_id: store.id,
+      method,
+      ...patch,
+      updated_at: now,
     }
-    const { error } = await supabase.from('payment_configs').insert({ store_id: store.id, method: methodId, ...patch })
+
+    // Always upsert by the real database uniqueness contract. Relying on the
+    // locally loaded config map creates a race: an existing row can be missed
+    // and a second INSERT then violates payment_configs_store_id_method_key.
+    let { data, error } = await supabase
+      .from('payment_configs')
+      .upsert(payload, {
+        onConflict: 'store_id,method',
+        ignoreDuplicates: false,
+      })
+      .select(PAYMENT_CONFIG_SELECT)
+      .single()
+
+    // Defensive fallback for stale PostgREST schema cache or older projects.
+    // A duplicate-key result means the row exists, so update it explicitly.
+    if (error?.code === '23505') {
+      const fallback = await supabase
+        .from('payment_configs')
+        .update({ ...patch, updated_at: now })
+        .eq('store_id', store.id)
+        .eq('method', method)
+        .select(PAYMENT_CONFIG_SELECT)
+        .single()
+
+      data = fallback.data
+      error = fallback.error
+    }
+
     if (error) throw error
+
+    setConfigs((current) => ({
+      ...current,
+      [method]: { ...data, method, enabled: Boolean(data?.enabled) },
+    }))
+
+    return data
   }
 
   async function refreshAfterChange() {
@@ -110,7 +173,7 @@ export default function PaymentsPage() {
 
   function openConfig(method) {
     setActiveMethod(method)
-    const existing = configs[method.id] || {}
+    const existing = configs[canonicalMethod(method.id)] || {}
     const values = {}
     for (const field of method.fields) values[field.key] = field.secret ? '' : (existing[field.key] || '')
     setFieldValues(values)
@@ -122,7 +185,7 @@ export default function PaymentsPage() {
   async function toggleMethod(methodId, enabled) {
     if (!store) return
     const method = METHODS.find((item) => item.id === methodId)
-    const existing = configs[methodId]
+    const existing = configs[canonicalMethod(methodId)]
     if (!method) return
 
     if (enabled && !isConfigured(method, existing)) {
@@ -223,7 +286,7 @@ export default function PaymentsPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {METHODS.map((method) => {
-          const config = configs[method.id]
+          const config = configs[canonicalMethod(method.id)]
           const enabled = Boolean(config?.enabled)
           const configured = isConfigured(method, config)
           const busy = toggleSaving === method.id
