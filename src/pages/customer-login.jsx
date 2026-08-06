@@ -1,5 +1,5 @@
-import { Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, EyeOff, Loader2, LockKeyhole, Mail, ShoppingBag, Store } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +30,8 @@ function GoogleIcon() {
 }
 
 export default function CustomerLoginPage() {
+  const navigate = useNavigate()
+  const redirectingRef = useRef(false)
   const {
     customer,
     rawUser,
@@ -52,9 +54,15 @@ export default function CustomerLoginPage() {
   const verifiedNotice = params.get('verified') === '1'
   const signupSearch = redirectTo !== '/customer/account' ? { redirect: redirectTo } : {}
 
+  const goToRedirect = useCallback(() => {
+    if (redirectingRef.current) return
+    redirectingRef.current = true
+    navigate({ to: redirectTo, replace: true })
+  }, [navigate, redirectTo])
+
   useEffect(() => {
-    if (!authLoading && customer) window.location.assign(redirectTo)
-  }, [authLoading, customer, redirectTo])
+    if (!authLoading && customer) goToRedirect()
+  }, [authLoading, customer, goToRedirect])
 
   async function addCustomerToCurrentAccount() {
     setError('')
@@ -64,7 +72,7 @@ export default function CustomerLoginPage() {
         fullName: rawUser?.user_metadata?.full_name || rawUser?.user_metadata?.name,
         phone: rawUser?.user_metadata?.phone,
       })
-      window.location.assign(redirectTo)
+      goToRedirect()
     } catch (activationError) {
       if (isEmailNotConfirmedError(activationError)) {
         setEmail(rawUser?.email || '')
@@ -84,7 +92,7 @@ export default function CustomerLoginPage() {
 
     try {
       await signIn({ email, password })
-      window.location.assign(redirectTo)
+      goToRedirect()
     } catch (loginError) {
       if (isEmailNotConfirmedError(loginError)) setVerificationMode(true)
       else setError(loginError.message || 'Login failed. Check your email and password.')
@@ -129,7 +137,7 @@ export default function CustomerLoginPage() {
           <p className="mt-2 text-sm leading-6 text-slate-600"><strong className="text-slate-900">{rawUser.email}</strong> is already signed in. Use this same account for shopping.</p>
           {error && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
           <Button className="mt-6 h-12 w-full rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={addCustomerToCurrentAccount} disabled={loading}>{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShoppingBag className="mr-2 h-4 w-4" />}Add Customer access</Button>
-          <Button variant="outline" className="mt-3 h-12 w-full rounded-xl" onClick={() => window.location.assign('/merchant')}><Store className="mr-2 h-4 w-4" />Return to merchant dashboard</Button>
+          <Button variant="outline" className="mt-3 h-12 w-full rounded-xl" onClick={() => navigate({ to: '/merchant' })}><Store className="mr-2 h-4 w-4" />Return to merchant dashboard</Button>
           <button type="button" className="mt-5 text-sm font-semibold text-slate-600 hover:text-slate-950" onClick={async () => { await signOut(); window.location.reload() }}>Use another email</button>
         </div>
       </AuthPageShell>

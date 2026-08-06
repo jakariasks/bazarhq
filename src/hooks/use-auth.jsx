@@ -31,6 +31,17 @@ const Ctx = createContext({
   signOut: async () => {},
 })
 
+
+const ROLE_RESOLUTION_TIMEOUT_MS = 12000
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer))
+}
+
 function getDisplayName(user) {
   return (
     user?.user_metadata?.full_name ||
@@ -64,20 +75,31 @@ export function AuthProvider({ children }) {
   const [roleError, setRoleError] = useState('')
   const queryClient = useQueryClient()
   const resolutionRef = useRef(0)
+  const initializedRef = useRef(false)
 
-  const applySession = useCallback(async (nextSession) => {
+  const applySession = useCallback(async (nextSession, { showLoading = true } = {}) => {
     const resolutionId = ++resolutionRef.current
+
+    if (showLoading && !initializedRef.current) setLoading(true)
     setRawSession(nextSession || null)
     setRoleError('')
 
     if (!nextSession?.user) {
-      setRoles([])
-      queryClient.invalidateQueries()
+      if (resolutionId === resolutionRef.current) {
+        setRoles([])
+        initializedRef.current = true
+        setLoading(false)
+        queryClient.invalidateQueries()
+      }
       return []
     }
 
     try {
-      const nextRoles = await resolveRoles(nextSession)
+      const nextRoles = await withTimeout(
+        resolveRoles(nextSession),
+        ROLE_RESOLUTION_TIMEOUT_MS,
+        'Account role check took too long. Check your connection and retry.',
+      )
       if (resolutionId !== resolutionRef.current) return nextRoles
       setRoles(nextRoles)
       queryClient.invalidateQueries()
@@ -88,25 +110,53 @@ export function AuthProvider({ children }) {
       setRoles([])
       setRoleError(error?.message || 'Could not load account access.')
       return []
+    } finally {
+      if (resolutionId === resolutionRef.current) {
+        initializedRef.current = true
+        setLoading(false)
+      }
     }
   }, [queryClient])
+
 
   useEffect(() => {
     let mounted = true
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    const resolve = (session, options) => {
       if (!mounted) return
-      await applySession(data.session)
-      if (mounted) setLoading(false)
+      queueMicrotask(() => {
+        if (mounted) void applySession(session, options)
+      })
+    }
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return
+      if (error) {
+        console.error('Account session load failed:', error)
+        setRoleError(error.message || 'Could not load your secure session.')
+        initializedRef.current = true
+        setLoading(false)
+        return
+      }
+      resolve(data.session, { showLoading: true })
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setLoading(true)
-      setTimeout(async () => {
-        if (!mounted) return
-        await applySession(nextSession)
-        if (mounted) setLoading(false)
-      }, 0)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!mounted || event === 'INITIAL_SESSION') return
+
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        setRawSession(nextSession || null)
+        return
+      }
+
+      if (event === 'SIGNED_OUT') {
+        resolve(null, { showLoading: false })
+        return
+      }
+
+      if (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') {
+        resolve(nextSession, { showLoading: !initializedRef.current })
+      }
     })
 
     return () => {
@@ -114,6 +164,7 @@ export function AuthProvider({ children }) {
       subscription.unsubscribe()
     }
   }, [applySession])
+
 
   const refreshRoles = useCallback(async (sessionOverride = null) => {
     const nextSession = sessionOverride || rawSession

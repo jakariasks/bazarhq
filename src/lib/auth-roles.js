@@ -8,6 +8,15 @@ export const CUSTOMER_OAUTH_INTENT_KEY = 'bazarhq_customer_oauth_intent'
 
 const INTENT_MAX_AGE_MS = 15 * 60 * 1000
 const VALID_ROLES = new Set([ROLE_MERCHANT, ROLE_CUSTOMER])
+const ROLE_CACHE_TTL_MS = 5000
+const roleCache = new Map()
+const roleRequests = new Map()
+
+function rememberRoles(userId, roles) {
+  const normalized = normalizeRoles(roles)
+  roleCache.set(userId, { roles: normalized, expiresAt: Date.now() + ROLE_CACHE_TTL_MS })
+  return normalized
+}
 
 export function normalizeRoles(value) {
   const source = Array.isArray(value)
@@ -97,16 +106,29 @@ async function legacyRoleFallback(user) {
   return normalizeRoles(roles)
 }
 
-export async function fetchMyRoles(user) {
+export async function fetchMyRoles(user, { force = false } = {}) {
   if (!user?.id) return []
 
-  const { data, error } = await supabase.rpc('get_my_roles')
-  if (!error) return normalizeRoles(data)
+  const cached = roleCache.get(user.id)
+  if (!force && cached?.expiresAt > Date.now()) return cached.roles
+  if (!force && roleRequests.has(user.id)) return roleRequests.get(user.id)
 
-  // During a staged deploy, existing profile tables still provide a safe read-only fallback.
-  const fallback = await legacyRoleFallback(user)
-  if (fallback.length) return fallback
-  throw migrationMessage(error)
+  const request = (async () => {
+    const { data, error } = await supabase.rpc('get_my_roles')
+    if (!error) return rememberRoles(user.id, data)
+
+    // During a staged deploy, existing profile tables still provide a safe read-only fallback.
+    const fallback = await legacyRoleFallback(user)
+    if (fallback.length) return rememberRoles(user.id, fallback)
+    throw migrationMessage(error)
+  })()
+
+  roleRequests.set(user.id, request)
+  try {
+    return await request
+  } finally {
+    roleRequests.delete(user.id)
+  }
 }
 
 export async function activateMyRole(role, details = {}) {
@@ -119,7 +141,10 @@ export async function activateMyRole(role, details = {}) {
   })
 
   if (error) throw migrationMessage(error)
-  return normalizeRoles(data)
+
+  const { data: sessionData } = await supabase.auth.getSession()
+  const userId = sessionData.session?.user?.id
+  return userId ? rememberRoles(userId, data) : normalizeRoles(data)
 }
 
 export async function getCurrentSessionUser() {
