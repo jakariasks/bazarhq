@@ -11,7 +11,6 @@ import {
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { getStoreTheme, getThemeCssVars, themeDataAttributes } from "@/lib/theme-system";
 import { Button } from "@/components/ui/button";
-import MarketplaceProductCard from "@/components/marketplace-product-card";
 import { Input } from "@/components/ui/input";
 import {
   AlertTriangle,
@@ -295,16 +294,24 @@ function ProductImage({ product, className = "" }) {
   );
 }
 
-function ProductCard({ product, currency, storeId, storeSlug, shopName, onView, onCartChange, onOpenCart }) {
+function ProductCard({ product, currency, storeId, storeSlug, onView, onCartChange, onOpenCart }) {
   const [adding, setAdding] = useState(false);
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState("");
 
   const stock = getStock(product);
   const outOfStock = stock <= 0;
+  const lowStock = stock > 0 && stock <= 5;
+  const price = toNumber(product.price, 0);
+  const compareAt = toNumber(product.compare_at_price, 0);
+  const discount = getDiscount(product);
   const requiresVariant = hasVariants(product);
+  const productParam = String(product.slug || product.id);
+  const detailsParams = { storeSlug, productId: productParam };
 
-  async function handleAddToCart() {
+  async function handleAddToCart(event) {
+    event.preventDefault();
+    event.stopPropagation();
     setError("");
 
     if (requiresVariant) {
@@ -324,26 +331,90 @@ function ProductCard({ product, currency, storeId, storeSlug, shopName, onView, 
     setFlash(true);
     onCartChange?.();
     onOpenCart?.();
-    setTimeout(() => setFlash(false), 1200);
+    setTimeout(() => setFlash(false), 1000);
   }
 
   return (
-    <MarketplaceProductCard
-      product={{ ...product, store_slug: storeSlug, shop_name: product.shop_name || shopName }}
-      storeSlug={storeSlug}
-      shopName={shopName}
-      currency={currency}
-      onAddToCart={handleAddToCart}
-      addToCartDisabled={outOfStock || adding}
-      addToCartLabel={outOfStock ? "Out of stock" : requiresVariant ? "Choose option" : flash ? "Added" : adding ? "Adding..." : "Add to cart"}
-      statusMessage={error || (flash ? "Added to cart successfully." : "")}
-      statusTone={error ? "error" : "success"}
-      className="shop-storefront-product-card"
-    />
+    <article className="group shop-hover-lift shop-themed-card relative overflow-hidden rounded-[1.55rem] border border-slate-200/85 bg-white shadow-[0_12px_34px_-26px_rgba(15,23,42,.35)] transition-all duration-500 hover:border-[var(--shop-primary-ring)] hover:shadow-[0_28px_70px_-38px_rgba(15,23,42,.38)] dark:border-white/10 dark:bg-slate-950">
+      <div className="relative overflow-hidden">
+        <Link to="/shop/$storeSlug/product/$productId" params={detailsParams} className="block" aria-label={`View ${product.title}`}>
+          <ProductImage product={product} className="aspect-square" />
+        </Link>
+
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-2">
+          {discount > 0 && (
+            <span className="inline-flex w-fit items-center rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-black text-white shadow-sm">
+              -{discount}%
+            </span>
+          )}
+          {isFeatured(product) && (
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/92 px-2.5 py-1 text-[11px] font-black text-slate-900 shadow-sm backdrop-blur">
+              <Sparkles className="h-3 w-3 text-[var(--shop-primary)]" /> Featured
+            </span>
+          )}
+        </div>
+
+        <Link
+          to="/shop/$storeSlug/product/$productId"
+          params={detailsParams}
+          className="absolute bottom-3 left-3 right-3 flex translate-y-2 items-center justify-between rounded-2xl bg-slate-950/88 px-3.5 py-2.5 text-xs font-black text-white opacity-0 shadow-lg backdrop-blur transition duration-300 group-hover:translate-y-0 group-hover:opacity-100"
+        >
+          View product details <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      <div className="space-y-3 p-4">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <span className="max-w-[55%] truncate rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+            {product.category || "General"}
+          </span>
+          <RatingStars product={product} />
+        </div>
+
+        <Link to="/shop/$storeSlug/product/$productId" params={detailsParams} className="block">
+          <h3 className="line-clamp-2 min-h-[2.7rem] text-[13px] font-black leading-[1.35rem] text-slate-950 transition group-hover:text-[var(--shop-primary)] dark:text-white sm:text-sm">
+            {product.title}
+          </h3>
+        </Link>
+
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-lg font-black text-[var(--shop-primary)]">{money(price, currency)}</p>
+            {compareAt > price && (
+              <p className="text-xs font-semibold text-slate-400 line-through">{money(compareAt, currency)}</p>
+            )}
+          </div>
+          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${outOfStock ? "bg-rose-50 text-rose-600" : lowStock ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+            {outOfStock ? "Out" : lowStock ? `${stock} left` : "In stock"}
+          </span>
+        </div>
+
+        {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{error}</p>}
+
+        <div className="grid grid-cols-[1fr_auto] gap-2 border-t border-slate-100 pt-3 dark:border-white/10">
+          <Button
+            size="sm"
+            className="rounded-xl bg-[var(--shop-primary)] text-white transition duration-300 hover:-translate-y-0.5 hover:opacity-90"
+            disabled={outOfStock || adding}
+            onClick={handleAddToCart}
+          >
+            {outOfStock ? "Out of stock" : requiresVariant ? "Choose option" : flash ? "Added" : adding ? "Adding..." : "Add to cart"}
+          </Button>
+          <Link
+            to="/shop/$storeSlug/product/$productId"
+            params={detailsParams}
+            className="inline-flex h-9 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+            aria-label="Open product details"
+          >
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+    </article>
   );
 }
 
-function ProductRail({ title, products, currency, storeId, storeSlug, shopName, onView, onCartChange, onOpenCart }) {
+function ProductRail({ title, products, currency, storeId, storeSlug, onView, onCartChange, onOpenCart }) {
   if (!products.length) return null;
 
   return (
@@ -361,7 +432,6 @@ function ProductRail({ title, products, currency, storeId, storeSlug, shopName, 
               currency={currency}
               storeId={storeId}
               storeSlug={storeSlug}
-              shopName={shopName}
               onView={onView}
               onCartChange={onCartChange}
               onOpenCart={onOpenCart}
@@ -926,12 +996,8 @@ export default function ShopPage() {
   const heroVisible = store.show_hero !== false;
 
   return (
-    <div className="shop-page-enter min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white" style={shopVars} {...themeAttrs}>
+    <div className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white" style={shopVars} {...themeAttrs}>
       <style>{`
-        @keyframes shopPageEnter {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
         @keyframes shopFadeUp {
           from { opacity: 0; transform: translateY(18px); }
           to { opacity: 1; transform: translateY(0); }
@@ -952,7 +1018,6 @@ export default function ShopPage() {
           from { transform: translateX(-120%) rotate(10deg); }
           to { transform: translateX(140%) rotate(10deg); }
         }
-        .shop-page-enter { animation: shopPageEnter 0.45s ease both; }
         .shop-animate { animation: shopFadeUp 0.62s ease both; }
         .shop-drawer-enter { animation: shopDrawerIn 0.32s ease both; }
         .shop-modal-enter { animation: shopModalIn 0.25s ease both; }
@@ -1004,8 +1069,7 @@ export default function ShopPage() {
           grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         }
         .shop-product-grid .shop-themed-card,
-        .shop-product-grid .shop-storefront-product-card,
-        .shop-featured-grid .shop-themed-card, .shop-featured-grid .shop-storefront-product-card { min-width: 0; }
+        .shop-featured-grid .shop-themed-card { min-width: 0; }
         @media (min-width: 768px) {
           .shop-featured-grid,
           .shop-product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
@@ -1127,58 +1191,6 @@ export default function ShopPage() {
           .shop-animate, .shop-drawer-enter, .shop-modal-enter, .shop-float-soft { animation: none !important; }
           .shop-scroll-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
           .shop-hover-lift, .shop-hover-lift:hover { transform: none !important; }
-        }
-
-        /* Final storefront visual layer: discovery controls visually overlap the hero.
-           No standalone white section remains between the banner and products. */
-        .shop-discovery-section {
-          margin-top: -4.75rem !important;
-          padding-top: 5.25rem !important;
-          padding-bottom: 1.5rem !important;
-          background:
-            linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--shop-primary) 7%, transparent) 34%, color-mix(in srgb, var(--shop-primary) 4%, var(--shop-page-bg)) 100%) !important;
-          border: 0 !important;
-          box-shadow: none !important;
-        }
-        .shop-discovery-section::after { display: none !important; }
-        .shop-discovery-inner { padding-top: 0 !important; padding-bottom: 0 !important; }
-        .shop-category-strip {
-          padding: .45rem .15rem .65rem !important;
-          border-radius: 1rem;
-        }
-        .shop-category-strip button[data-active="false"] {
-          background: color-mix(in srgb, var(--shop-primary) 9%, transparent) !important;
-          border-color: color-mix(in srgb, var(--shop-primary) 22%, transparent) !important;
-          color: color-mix(in srgb, var(--shop-primary) 58%, #334155) !important;
-          box-shadow: none !important;
-        }
-        .shop-category-strip button[data-active="true"] {
-          background: var(--shop-primary) !important;
-          border-color: var(--shop-primary) !important;
-          color: white !important;
-        }
-        .shop-search-surface,
-        .shop-inline-filter {
-          background: color-mix(in srgb, var(--shop-primary) 9%, transparent) !important;
-          border: 1px solid color-mix(in srgb, var(--shop-primary) 18%, transparent) !important;
-          box-shadow: none !important;
-          backdrop-filter: blur(12px) !important;
-        }
-        .shop-search-surface input,
-        .shop-inline-filter input,
-        .shop-inline-filter select {
-          background: color-mix(in srgb, var(--shop-primary) 5%, transparent) !important;
-          border-color: color-mix(in srgb, var(--shop-primary) 18%, transparent) !important;
-        }
-        .shop-themed-card {
-          border-radius: 1rem !important;
-          box-shadow: 0 14px 34px -24px rgba(15,23,42,.34) !important;
-        }
-        .shop-themed-card:hover {
-          box-shadow: 0 24px 54px -30px color-mix(in srgb, var(--shop-primary) 28%, rgba(15,23,42,.25)) !important;
-        }
-        @media (max-width: 767px) {
-          .shop-discovery-section { margin-top: -2rem !important; padding-top: 2.75rem !important; }
         }
       `}</style>
 
@@ -1310,18 +1322,17 @@ export default function ShopPage() {
         </section>
       )}
 
-      <section className="shop-discovery-section relative z-20">
+      <section className="shop-discovery-section border-y border-slate-200 dark:border-white/10">
         <div className="shop-discovery-inner mx-auto w-[94%] max-w-[92rem]">
-          <div className="shop-category-strip flex items-center gap-2 overflow-x-auto pb-2">
+          <div className="shop-category-strip flex items-center gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categories.map((item) => {
               const active = category === item.name;
               return (
                 <button
                   key={item.name}
                   type="button"
-                  data-active={active ? "true" : "false"}
                   onClick={() => setCategory(item.name)}
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs font-black transition ${active ? "border-[var(--shop-primary)] bg-[var(--shop-primary)] text-white shadow-sm" : "border-slate-200 bg-transparent text-slate-600 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-transparent dark:text-slate-300"}`}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-black transition sm:gap-2 sm:px-4 sm:text-xs ${active ? "border-[var(--shop-primary)] bg-[var(--shop-primary)] text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-300"}`}
                 >
                   {item.name === "all" ? "All categories" : item.name}
                   <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/18 text-white" : "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300"}`}>{item.count}</span>
@@ -1336,7 +1347,7 @@ export default function ShopPage() {
               placeholder="Search products, category, or tags..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-13 rounded-[1.05rem] border-slate-200 bg-transparent pl-12 pr-12 text-base font-semibold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10"
+              className="h-13 rounded-[1.05rem] border-slate-200 pl-12 pr-12 text-base font-semibold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10"
             />
             {search && (
               <button className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-200" onClick={() => setSearch("")} type="button" aria-label="Clear search">
@@ -1345,47 +1356,61 @@ export default function ShopPage() {
             )}
           </div>
 
-          <div className="shop-inline-filter mt-3 flex flex-wrap items-center gap-2 rounded-[1.25rem] border border-slate-200 p-2.5 dark:border-white/10">
-            <select
-              value={sort}
-              onChange={(event) => setSort(event.target.value)}
-              className="h-10 min-w-[150px] flex-1 rounded-xl border border-slate-200 bg-transparent px-3 text-xs font-bold outline-none focus:border-[var(--shop-primary)] dark:border-white/10 dark:bg-slate-950 sm:flex-none"
-              aria-label="Sort products"
-            >
-              <option value="newest">Newest first</option>
-              <option value="price-asc">Price: low to high</option>
-              <option value="price-desc">Price: high to low</option>
-              <option value="discount">Best discount</option>
-              <option value="name">Name A-Z</option>
-            </select>
+          <div className="shop-inline-filter mt-3 rounded-[1.35rem] border border-slate-200/90 bg-white/72 p-2.5 shadow-[0_18px_42px_-30px_rgba(15,23,42,.32)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72 sm:p-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(190px,1.2fr)_repeat(2,minmax(120px,.7fr))]">
+              <label className="relative col-span-2 sm:col-span-1">
+                <Filter className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--shop-primary)]" />
+                <select
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value)}
+                  className="h-11 w-full min-w-0 appearance-none rounded-[0.95rem] border border-slate-200 bg-slate-50/90 pl-10 pr-8 text-xs font-black text-slate-700 outline-none transition hover:border-[var(--shop-primary)] focus:border-[var(--shop-primary)] focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                  aria-label="Sort products"
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="price-asc">Price: low to high</option>
+                  <option value="price-desc">Price: high to low</option>
+                  <option value="discount">Best discount</option>
+                  <option value="name">Name A-Z</option>
+                </select>
+                <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">▼</span>
+              </label>
 
-            <Input className="h-10 w-[112px] rounded-xl bg-transparent text-xs dark:bg-slate-950" placeholder="Min price" type="number" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
-            <Input className="h-10 w-[112px] rounded-xl bg-transparent text-xs dark:bg-slate-950" placeholder="Max price" type="number" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
+              <label className="relative min-w-0">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">৳</span>
+                <Input className="h-11 w-full min-w-0 rounded-[0.95rem] border-slate-200 bg-slate-50/90 pl-7 pr-2 text-xs font-bold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5" placeholder="Min price" type="number" inputMode="decimal" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
+              </label>
+              <label className="relative min-w-0">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">৳</span>
+                <Input className="h-11 w-full min-w-0 rounded-[0.95rem] border-slate-200 bg-slate-50/90 pl-7 pr-2 text-xs font-bold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5" placeholder="Max price" type="number" inputMode="decimal" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
+              </label>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => setInStockOnly((value) => !value)}
-              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${inStockOnly ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-200 bg-transparent text-slate-600 hover:border-emerald-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
-            >
-              In stock
-            </button>
-            <button
-              type="button"
-              onClick={() => setDiscountOnly((value) => !value)}
-              className={`h-10 rounded-xl border px-3 text-xs font-black transition ${discountOnly ? "border-rose-500 bg-rose-500 text-white" : "border-slate-200 bg-transparent text-slate-600 hover:border-rose-300 dark:border-white/10 dark:bg-slate-950 dark:text-slate-300"}`}
-            >
-              On offer
-            </button>
-
-            {(search || category !== "all" || sort !== "newest" || priceMin || priceMax || inStockOnly || discountOnly) && (
-              <button type="button" onClick={clearFilters} className="h-10 rounded-xl px-3 text-xs font-black text-[var(--shop-primary)] transition hover:bg-[var(--shop-primary-soft)]">
-                Clear all
+            <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <button
+                type="button"
+                onClick={() => setInStockOnly((value) => !value)}
+                className={`h-9 shrink-0 rounded-full border px-3 text-[11px] font-black transition ${inStockOnly ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_10px_24px_-16px_rgba(5,150,105,.85)]" : "border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:border-emerald-400 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300"}`}
+              >
+                In stock
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setDiscountOnly((value) => !value)}
+                className={`h-9 shrink-0 rounded-full border px-3 text-[11px] font-black transition ${discountOnly ? "border-rose-500 bg-rose-500 text-white shadow-[0_10px_24px_-16px_rgba(244,63,94,.85)]" : "border-rose-200 bg-rose-50/80 text-rose-700 hover:border-rose-400 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300"}`}
+              >
+                On offer
+              </button>
 
-            <span className="ml-auto rounded-lg bg-transparent px-3 py-2 text-xs font-black text-slate-600 shadow-sm dark:bg-slate-950 dark:text-slate-300">
-              {filtered.length} result{filtered.length === 1 ? "" : "s"}
-            </span>
+              {(search || category !== "all" || sort !== "newest" || priceMin || priceMax || inStockOnly || discountOnly) && (
+                <button type="button" onClick={clearFilters} className="h-9 shrink-0 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-black text-[var(--shop-primary)] transition hover:border-[var(--shop-primary)] hover:bg-[var(--shop-primary-soft)] dark:border-white/10 dark:bg-white/5">
+                  Clear all
+                </button>
+              )}
+
+              <span className="ml-auto shrink-0 rounded-full bg-slate-950 px-3 py-2 text-[11px] font-black text-white shadow-sm dark:bg-white dark:text-slate-950">
+                {filtered.length} result{filtered.length === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
         </div>
       </section>
@@ -1398,7 +1423,6 @@ export default function ShopPage() {
             currency={currency}
             storeId={store.id}
             storeSlug={subdomain}
-            shopName={shopName}
             onView={openProductDetails}
             onCartChange={refreshCartCount}
             onOpenCart={() => setCartOpen(true)}

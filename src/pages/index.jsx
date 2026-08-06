@@ -583,22 +583,33 @@ export default function MarketplaceLandingPage() {
               </Link>
             </div>
 
-            <form onSubmit={submitSearch} className="mt-4 flex max-w-5xl flex-col gap-2 rounded-[1.35rem] border border-white/90 bg-white/88 p-2.5 shadow-[0_24px_65px_-42px_rgba(15,23,42,.38)] backdrop-blur sm:flex-row">
-              <label className="relative flex-1">
-                <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                <input value={draftSearch} onChange={(event) => setDraftSearch(event.target.value)} placeholder="Search products, categories, or shops" className="h-13 w-full rounded-2xl bg-slate-50/90 pl-12 pr-4 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-100" />
-              </label>
-              <Button type="submit" className="h-13 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 px-8 font-black text-white shadow-[0_16px_34px_-18px_rgba(79,70,229,.65)] hover:from-indigo-700 hover:to-violet-700">Search marketplace <ArrowRight className="ml-2 h-4 w-4" /></Button>
+            <form onSubmit={submitSearch} className="mt-4 max-w-5xl rounded-[1.35rem] border border-white/90 bg-white/88 p-2 shadow-[0_24px_65px_-42px_rgba(15,23,42,.38)] backdrop-blur sm:p-2.5">
+              <div className="flex items-center gap-2">
+                <label className="relative min-w-0 flex-1">
+                  <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 sm:left-5 sm:h-5 sm:w-5" />
+                  <input
+                    value={draftSearch}
+                    onChange={(event) => setDraftSearch(event.target.value)}
+                    placeholder="Search products, categories, or shops"
+                    className="h-12 w-full min-w-0 rounded-[1rem] bg-slate-50/90 pl-10 pr-3 text-[12px] font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 sm:h-13 sm:rounded-2xl sm:pl-12 sm:pr-4 sm:text-sm"
+                  />
+                </label>
+                <Button type="submit" className="h-12 shrink-0 rounded-[1rem] bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-xs font-black text-white shadow-[0_16px_34px_-18px_rgba(79,70,229,.65)] hover:from-indigo-700 hover:to-violet-700 sm:h-13 sm:rounded-2xl sm:px-8 sm:text-sm">
+                  <span className="sm:hidden">Search</span>
+                  <span className="hidden sm:inline">Search marketplace</span>
+                  <ArrowRight className="ml-1.5 h-4 w-4 sm:ml-2" />
+                </Button>
+              </div>
             </form>
 
-            <div id="category-explorer" className="mt-5 max-w-7xl scroll-mt-24 rounded-[1.35rem] border border-white/90 bg-white/76 p-3 shadow-[0_20px_55px_-40px_rgba(15,23,42,.34)] backdrop-blur sm:p-4">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div id="category-explorer" className="mt-4 max-w-7xl scroll-mt-24 rounded-[1.35rem] border border-white/90 bg-white/76 p-2.5 shadow-[0_20px_55px_-40px_rgba(15,23,42,.34)] backdrop-blur sm:mt-5 sm:p-4">
+              <div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:overflow-visible sm:whitespace-normal sm:pb-0 lg:grid-cols-6">
                 {categoryGroups.map((group) => (
                   <button
                     key={group.id}
                     type="button"
                     onClick={() => toggleCategoryGroup(group.id)}
-                    className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-black transition ${activeCategoryGroup === group.id ? 'border-indigo-600 bg-indigo-600 text-white shadow-[0_10px_24px_-14px_rgba(79,70,229,.8)]' : 'border-slate-200 bg-white/90 text-slate-700 hover:border-indigo-300 hover:text-indigo-700'}`}
+                    className={`min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-black transition sm:min-h-11 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs ${activeCategoryGroup === group.id ? 'border-indigo-600 bg-indigo-600 text-white shadow-[0_10px_24px_-14px_rgba(79,70,229,.8)]' : 'border-slate-200 bg-white/90 text-slate-700 hover:border-indigo-300 hover:text-indigo-700'}`}
                   >
                     {group.label}
                   </button>
@@ -607,9 +618,9 @@ export default function MarketplaceLandingPage() {
 
               {activeGroup && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={{ duration: 0.28 }} className="overflow-hidden">
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200/80 pt-3">
+                  <div className="mt-2.5 flex gap-2 overflow-x-auto border-t border-slate-200/80 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mt-3 sm:flex-wrap sm:overflow-visible sm:pt-3">
                     {activeGroup.items.length ? activeGroup.items.map((item) => (
-                      <button key={item.name} type="button" onClick={() => selectSubcategory(item.name)} className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${category === item.name ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'}`}>
+                      <button key={item.name} type="button" onClick={() => selectSubcategory(item.name)} className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold transition sm:text-[11px] ${category === item.name ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'}`}>
                         {item.name}{item.count ? ` · ${item.count}` : ''}
                       </button>
                     )) : <p className="px-1 py-2 text-xs font-semibold text-slate-500">No published subcategories are available in this group yet.</p>}
@@ -618,13 +629,18 @@ export default function MarketplaceLandingPage() {
               )}
             </div>
 
-            <div className="mt-5 grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-4">
-              {[[data.metrics.shops, 'Active shops'], [data.metrics.products, 'Products'], [data.metrics.orders, 'Orders completed'], [data.metrics.categories, 'Categories']].map(([value, label]) => (
-                <div key={label} className="rounded-xl border border-white/80 bg-white/55 px-4 py-3 backdrop-blur">
-                  <p className="text-xl font-black tracking-tight text-slate-950">{marketplaceQuery.isLoading ? '—' : compact(value)}</p>
-                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
-                </div>
-              ))}
+            <div className="mt-4 max-w-5xl overflow-hidden rounded-[1.15rem] border border-white/90 bg-white/62 px-1 py-2 shadow-[0_18px_45px_-34px_rgba(15,23,42,.28)] backdrop-blur sm:mt-5 sm:px-2 sm:py-2.5">
+              <div className="grid grid-cols-4 divide-x divide-slate-200/80">
+                {[[data.metrics.shops, 'Shops', 'Active shops'], [data.metrics.products, 'Products', 'Products'], [data.metrics.orders, 'Orders', 'Orders completed'], [data.metrics.categories, 'Categories', 'Categories']].map(([value, mobileLabel, desktopLabel]) => (
+                  <div key={desktopLabel} className="min-w-0 px-1.5 py-1 text-center sm:px-4 sm:py-1.5">
+                    <p className="text-base font-black tracking-tight text-slate-950 sm:text-xl">{marketplaceQuery.isLoading ? '—' : compact(value)}</p>
+                    <p className="mt-0.5 truncate text-[8px] font-black uppercase tracking-[0.08em] text-slate-500 sm:mt-1 sm:text-[10px] sm:tracking-[0.12em]">
+                      <span className="sm:hidden">{mobileLabel}</span>
+                      <span className="hidden sm:inline">{desktopLabel}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </motion.div>
         </section>
