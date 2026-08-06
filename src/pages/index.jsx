@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -6,13 +6,15 @@ import {
   ArrowRight,
   BadgeCheck,
   BarChart3,
-  Boxes,
-  CheckCircle2,
   ChevronRight,
   Download,
   ExternalLink,
+  Home,
+  LogIn,
   Mail,
   Menu,
+  RefreshCw,
+  Scale,
   Search,
   ShieldCheck,
   ShoppingBag,
@@ -20,8 +22,6 @@ import {
   Sparkles,
   Star,
   Store,
-  TrendingDown,
-  TrendingUp,
   Trophy,
   Users,
   X,
@@ -108,84 +108,65 @@ function compact(value) {
   return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(number(value))
 }
 
-function money(value) {
-  return `৳${number(value).toLocaleString('en-BD', { maximumFractionDigits: 2 })}`
-}
 
 function MarketplaceNav() {
   const [open, setOpen] = useState(false)
   const { rawUser, isMerchant, hasCustomerRole, loading } = useAuth()
 
-  const buyerPath = hasCustomerRole ? '/customer/account' : rawUser ? '/customer/signup' : '/customer/login'
-  const sellerPath = isMerchant ? '/merchant' : '/signup'
-
-  const links = [
-    ['Marketplace', '#marketplace'],
-    ['Top shops', '#top-shops'],
-    ['Top products', '#top-products'],
-    ['Compare prices', '#compare'],
-  ]
+  const customerPath = hasCustomerRole ? '/customer/account' : rawUser ? '/customer/signup' : '/customer/login'
+  const merchantPath = isMerchant ? '/merchant' : '/login'
 
   return (
     <>
-      <div className="border-b border-emerald-200/70 bg-emerald-50 text-emerald-950">
-        <div className="mx-auto flex min-h-10 max-w-7xl items-center justify-between gap-4 px-4 py-2 text-xs font-semibold sm:px-6 lg:px-8">
-          <p className="flex items-center gap-2">
-            <Smartphone className="h-4 w-4 text-emerald-600" />
-            Shop faster with the BazarHQ Android app.
-          </p>
-          <a
-            href={APK_DOWNLOAD_URL}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 font-black text-white transition hover:-translate-y-0.5 hover:bg-emerald-700"
-          >
-            <Download className="h-3.5 w-3.5" /> Download APK
+      <div className="border-b border-slate-200 bg-slate-950 text-white">
+        <div className="mx-auto flex min-h-9 max-w-7xl items-center justify-between gap-4 px-4 py-2 text-[11px] font-semibold sm:px-6 lg:px-8">
+          <p className="truncate text-slate-300">A multi-store marketplace built for buyers and independent sellers in Bangladesh.</p>
+          <a href={APK_DOWNLOAD_URL} className="inline-flex shrink-0 items-center gap-1.5 text-white transition hover:text-slate-200">
+            <Download className="h-3.5 w-3.5" /> Download app
           </a>
         </div>
       </div>
 
-      <header className="sticky top-0 z-50 border-b border-slate-200/75 bg-white/88 backdrop-blur-2xl">
-        <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/92 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Link to="/" aria-label="BazarHQ marketplace home"><Logo size="md" /></Link>
 
-          <nav className="hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50/80 p-1 lg:flex">
-            {links.map(([label, href]) => (
-              <a key={href} href={href} className="rounded-full px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-white hover:text-slate-950 hover:shadow-sm">
-                {label}
-              </a>
-            ))}
+          <nav className="hidden items-center gap-7 text-sm font-semibold text-slate-600 lg:flex">
+            <a href="#top-shops" className="transition hover:text-slate-950">Top shops</a>
+            <a href="#top-products" className="transition hover:text-slate-950">Top products</a>
+            <a href="#compare" className="transition hover:text-slate-950">Compare</a>
+            <a href="#marketplace" className="transition hover:text-slate-950">All products</a>
           </nav>
 
           <div className="hidden items-center gap-2 md:flex">
-            <Link to="/track">
-              <Button variant="ghost" size="sm" className="rounded-full font-bold">Track order</Button>
-            </Link>
-            <Link to={buyerPath}>
-              <Button variant="outline" size="sm" className="rounded-full border-slate-200 bg-white px-4 font-bold">
-                {loading ? 'Account' : hasCustomerRole ? 'My purchases' : 'Shop as buyer'}
+            <Link to="/track"><Button variant="ghost" size="sm" className="rounded-full font-bold">Track order</Button></Link>
+            <Link to={customerPath}>
+              <Button variant="outline" size="sm" className="rounded-full border-slate-200 px-4 font-bold">
+                {loading ? 'Account' : hasCustomerRole ? 'Buyer account' : 'Customer login'}
               </Button>
             </Link>
-            <Link to={sellerPath}>
-              <Button size="sm" className="rounded-full bg-slate-950 px-5 font-black text-white hover:bg-indigo-600">
-                {isMerchant ? 'Seller dashboard' : 'Start selling'}
+            <Link to={merchantPath}>
+              <Button size="sm" className="rounded-full bg-slate-950 px-5 font-bold text-white hover:bg-slate-800">
+                {isMerchant ? 'Seller dashboard' : 'Merchant login'}
               </Button>
             </Link>
           </div>
 
-          <button type="button" className="rounded-xl border border-slate-200 p-2 md:hidden" onClick={() => setOpen((value) => !value)} aria-label="Toggle navigation">
+          <button type="button" className="rounded-full border border-slate-200 p-2 md:hidden" onClick={() => setOpen((value) => !value)} aria-label="Toggle navigation">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
 
         {open && (
           <div className="border-t border-slate-200 bg-white p-4 md:hidden">
-            <div className="mx-auto grid max-w-7xl gap-2">
-              {links.map(([label, href]) => (
+            <div className="mx-auto grid max-w-7xl gap-1">
+              {[['Top shops', '#top-shops'], ['Top products', '#top-products'], ['Compare', '#compare'], ['All products', '#marketplace']].map(([label, href]) => (
                 <a key={href} href={href} onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">{label}</a>
               ))}
               <Link to="/track" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Track order</Link>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <Link to={buyerPath} onClick={() => setOpen(false)}><Button variant="outline" className="w-full rounded-xl">Buy</Button></Link>
-                <Link to={sellerPath} onClick={() => setOpen(false)}><Button className="w-full rounded-xl bg-slate-950">Sell</Button></Link>
+                <Link to={customerPath} onClick={() => setOpen(false)}><Button variant="outline" className="w-full rounded-xl">Customer</Button></Link>
+                <Link to={merchantPath} onClick={() => setOpen(false)}><Button className="w-full rounded-xl bg-slate-950">Merchant</Button></Link>
               </div>
             </div>
           </div>
@@ -199,9 +180,9 @@ function SectionHeading({ eyebrow, title, description, action }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.22em] text-indigo-600">{eyebrow}</p>
-        <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl lg:text-4xl">{title}</h2>
-        {description && <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">{description}</p>}
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">{eyebrow}</p>
+        <h2 className="mt-2 text-2xl font-black tracking-[-0.025em] text-slate-950 sm:text-3xl lg:text-[2.35rem]">{title}</h2>
+        {description && <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 sm:text-base">{description}</p>}
       </div>
       {action}
     </div>
@@ -209,65 +190,104 @@ function SectionHeading({ eyebrow, title, description, action }) {
 }
 
 function ShopCard({ shop }) {
-  const rank = number(shop.rank)
   const rating = number(shop.average_rating)
-  const orders = number(shop.order_count)
-  const sold = number(shop.sold_quantity)
+  const sold = number(shop.sold_quantity || shop.order_count)
 
   return (
     <Link
       to="/shop/$storeSlug"
       params={{ storeSlug: shop.subdomain }}
-      className="group relative overflow-hidden rounded-[1.45rem] border border-slate-200 bg-white p-4 shadow-[0_16px_45px_-34px_rgba(15,23,42,.32)] transition duration-500 hover:-translate-y-1.5 hover:border-indigo-200 hover:shadow-[0_26px_60px_-36px_rgba(79,70,229,.35)]"
+      className="group relative flex h-full min-h-[150px] flex-col overflow-hidden rounded-[1rem] border border-slate-200 bg-white p-2.5 shadow-[0_12px_30px_-24px_rgba(15,23,42,.4)] transition-colors duration-300 hover:border-slate-300 hover:shadow-[0_18px_42px_-26px_rgba(15,23,42,.35)] sm:min-h-[230px] sm:rounded-[1.15rem] sm:p-4"
     >
-      <div className="absolute right-0 top-0 h-24 w-24 rounded-bl-[4rem] bg-gradient-to-br from-indigo-50 to-cyan-50 transition group-hover:scale-110" />
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          {shop.logo_url ? (
-            <img src={shop.logo_url} alt={shop.shop_name} className="h-12 w-12 shrink-0 rounded-2xl border border-slate-200 object-cover shadow-sm" />
-          ) : (
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-base font-black text-white">{String(shop.shop_name || 'S').charAt(0)}</span>
-          )}
-          <div className="min-w-0">
-            <p className="truncate text-base font-black text-slate-950">{shop.shop_name}</p>
-            <p className="truncate text-[11px] font-semibold text-slate-500">{shop.business_category || 'Marketplace shop'}</p>
-          </div>
-        </div>
-        <span className="relative inline-flex h-9 min-w-9 items-center justify-center rounded-full bg-slate-950 px-2 text-[11px] font-black text-white">#{rank || '—'}</span>
+      <span className="absolute right-2 top-2 rounded-full border border-slate-200 bg-white/95 px-1.5 py-0.5 text-[8px] font-black text-slate-600 shadow-sm backdrop-blur sm:right-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-[10px]">
+        #{number(shop.rank) || '—'}
+      </span>
+
+      <div className="flex min-w-0 flex-col items-center text-center sm:items-start sm:text-left">
+        {shop.logo_url ? (
+          <img src={shop.logo_url} alt={shop.shop_name} className="h-9 w-9 rounded-xl border border-slate-200 object-cover shadow-sm sm:h-12 sm:w-12" />
+        ) : (
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-xs font-black text-white sm:h-12 sm:w-12 sm:text-base">
+            {String(shop.shop_name || 'S').charAt(0)}
+          </span>
+        )}
+        <p className="mt-2 line-clamp-2 w-full text-[11px] font-black leading-4 text-slate-950 sm:mt-3 sm:truncate sm:text-[15px]">{shop.shop_name}</p>
+        <p className="mt-0.5 hidden w-full truncate text-[11px] font-semibold text-slate-400 sm:block">{shop.business_category || 'Marketplace shop'}</p>
       </div>
 
-      <p className="relative mt-3 line-clamp-2 min-h-10 text-sm leading-6 text-slate-600">{shop.tagline || 'Discover products from a verified BazarHQ seller.'}</p>
+      <p className="mt-3 hidden line-clamp-2 min-h-10 text-sm leading-6 text-slate-500 sm:block">{shop.tagline || 'Independent products from a verified BazarHQ storefront.'}</p>
 
-      <div className="relative mt-4 grid grid-cols-3 gap-2">
-        <div className="rounded-2xl bg-slate-50 p-2.5 text-center">
-          <p className="text-sm font-black text-slate-950">{compact(shop.product_count)}</p>
-          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Products</p>
-        </div>
-        <div className="rounded-2xl bg-slate-50 p-2.5 text-center">
-          <p className="text-sm font-black text-slate-950">{compact(sold || orders)}</p>
-          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Sold</p>
-        </div>
-        <div className="rounded-2xl bg-amber-50 p-2.5 text-center">
-          <p className="inline-flex items-center gap-1 text-sm font-black text-amber-700"><Star className="h-3.5 w-3.5 fill-current" /> {rating ? rating.toFixed(1) : 'New'}</p>
-          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-amber-500">Rating</p>
-        </div>
+      <div className="mt-auto grid grid-cols-2 gap-1 border-t border-slate-100 pt-2 text-center sm:grid-cols-3 sm:gap-2 sm:pt-4">
+        <div><p className="text-[11px] font-black text-slate-950 sm:text-sm">{compact(shop.product_count)}</p><p className="mt-0.5 text-[7px] font-bold uppercase tracking-wide text-slate-400 sm:text-[9px]">Products</p></div>
+        <div className="hidden sm:block"><p className="text-sm font-black text-slate-950">{compact(sold)}</p><p className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">Sold</p></div>
+        <div><p className="inline-flex items-center gap-0.5 text-[11px] font-black text-slate-950 sm:gap-1 sm:text-sm"><Star className="h-2.5 w-2.5 fill-current text-amber-400 sm:h-3 sm:w-3" /> {rating ? rating.toFixed(1) : 'New'}</p><p className="mt-0.5 text-[7px] font-bold uppercase tracking-wide text-slate-400 sm:text-[9px]">Rating</p></div>
       </div>
 
-      <div className="relative mt-4 flex items-center justify-between text-sm font-black text-indigo-600">
-        Visit shop <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+      <div className="mt-2 flex items-center justify-center text-[9px] font-black text-slate-700 sm:mt-4 sm:justify-between sm:text-xs">
+        <span className="hidden sm:inline">Visit storefront</span><ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
       </div>
     </Link>
   )
 }
 
-function LoadingGrid({ count = 4, className = 'sm:grid-cols-2 lg:grid-cols-4' }) {
+function LoadingGrid({ count = 5, className = 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5' }) {
   return (
-    <div className={`grid gap-5 ${className}`}>
-      {Array.from({ length: count }).map((_, index) => <div key={index} className="h-80 animate-pulse rounded-[1.6rem] bg-slate-100" />)}
+    <div className={`grid gap-3 sm:gap-4 ${className}`}>
+      {Array.from({ length: count }).map((_, index) => <div key={index} className="h-72 animate-pulse rounded-[1.15rem] bg-slate-100" />)}
     </div>
   )
 }
 
+
+const CATEGORY_GROUPS = [
+  { id: 'fashion', label: 'Fashion & Style', keywords: ['fashion', 'clothing', 'jewelry', 'jewellery', 'shoe', 'bag', 'watch', 'belt', 'wallet', 'handmade', 'boutique'] },
+  { id: 'electronics', label: 'Electronics', keywords: ['electronic', 'computer', 'laptop', 'mobile', 'phone', 'gadget', 'accessories', 'camera', 'audio'] },
+  { id: 'beauty', label: 'Beauty & Care', keywords: ['beauty', 'skin', 'hair', 'cosmetic', 'makeup', 'personal care', 'perfume'] },
+  { id: 'home', label: 'Home & Living', keywords: ['home', 'decor', 'furniture', 'kitchen', 'candle', 'crochet', 'knitting', 'garden'] },
+  { id: 'food', label: 'Food & Grocery', keywords: ['food', 'grocery', 'snack', 'drink', 'honey', 'organic'] },
+  { id: 'general', label: 'More Categories', keywords: [] },
+]
+
+function categoryGroupFor(name) {
+  const value = String(name || '').toLowerCase()
+  return CATEGORY_GROUPS.find((group) => group.id !== 'general' && group.keywords.some((keyword) => value.includes(keyword))) || CATEGORY_GROUPS[CATEGORY_GROUPS.length - 1]
+}
+
+function MobileBottomNav({ customerPath, compareCount, onHome, onCategories, onCompare }) {
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-[70] border-t border-slate-200 bg-white/96 px-2 pb-[max(.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_34px_-24px_rgba(15,23,42,.35)] backdrop-blur-xl md:hidden">
+      <div className="mx-auto grid max-w-md grid-cols-5">
+        <button type="button" onClick={onHome} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Home className="h-5 w-5" />Home</button>
+        <button type="button" onClick={onCategories} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Store className="h-5 w-5" />Categories</button>
+        <button type="button" onClick={onCompare} className="relative flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Scale className="h-5 w-5" />Compare{compareCount > 0 && <span className="absolute right-[22%] top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950 px-1 text-[8px] font-black text-white">{compareCount}</span>}</button>
+        <Link to="/track" className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><ShoppingBag className="h-5 w-5" />Orders</Link>
+        <Link to={customerPath} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Users className="h-5 w-5" />Account</Link>
+      </div>
+    </nav>
+  )
+}
+
+function CompareTray({ items, notice, onRemove, onClear, onOpen }) {
+  if (!items.length) return null
+  return (
+    <div className="fixed inset-x-3 bottom-20 z-[65] mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white/96 p-3 shadow-[0_22px_70px_-30px_rgba(15,23,42,.45)] backdrop-blur-xl md:bottom-6 md:p-4">
+      <div className="flex items-center gap-3">
+        <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white sm:flex"><Scale className="h-5 w-5" /></div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-black text-slate-950">Selected for comparison ({items.length}/4)</p>
+          <div className="mt-1 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {items.map((item) => (
+              <button key={item.id} type="button" onClick={() => onRemove(item)} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold text-slate-600 hover:border-rose-200 hover:text-rose-600">{item.title} ×</button>
+            ))}
+          </div>
+          {notice && <p className="mt-1 text-[10px] font-semibold text-amber-700">{notice}</p>}
+        </div>
+        <button type="button" onClick={onClear} className="hidden text-xs font-bold text-slate-500 hover:text-slate-950 sm:block">Clear</button>
+        <Button type="button" onClick={onOpen} className="h-10 shrink-0 rounded-xl bg-slate-950 px-4 text-xs font-black text-white hover:bg-slate-800">Review</Button>
+      </div>
+    </div>
+  )
+}
 
 function SocialButton({ link }) {
   const isPlaceholder = link.href === '#'
@@ -417,13 +437,20 @@ export default function MarketplaceLandingPage() {
   const [draftSearch, setDraftSearch] = useState('')
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
+  const [activeCategoryGroup, setActiveCategoryGroup] = useState('')
+  const [compareItems, setCompareItems] = useState([])
+  const [compareNotice, setCompareNotice] = useState('')
+  const [resultsPulse, setResultsPulse] = useState(false)
+  const [showMoreTopProducts, setShowMoreTopProducts] = useState(false)
 
   const marketplaceQuery = useQuery({
     queryKey: ['marketplace-home', search, category],
-    queryFn: () => fetchMarketplaceHome({ search, category, limit: 18 }),
-    staleTime: 1000 * 60 * 3,
+    queryFn: () => fetchMarketplaceHome({ search, category, limit: 30 }),
+    staleTime: 1000 * 60 * 2,
     placeholderData: (previous) => previous,
     refetchOnWindowFocus: false,
+    refetchInterval: compareItems.length ? 15000 : false,
+    refetchIntervalInBackground: false,
   })
 
   const data = marketplaceQuery.data || {
@@ -431,227 +458,318 @@ export default function MarketplaceLandingPage() {
     categories: [], top_shops: [], top_products: [], products: [], comparisons: [],
   }
 
-  const featuredComparison = data.comparisons?.[0] || data.top_products?.find((item) => number(item.comparison_count) > 1)
-  const categoryNames = useMemo(() => data.categories.map((item) => item.name).filter(Boolean), [data.categories])
+  const { rawUser, isMerchant, hasCustomerRole } = useAuth()
+  const customerAccessPath = hasCustomerRole ? '/customer/account' : '/customer/login'
+  const merchantAccessPath = isMerchant ? '/merchant' : '/login'
+
+  const categoryGroups = useMemo(() => {
+    const grouped = new Map(CATEGORY_GROUPS.map((group) => [group.id, { ...group, items: [] }]))
+    for (const item of data.categories || []) {
+      const name = typeof item === 'string' ? item : item?.name
+      if (!name) continue
+      const group = categoryGroupFor(name)
+      grouped.get(group.id).items.push({ name, count: number(item?.count) })
+    }
+    return CATEGORY_GROUPS.map((group) => grouped.get(group.id))
+  }, [data.categories])
+
+  const activeGroup = categoryGroups.find((group) => group.id === activeCategoryGroup) || null
+
+  const liveProducts = useMemo(() => {
+    const map = new Map()
+    for (const product of [...(data.products || []), ...(data.top_products || []), ...(data.comparisons || [])]) {
+      if (product?.id) map.set(product.id, product)
+    }
+    return map
+  }, [data.products, data.top_products, data.comparisons])
+
+  useEffect(() => {
+    if (!compareItems.length || !liveProducts.size) return
+    setCompareItems((current) => current.map((item) => liveProducts.get(item.id) || item))
+  }, [liveProducts])
+
+  function smoothTo(id, offset = 84) {
+    window.setTimeout(() => {
+      const element = document.getElementById(id)
+      if (!element) return
+      const top = element.getBoundingClientRect().top + window.scrollY - offset
+      window.scrollTo({ top, behavior: 'smooth' })
+      if (id === 'marketplace') {
+        setResultsPulse(true)
+        window.setTimeout(() => setResultsPulse(false), 850)
+      }
+    }, 120)
+  }
 
   function submitSearch(event) {
     event?.preventDefault()
     setSearch(draftSearch.trim())
-    requestAnimationFrame(() => document.getElementById('marketplace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    smoothTo('marketplace')
   }
 
-  function selectCategory(value) {
-    setCategory((current) => current === value ? '' : value)
-    requestAnimationFrame(() => document.getElementById('marketplace')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  function toggleCategoryGroup(groupId) {
+    setActiveCategoryGroup((current) => current === groupId ? '' : groupId)
   }
 
-  const heroHighlights = [
-    { icon: ShieldCheck, title: 'Trusted shops', text: 'Only active, published stores appear in the marketplace.' },
-    { icon: TrendingDown, title: 'Price comparison', text: 'See better prices across shops when matching products exist.' },
-    { icon: Trophy, title: 'Top ranked products', text: 'Ranked using sales, views and approved customer ratings.' },
-    { icon: Store, title: 'Sell with one account', text: 'Create your own store and manage buyer + seller access together.' },
-  ]
+  function selectSubcategory(name) {
+    setCategory((current) => current === name ? '' : name)
+    smoothTo('marketplace')
+  }
+
+  function toggleCompare(product) {
+    setCompareNotice('')
+    setCompareItems((current) => {
+      const exists = current.some((item) => item.id === product.id)
+      if (exists) return current.filter((item) => item.id !== product.id)
+      if (current.length >= 4) {
+        setCompareNotice('You can compare up to four products at a time.')
+        return current
+      }
+      return [...current, liveProducts.get(product.id) || product]
+    })
+  }
+
+  function isCompared(product) {
+    return compareItems.some((item) => item.id === product.id)
+  }
+
+  const compareProps = (product) => ({
+    onCompare: toggleCompare,
+    isCompared: isCompared(product),
+  })
+
+  const lowestComparePrice = compareItems.length ? Math.min(...compareItems.map((item) => number(item.price)).filter((value) => value > 0)) : 0
+  const highestCompareRating = compareItems.length ? Math.max(...compareItems.map((item) => number(item.average_rating))) : 0
+  const compareUpdatedAt = marketplaceQuery.dataUpdatedAt ? new Date(marketplaceQuery.dataUpdatedAt) : null
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-950">
+    <div className="min-h-screen bg-[#f8fafc] pb-20 text-slate-950 md:pb-0">
       <MarketplaceNav />
 
       <main>
-        <section className="relative overflow-hidden border-b border-slate-200 bg-white">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(99,102,241,.14),transparent_26%),radial-gradient(circle_at_82%_18%,rgba(34,211,238,.10),transparent_24%),linear-gradient(180deg,#fff,#f8fafc)]" />
-          <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-14">
-            <div className="grid gap-8 lg:grid-cols-[1.12fr_.88fr] lg:items-center">
-              <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55 }}>
-                <span className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700 sm:text-xs">
-                  <Sparkles className="h-4 w-4" /> Bangladesh multi-store marketplace
-                </span>
-                <h1 className="mt-5 max-w-3xl text-[2.35rem] font-black leading-[1.02] tracking-[-0.05em] text-slate-950 sm:text-5xl lg:text-[4.15rem]">
-                  Buy from many shops. <span className="bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent">Sell from your own.</span>
-                </h1>
-                <p className="mt-4 max-w-2xl text-[15px] leading-7 text-slate-600 sm:text-base">
-                  Discover trusted shops, compare prices, find top products across the marketplace, and sell from your own storefront with one BazarHQ account.
-                </p>
+        <section className="relative overflow-hidden border-b border-indigo-100 bg-[#f6f7ff]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_8%,rgba(99,102,241,.22),transparent_28%),radial-gradient(circle_at_92%_12%,rgba(6,182,212,.17),transparent_26%),linear-gradient(115deg,#f8f7ff_0%,#f4f8ff_48%,#effcff_100%)]" />
+          <div className="absolute -left-28 bottom-[-10rem] h-72 w-72 rounded-full bg-indigo-300/20 blur-3xl" />
+          <div className="absolute -right-20 top-[-8rem] h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl" />
 
-                <form onSubmit={submitSearch} className="mt-6 flex max-w-2xl flex-col gap-3 rounded-[1.35rem] border border-slate-200 bg-white p-2 shadow-[0_18px_50px_-34px_rgba(79,70,229,.35)] sm:flex-row">
-                  <label className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={draftSearch}
-                      onChange={(event) => setDraftSearch(event.target.value)}
-                      placeholder="Search products, categories, or shops..."
-                      className="h-13 w-full rounded-2xl bg-slate-50 pl-12 pr-4 text-sm font-semibold outline-none ring-indigo-100 transition focus:bg-white focus:ring-4"
-                    />
-                  </label>
-                  <Button type="submit" className="h-13 rounded-2xl bg-slate-950 px-7 font-black text-white hover:bg-indigo-600">
-                    Search marketplace <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </form>
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+            className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-14"
+          >
+            <div className="max-w-5xl">
+              <p className="inline-flex items-center gap-2 rounded-full border border-indigo-200/80 bg-white/70 px-4 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-indigo-700 shadow-sm backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" /> Bangladesh multi-store marketplace
+              </p>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button onClick={() => selectCategory('')} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${!category ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'}`}>All categories</button>
-                  {categoryNames.slice(0, 6).map((name) => (
-                    <button key={name} onClick={() => selectCategory(name)} className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${category === name ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}>{name}</button>
-                  ))}
-                </div>
+              <h1 className="mt-5 max-w-5xl font-black leading-[.98] tracking-[-0.058em] text-slate-950 text-[2.7rem] sm:text-[3.7rem] lg:text-[4.65rem]">
+                Discover <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-cyan-500 bg-clip-text text-transparent">better products</span> from independent shops.
+              </h1>
 
-                <div className="mt-6 grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
-                  {[
-                    [Store, data.metrics.shops, 'Live shops'],
-                    [ShoppingBag, data.metrics.products, 'Products'],
-                    [CheckCircle2, data.metrics.orders, 'Orders'],
-                    [Boxes, data.metrics.categories, 'Categories'],
-                  ].map(([Icon, value, label]) => (
-                    <div key={label} className="rounded-2xl border border-slate-200/80 bg-white/80 p-4 backdrop-blur">
-                      <Icon className="h-4 w-4 text-indigo-600" />
-                      <p className="mt-2 text-lg font-black">{marketplaceQuery.isLoading ? '—' : compact(value)}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">{label}</p>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-
-              <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.08 }} className="relative">
-                <div className="absolute -left-6 top-8 h-28 w-28 rounded-full bg-indigo-100/70 blur-3xl" />
-                <div className="absolute -right-4 bottom-0 h-24 w-24 rounded-full bg-cyan-100/70 blur-3xl" />
-                <div className="relative rounded-[2rem] border border-slate-200 bg-white/88 p-4 shadow-[0_28px_80px_-42px_rgba(15,23,42,.28)] backdrop-blur sm:p-5">
-                  <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-600">Marketplace benefits</p>
-                      <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">A cleaner way to shop and sell</h2>
-                    </div>
-                    {featuredComparison ? (
-                      <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-right">
-                        <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Best price from</p>
-                        <p className="mt-1 text-base font-black text-emerald-700">{money(featuredComparison.best_price)}</p>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl bg-indigo-50 px-3 py-2 text-right">
-                        <p className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Marketplace ready</p>
-                        <p className="mt-1 text-base font-black text-indigo-700">Browse & compare</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {heroHighlights.map(({ icon: Icon, title, text }) => (
-                      <div key={title} className="rounded-[1.35rem] border border-slate-200 bg-slate-50/85 p-4 transition hover:border-indigo-200 hover:bg-white">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
-                          <Icon className="h-4.5 w-4.5 text-indigo-600" />
-                        </div>
-                        <h3 className="mt-3 text-sm font-black text-slate-950">{title}</h3>
-                        <p className="mt-1.5 text-xs leading-6 text-slate-500">{text}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {featuredComparison && (
-                    <div className="mt-4 rounded-[1.45rem] border border-slate-200 bg-white p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
-                          {(featuredComparison.images?.[0] || featuredComparison.image_url) ? <img src={featuredComparison.images?.[0] || featuredComparison.image_url} alt="" className="h-full w-full object-cover" /> : <ShoppingBag className="m-4 h-8 w-8 text-slate-300" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="line-clamp-1 text-sm font-black text-slate-950">{featuredComparison.title}</p>
-                          <p className="mt-1 text-xs font-semibold text-slate-500">Compared across {number(featuredComparison.comparison_count)} shops</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">Best price {money(featuredComparison.best_price)}</span>
-                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-black text-indigo-700">Save {money(featuredComparison.saving || number(featuredComparison.highest_price) - number(featuredComparison.best_price))}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base lg:text-lg">
+                Search trusted storefronts, compare current prices and buy with confidence—or launch and manage your own BazarHQ shop.
+              </p>
             </div>
-          </div>
+
+            <div className="mt-6 grid max-w-5xl gap-3 sm:grid-cols-2">
+              <Link to={customerAccessPath} className="group flex min-h-14 items-center justify-between rounded-2xl border border-white/90 bg-white/82 px-5 py-3.5 shadow-[0_18px_45px_-32px_rgba(79,70,229,.42)] backdrop-blur transition hover:border-indigo-200 hover:shadow-[0_24px_58px_-34px_rgba(79,70,229,.32)]">
+                <span className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><Users className="h-5 w-5" /></span><span><span className="block text-sm font-black text-slate-950">{hasCustomerRole ? 'Open buyer account' : 'Customer login'}</span><span className="mt-0.5 block text-xs font-semibold text-slate-500">Browse, order and track purchases</span></span></span>
+                <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-1" />
+              </Link>
+              <Link to={merchantAccessPath} className="group flex min-h-14 items-center justify-between rounded-2xl border border-slate-950 bg-slate-950 px-5 py-3.5 text-white shadow-[0_20px_50px_-30px_rgba(15,23,42,.7)] transition hover:bg-indigo-700">
+                <span className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10"><Store className="h-5 w-5" /></span><span><span className="block text-sm font-black">{isMerchant ? 'Open seller dashboard' : 'Merchant login'}</span><span className="mt-0.5 block text-xs font-semibold text-slate-300">Create and manage your storefront</span></span></span>
+                <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-1" />
+              </Link>
+            </div>
+
+            <form onSubmit={submitSearch} className="mt-4 flex max-w-5xl flex-col gap-2 rounded-[1.35rem] border border-white/90 bg-white/88 p-2.5 shadow-[0_24px_65px_-42px_rgba(15,23,42,.38)] backdrop-blur sm:flex-row">
+              <label className="relative flex-1">
+                <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <input value={draftSearch} onChange={(event) => setDraftSearch(event.target.value)} placeholder="Search products, categories, or shops" className="h-13 w-full rounded-2xl bg-slate-50/90 pl-12 pr-4 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-100" />
+              </label>
+              <Button type="submit" className="h-13 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 px-8 font-black text-white shadow-[0_16px_34px_-18px_rgba(79,70,229,.65)] hover:from-indigo-700 hover:to-violet-700">Search marketplace <ArrowRight className="ml-2 h-4 w-4" /></Button>
+            </form>
+
+            <div id="category-explorer" className="mt-5 max-w-7xl scroll-mt-24 rounded-[1.35rem] border border-white/90 bg-white/76 p-3 shadow-[0_20px_55px_-40px_rgba(15,23,42,.34)] backdrop-blur sm:p-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {categoryGroups.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => toggleCategoryGroup(group.id)}
+                    className={`min-h-11 rounded-xl border px-3 py-2 text-xs font-black transition ${activeCategoryGroup === group.id ? 'border-indigo-600 bg-indigo-600 text-white shadow-[0_10px_24px_-14px_rgba(79,70,229,.8)]' : 'border-slate-200 bg-white/90 text-slate-700 hover:border-indigo-300 hover:text-indigo-700'}`}
+                  >
+                    {group.label}
+                  </button>
+                ))}
+              </div>
+
+              {activeGroup && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={{ duration: 0.28 }} className="overflow-hidden">
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200/80 pt-3">
+                    {activeGroup.items.length ? activeGroup.items.map((item) => (
+                      <button key={item.name} type="button" onClick={() => selectSubcategory(item.name)} className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${category === item.name ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'}`}>
+                        {item.name}{item.count ? ` · ${item.count}` : ''}
+                      </button>
+                    )) : <p className="px-1 py-2 text-xs font-semibold text-slate-500">No published subcategories are available in this group yet.</p>}
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            <div className="mt-5 grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-4">
+              {[[data.metrics.shops, 'Active shops'], [data.metrics.products, 'Products'], [data.metrics.orders, 'Orders completed'], [data.metrics.categories, 'Categories']].map(([value, label]) => (
+                <div key={label} className="rounded-xl border border-white/80 bg-white/55 px-4 py-3 backdrop-blur">
+                  <p className="text-xl font-black tracking-tight text-slate-950">{marketplaceQuery.isLoading ? '—' : compact(value)}</p>
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
         </section>
 
-        <section id="top-shops" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+        <section id="top-shops" className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
           <motion.div {...fadeUp}>
-            <SectionHeading eyebrow="Marketplace leaders" title="Top selling shops" description="Ranked from real marketplace activity, product performance, customer reviews and unique visitors—without exposing merchant financial data." action={<a href="#marketplace" className="inline-flex items-center gap-2 text-sm font-black text-indigo-600">Explore products <ChevronRight className="h-4 w-4" /></a>} />
-            <div className="mt-8 grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <SectionHeading eyebrow="Trusted sellers" title="Top shops" description="Independent storefronts ranked from marketplace activity, product quality and verified customer feedback." action={<a href="#marketplace" className="inline-flex items-center gap-2 text-sm font-black text-slate-700">Browse products <ChevronRight className="h-4 w-4" /></a>} />
+            <div className="mt-7 grid auto-cols-[calc((100%-1rem)/3)] grid-flow-col grid-rows-1 gap-2 overflow-x-auto pb-3 [scrollbar-width:thin] sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-3 sm:overflow-visible md:grid-cols-4 xl:grid-cols-5">
               {marketplaceQuery.isLoading && !data.top_shops.length
-                ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="h-72 animate-pulse rounded-[1.7rem] bg-slate-100" />)
-                : data.top_shops.slice(0, 5).map((shop) => <ShopCard key={shop.id} shop={shop} />)}
+                ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="h-56 animate-pulse rounded-[1.15rem] bg-slate-100" />)
+                : data.top_shops.slice(0, 10).map((shop) => <ShopCard key={shop.id} shop={shop} />)}
             </div>
-            {!marketplaceQuery.isLoading && !data.top_shops.length && <div className="mt-8 rounded-[1.7rem] border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">Published shops will appear here after marketplace data is available.</div>}
           </motion.div>
         </section>
 
         <section id="top-products" className="border-y border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
             <motion.div {...fadeUp}>
-              <SectionHeading eyebrow="Popular now" title="Top ranking products" description="Products rise through actual sold quantity, order activity, product views and approved customer ratings." action={<span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-4 py-2 text-xs font-black text-amber-700"><Trophy className="h-4 w-4" /> Live marketplace ranking</span>} />
-              <div className="mt-8">
-                {marketplaceQuery.isLoading && !data.top_products.length ? <LoadingGrid count={6} className="grid-cols-2 lg:grid-cols-4 xl:grid-cols-6" /> : (
-                  <div className="grid gap-5 grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-                    {data.top_products.slice(0, 12).map((product) => <MarketplaceProductCard key={product.id} product={product} rank={product.rank} />)}
-                  </div>
+              <SectionHeading eyebrow="Marketplace ranking" title="Top products" description="Popular products ranked from real sales, product views and approved customer reviews." action={<span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-black text-slate-600"><Trophy className="h-3.5 w-3.5" /> Live ranking</span>} />
+              <div className="mt-7">
+                {marketplaceQuery.isLoading && !data.top_products.length ? <LoadingGrid count={5} /> : (
+                  <>
+                    <motion.div layout className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                      {data.top_products
+                        .slice(0, showMoreTopProducts ? Math.min(data.top_products.length, 20) : 5)
+                        .map((product) => (
+                          <MarketplaceProductCard key={product.id} product={product} {...compareProps(product)} />
+                        ))}
+                    </motion.div>
+
+                    {data.top_products.length > 5 && (
+                      <div className="mt-8 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowMoreTopProducts((current) => !current)}
+                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-black text-slate-700 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-300 hover:text-indigo-700 hover:shadow-md"
+                          aria-expanded={showMoreTopProducts}
+                        >
+                          {showMoreTopProducts ? 'Show fewer products' : `More top products (${Math.min(data.top_products.length - 5, 15)})`}
+                          <ChevronRight className={`h-4 w-4 transition-transform duration-300 ${showMoreTopProducts ? '-rotate-90' : 'rotate-90'}`} />
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </motion.div>
           </div>
         </section>
 
-        <section id="compare" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+        <section id="compare" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
           <motion.div {...fadeUp}>
-            <SectionHeading eyebrow="Price intelligence" title="Compare the same product across shops" description="BazarHQ matches products using SKU when available, normalized titles and category similarity, then surfaces the lowest current price." />
-            <div className="mt-8 grid gap-5 grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
-              {data.comparisons.map((product) => <MarketplaceProductCard key={`compare-${product.id}`} product={product} comparison />)}
-            </div>
-            {!marketplaceQuery.isLoading && !data.comparisons.length && <div className="mt-8 rounded-[1.7rem] border border-dashed border-indigo-200 bg-indigo-50/50 p-10 text-center"><Search className="mx-auto h-9 w-9 text-indigo-400" /><p className="mt-4 font-black text-slate-900">No cross-shop comparison yet</p><p className="mt-2 text-sm text-slate-500">This section activates automatically when matching products are published by two or more shops.</p></div>}
+            <SectionHeading
+              eyebrow="Live comparison"
+              title="Compare current product data"
+              description="Select up to four products. Prices, stock and ratings refresh automatically every 15 seconds while comparison is active."
+              action={compareItems.length > 0 ? (
+                <button type="button" onClick={() => marketplaceQuery.refetch()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700">
+                  <RefreshCw className={`h-3.5 w-3.5 ${marketplaceQuery.isFetching ? 'animate-spin' : ''}`} /> Refresh now
+                </button>
+              ) : null}
+            />
+
+            {compareItems.length > 0 ? (
+              <div className="mt-7 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_24px_70px_-44px_rgba(15,23,42,.44)]">
+                <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-slate-950">Real-time comparison ({compareItems.length}/4)</p>
+                    <p className="mt-1 text-xs text-slate-500">Last synced {compareUpdatedAt ? compareUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'just now'} · auto refresh every 15 seconds</p>
+                  </div>
+                  <button type="button" onClick={() => setCompareItems([])} className="text-xs font-bold text-slate-500 hover:text-rose-600">Clear comparison</button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        <th className="w-40 px-5 py-4">Compare field</th>
+                        {compareItems.map((product) => (
+                          <th key={`head-${product.id}`} className="min-w-[190px] px-4 py-4 align-top">
+                            <div className="flex items-start gap-3">
+                              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100">{(Array.isArray(product.images) ? product.images[0] : product.image_url) ? <img src={Array.isArray(product.images) ? product.images[0] : product.image_url} alt="" className="h-full w-full object-cover" /> : <ShoppingBag className="m-3 h-6 w-6 text-slate-300" />}</div>
+                              <div className="min-w-0 flex-1"><p className="line-clamp-2 normal-case tracking-normal text-xs font-black text-slate-950">{product.title}</p><p className="mt-1 truncate normal-case tracking-normal text-[10px] font-semibold text-slate-500">{product.shop_name || 'BazarHQ shop'}</p></div>
+                              <button type="button" onClick={() => toggleCompare(product)} className="rounded-full p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label="Remove product"><X className="h-4 w-4" /></button>
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Current price</th>{compareItems.map((product) => <td key={`price-${product.id}`} className={`px-4 py-4 text-base font-black ${number(product.price) === lowestComparePrice ? 'bg-emerald-50 text-emerald-700' : 'text-slate-950'}`}>৳{number(product.price).toLocaleString('en-BD')}</td>)}</tr>
+                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Rating</th>{compareItems.map((product) => <td key={`rating-${product.id}`} className={`px-4 py-4 font-bold ${number(product.average_rating) === highestCompareRating && highestCompareRating > 0 ? 'bg-amber-50 text-amber-700' : 'text-slate-700'}`}><span className="inline-flex items-center gap-1"><Star className="h-4 w-4 fill-current text-amber-400" /> {number(product.average_rating) ? number(product.average_rating).toFixed(1) : 'New'}</span></td>)}</tr>
+                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Availability</th>{compareItems.map((product) => <td key={`stock-${product.id}`} className="px-4 py-4 font-bold text-slate-700">{number(product.stock) > 0 ? `${number(product.stock)} in stock` : 'Out of stock'}</td>)}</tr>
+                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Sold</th>{compareItems.map((product) => <td key={`sold-${product.id}`} className="px-4 py-4 font-bold text-slate-700">{number(product.sold_quantity).toLocaleString('en-BD')}</td>)}</tr>
+                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Category</th>{compareItems.map((product) => <td key={`category-${product.id}`} className="px-4 py-4 font-semibold text-slate-600">{product.category || 'General'}</td>)}</tr>
+                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Open product</th>{compareItems.map((product) => <td key={`link-${product.id}`} className="px-4 py-4"><Link to="/shop/$storeSlug/product/$productId" params={{ storeSlug: product.store_slug || product.subdomain, productId: String(product.slug || product.id) }} className="inline-flex items-center gap-1 text-xs font-black text-indigo-700">View details <ChevronRight className="h-3.5 w-3.5" /></Link></td>)}</tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-7 flex items-center gap-4 rounded-[1.25rem] border border-dashed border-indigo-200 bg-indigo-50/40 px-5 py-5 text-sm text-slate-600">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm"><Scale className="h-5 w-5" /></span>
+                <p>Use the small scale icon on any product card to add it to the live comparison table.</p>
+              </div>
+            )}
+
+            {data.comparisons.length > 0 && (
+              <div className="mt-9">
+                <div className="mb-5"><p className="text-sm font-black text-slate-950">Automatic cross-shop matches</p><p className="mt-1 text-xs text-slate-500">Products with current marketplace price alternatives.</p></div>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {data.comparisons.slice(0, 10).map((product) => <MarketplaceProductCard key={`compare-${product.id}`} product={product} comparison {...compareProps(product)} />)}
+                </div>
+              </div>
+            )}
           </motion.div>
         </section>
 
-        <section id="marketplace" className="scroll-mt-28 border-y border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-            <SectionHeading eyebrow="All shops, one marketplace" title={search || category ? 'Marketplace search results' : 'Explore products from every shop'} description={search || category ? `Showing products${search ? ` matching “${search}”` : ''}${category ? ` in ${category}` : ''}.` : 'Browse active products from independent BazarHQ shops. Every card opens the merchant storefront for checkout.'} action={(search || category) && <Button variant="outline" className="rounded-full" onClick={() => { setDraftSearch(''); setSearch(''); setCategory('') }}>Clear search</Button>} />
-
-            {marketplaceQuery.error && (
-              <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700">{marketplaceQuery.error.message}</div>
-            )}
-
-            <div className="mt-8">
-              {marketplaceQuery.isFetching && !data.products.length ? <LoadingGrid count={12} className="grid-cols-2 lg:grid-cols-4 xl:grid-cols-6" /> : data.products.length ? (
-                <div className="grid gap-5 grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-                  {data.products.map((product) => <MarketplaceProductCard key={`market-${product.id}`} product={product} comparison />)}
+        <section id="marketplace" className={`scroll-mt-28 border-y border-slate-200 bg-white transition-shadow duration-700 ${resultsPulse ? 'shadow-[inset_0_0_0_3px_rgba(99,102,241,.14)]' : ''}`}>
+          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
+            <SectionHeading eyebrow="All marketplace products" title={search || category ? 'Search results' : 'Explore the marketplace'} description={search || category ? `Showing products${search ? ` matching “${search}”` : ''}${category ? ` in ${category}` : ''}.` : 'Browse active products from every published BazarHQ storefront.'} action={(search || category) && <Button variant="outline" className="rounded-full" onClick={() => { setDraftSearch(''); setSearch(''); setCategory('') }}>Clear search</Button>} />
+            {marketplaceQuery.error && <div className="mt-7 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{marketplaceQuery.error.message}</div>}
+            <div className="mt-7">
+              {marketplaceQuery.isFetching && !data.products.length ? <LoadingGrid count={10} /> : data.products.length ? (
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {data.products.map((product) => <MarketplaceProductCard key={`market-${product.id}`} product={product} comparison {...compareProps(product)} />)}
                 </div>
               ) : !marketplaceQuery.error && (
-                <div className="rounded-[1.8rem] border border-dashed border-slate-300 bg-slate-50 p-12 text-center"><Search className="mx-auto h-10 w-10 text-slate-300" /><h3 className="mt-4 text-lg font-black">No matching products</h3><p className="mt-2 text-sm text-slate-500">Try another keyword or clear the selected category.</p></div>
+                <div className="rounded-[1.15rem] border border-dashed border-slate-300 bg-slate-50 p-12 text-center"><Search className="mx-auto h-9 w-9 text-slate-300" /><h3 className="mt-4 text-lg font-black">No matching products</h3><p className="mt-2 text-sm text-slate-500">Try another keyword or clear the selected category.</p></div>
               )}
             </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-          <motion.div {...fadeUp} className="overflow-hidden rounded-[2.2rem] bg-slate-950 text-white shadow-[0_35px_100px_-45px_rgba(15,23,42,.85)]">
-            <div className="grid lg:grid-cols-[1.05fr_.95fr]">
-              <div className="p-7 sm:p-10 lg:p-14">
-                <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-300"><Zap className="h-4 w-4" /> One account, two opportunities</span>
-                <h2 className="mt-6 text-3xl font-black tracking-tight sm:text-4xl">Buy as a customer and grow as a seller.</h2>
-                <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300 sm:text-base">Use the same verified email to shop from any merchant and create your own storefront. Your customer orders and seller business stay organized under separate role access.</p>
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Link to="/customer/signup"><Button className="h-12 rounded-full bg-white px-6 font-black text-slate-950 hover:bg-cyan-100"><ShoppingBag className="mr-2 h-4 w-4" /> Create buyer access</Button></Link>
-                  <Link to="/signup"><Button variant="outline" className="h-12 rounded-full border-white/20 bg-white/5 px-6 font-black text-white hover:bg-white/10"><Store className="mr-2 h-4 w-4" /> Open a shop</Button></Link>
-                </div>
-              </div>
-              <div className="grid gap-3 border-t border-white/10 bg-white/[.04] p-7 sm:grid-cols-2 sm:p-10 lg:border-l lg:border-t-0">
-                {[
-                  [Users, 'One verified identity', 'Switch between customer and merchant access without duplicate accounts.'],
-                  [BarChart3, 'Marketplace discovery', 'Ranking and search help customers discover products beyond one storefront.'],
-                  [BadgeCheck, 'Published shops only', 'Suspended, draft or unpublished stores never appear in marketplace results.'],
-                  [ShieldCheck, 'Private by design', 'Public ranking APIs exclude credentials, customer details and merchant revenue.'],
-                ].map(([Icon, title, text]) => (
-                  <div key={title} className="rounded-2xl border border-white/10 bg-white/5 p-5"><Icon className="h-5 w-5 text-cyan-300" /><h3 className="mt-4 font-black">{title}</h3><p className="mt-2 text-xs leading-6 text-slate-400">{text}</p></div>
-                ))}
-              </div>
-            </div>
+        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
+          <motion.div {...fadeUp} className="grid overflow-hidden rounded-[1.4rem] border border-slate-200 bg-[#eef2f7] lg:grid-cols-[1.15fr_.85fr]">
+            <div className="p-7 sm:p-10 lg:p-12"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">One verified account</p><h2 className="mt-3 max-w-xl text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-4xl">Buy from any shop. Build your own storefront.</h2><p className="mt-4 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">Use one BazarHQ identity for customer purchases and merchant operations, while keeping orders and store management clearly organized.</p><div className="mt-7 flex flex-wrap gap-3"><Link to="/customer/signup"><Button className="h-11 rounded-full bg-slate-950 px-5 font-bold text-white hover:bg-slate-800"><ShoppingBag className="mr-2 h-4 w-4" /> Create buyer access</Button></Link><Link to="/signup"><Button variant="outline" className="h-11 rounded-full border-slate-300 bg-transparent px-5 font-bold"><Store className="mr-2 h-4 w-4" /> Open a shop</Button></Link></div></div>
+            <div className="grid grid-cols-2 gap-px border-t border-slate-200 bg-slate-200 lg:border-l lg:border-t-0">{[[Users, 'One identity', 'Customer and merchant access under one verified account.'], [BarChart3, 'Real rankings', 'Marketplace visibility shaped by real activity.'], [BadgeCheck, 'Published shops', 'Only active storefronts appear publicly.'], [ShieldCheck, 'Private data', 'Credentials and merchant revenue remain protected.']].map(([Icon, title, text]) => <div key={title} className="bg-[#f8fafc] p-5 sm:p-6"><Icon className="h-5 w-5 text-slate-700" /><h3 className="mt-4 text-sm font-black text-slate-950">{title}</h3><p className="mt-2 text-xs leading-6 text-slate-500">{text}</p></div>)}</div>
           </motion.div>
         </section>
       </main>
 
       <Footer />
+      <CompareTray items={compareItems} notice={compareNotice} onRemove={toggleCompare} onClear={() => setCompareItems([])} onOpen={() => smoothTo('compare')} />
+      <MobileBottomNav customerPath={customerAccessPath} compareCount={compareItems.length} onHome={() => window.scrollTo({ top: 0, behavior: 'smooth' })} onCategories={() => smoothTo('category-explorer')} onCompare={() => smoothTo('compare')} />
     </div>
   )
 }

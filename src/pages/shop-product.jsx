@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { motion } from 'framer-motion'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft, CheckCircle2, ChevronRight, MessageSquare, Minus, Package, Plus, Scale, ShieldCheck, ShoppingCart, Star, Store, Tag, Truck, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { getTheme, themeCssVars } from '@/lib/preview-themes'
 import { trackStoreEvent } from '@/lib/analytics-tracker'
 import { useCustomerAuth } from '@/hooks/use-customer-auth'
 import ProductImageGallery from '@/components/product-image-gallery'
+import MarketplaceProductCard from '@/components/marketplace-product-card'
 import { fetchMarketplaceProductRecommendations } from '@/lib/marketplace-api'
 
 function toNumber(value, fallback = 0) {
@@ -59,39 +61,16 @@ function buildReviewStats(rows) {
   return { avg, count, distribution }
 }
 
-function RelatedProductCard({ storeSlug, product, primary, currency = 'BDT' }) {
-  const routeProductId = String(product.slug || product.id)
+function RelatedProductCard({ storeSlug, product, currency = 'BDT' }) {
   const targetStoreSlug = product.store_slug || product.subdomain || storeSlug
-  const image = getImage(product)
-  const price = toNumber(product.price, 0)
-  const compareAt = toNumber(product.compare_at_price, 0)
-  const discount = getDiscount(product)
   return (
-    <Link
-      to="/shop/$storeSlug/product/$productId"
-      params={{ storeSlug: targetStoreSlug, productId: routeProductId }}
-      className="group overflow-hidden rounded-[1rem] border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[var(--shop-primary)]/20 hover:shadow-md"
-    >
-      <div className="relative aspect-square overflow-hidden bg-slate-50">
-        {image ? (
-          <img src={image} alt={getProductTitle(product)} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-slate-300"><Package className="h-10 w-10" /></div>
-        )}
-        {discount > 0 && <span className="absolute left-3 top-3 rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-black text-white">-{discount}%</span>}
-      </div>
-      <div className="space-y-2 p-3.5">
-        {product.shop_name && <p className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{product.shop_name}</p>}
-        <p className="line-clamp-2 min-h-[2.6rem] text-sm font-black leading-snug text-slate-900 group-hover:text-[var(--shop-primary)]">{getProductTitle(product)}</p>
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-base font-black text-[var(--shop-primary)]">{money(price, currency)}</p>
-            {compareAt > price && <p className="text-xs font-semibold text-slate-400 line-through">{money(compareAt, currency)}</p>}
-          </div>
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500">View <ChevronRight className="h-3.5 w-3.5" /></span>
-        </div>
-      </div>
-    </Link>
+    <MarketplaceProductCard
+      product={{ ...product, store_slug: targetStoreSlug }}
+      storeSlug={targetStoreSlug}
+      shopName={product.shop_name}
+      currency={currency}
+      className="h-full"
+    />
   )
 }
 
@@ -403,7 +382,7 @@ export default function ShopProductPage() {
   if (status !== 'ok') return <EmptyState title="Product not found" message="This product is unavailable, unpublished, or the shop is offline." />
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950" style={vars}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45, ease: 'easeOut' }} className="min-h-screen scroll-smooth bg-slate-50 text-slate-950" style={vars}>
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 w-[94%] max-w-[92rem] items-center gap-4">
           <Link to="/shop/$storeSlug" params={{ storeSlug }} className="flex min-w-0 items-center gap-3">
@@ -580,7 +559,7 @@ export default function ShopProductPage() {
             </div>
             <div className="mt-6 grid gap-5 grid-cols-2 lg:grid-cols-4">
               {relatedProducts.slice(0, 8).map((item) => (
-                <RelatedProductCard key={`store-related-${item.id}`} storeSlug={storeSlug} product={item} primary={primary} currency={currency} />
+                <RelatedProductCard key={`store-related-${item.id}`} storeSlug={storeSlug} product={item} currency={currency} />
               ))}
             </div>
           </section>
@@ -610,7 +589,7 @@ export default function ShopProductPage() {
                 </div>
                 <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                   {recommendationQuery.data.same_product.slice(0, 6).map((item) => (
-                    <RelatedProductCard key={`same-${item.id}`} storeSlug={item.store_slug || item.subdomain || storeSlug} product={item} primary={primary} currency={currency} />
+                    <RelatedProductCard key={`same-${item.id}`} storeSlug={item.store_slug || item.subdomain || storeSlug} product={item} currency={currency} />
                   ))}
                 </div>
               </div>
@@ -627,7 +606,7 @@ export default function ShopProductPage() {
                 </div>
                 <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                   {recommendationQuery.data.recommended.slice(0, 8).map((item) => (
-                    <RelatedProductCard key={`recommended-${item.id}`} storeSlug={item.store_slug || item.subdomain || storeSlug} product={item} primary={primary} currency={currency} />
+                    <RelatedProductCard key={`recommended-${item.id}`} storeSlug={item.store_slug || item.subdomain || storeSlug} product={item} currency={currency} />
                   ))}
                 </div>
               </div>
@@ -761,6 +740,6 @@ export default function ShopProductPage() {
         </div>
         <div className="border-t border-slate-200 py-4 text-center text-xs font-semibold text-slate-500">Powered by <strong>BazarHQ</strong></div>
       </footer>
-    </div>
+    </motion.div>
   )
 }

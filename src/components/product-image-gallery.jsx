@@ -55,8 +55,8 @@ export default function ProductImageGallery({
       active: true,
       x,
       y,
-      left: Math.min(82, Math.max(18, x)),
-      top: Math.min(82, Math.max(18, y)),
+      left: Math.min(80, Math.max(20, x)),
+      top: Math.min(80, Math.max(20, y)),
     })
   }
 
@@ -64,7 +64,7 @@ export default function ProductImageGallery({
     <div className={`space-y-3 ${className}`}>
       <div
         ref={mainRef}
-        className={`group relative overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-sm ${compact ? 'min-h-[300px]' : 'aspect-square'}`}
+        className={`group relative overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_50px_-34px_rgba(15,23,42,.35)] ${compact ? 'min-h-[300px]' : 'aspect-square'}`}
         onPointerMove={handlePointerMove}
         onPointerEnter={(event) => {
           if (!compact && event.pointerType !== 'touch') setZoom((current) => ({ ...current, active: true }))
@@ -74,21 +74,22 @@ export default function ProductImageGallery({
         {activeImage ? (
           <>
             <img
+              key={activeImage}
               src={activeImage}
               alt={`${alt} ${activeIndex + 1}`}
-              className={`h-full w-full select-none ${objectFit === 'cover' ? 'object-cover' : 'object-contain p-5 sm:p-7'}`}
+              className={`h-full w-full select-none animate-[fadeIn_.35s_ease] transition duration-500 ${objectFit === 'cover' ? 'object-cover' : 'object-contain p-5 sm:p-7'}`}
               draggable="false"
             />
             {!compact && (
               <div
                 aria-hidden="true"
-                className={`pointer-events-none absolute hidden h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-white bg-no-repeat shadow-[0_22px_60px_rgba(15,23,42,.30)] ring-1 ring-slate-300 transition-opacity duration-100 lg:block ${zoom.active ? 'opacity-100' : 'opacity-0'}`}
+                className={`pointer-events-none absolute hidden h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-white bg-no-repeat shadow-[0_24px_70px_rgba(15,23,42,.34)] ring-1 ring-slate-300 transition-opacity duration-100 lg:block ${zoom.active ? 'opacity-100' : 'opacity-0'}`}
                 style={{
                   left: `${zoom.left}%`,
                   top: `${zoom.top}%`,
                   backgroundImage: `url("${activeImage.replaceAll('"', '%22')}")`,
                   backgroundPosition: `${zoom.x}% ${zoom.y}%`,
-                  backgroundSize: '360%',
+                  backgroundSize: '420%',
                 }}
               />
             )}
@@ -101,7 +102,7 @@ export default function ProductImageGallery({
 
         {!compact && (
           <div className="pointer-events-none absolute left-4 top-4 hidden items-center gap-2 rounded-lg bg-slate-950/75 px-3 py-1.5 text-xs font-bold text-white backdrop-blur lg:flex">
-            <ZoomIn className="h-3.5 w-3.5" /> Move cursor to magnify
+            <ZoomIn className="h-3.5 w-3.5" /> Move cursor to zoom 4.2×
           </div>
         )}
 
@@ -136,7 +137,7 @@ export default function ProductImageGallery({
               className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border-2 bg-white p-1 transition ${index === activeIndex ? 'border-[var(--shop-primary,#4f46e5)] shadow-md ring-2 ring-[var(--shop-primary,#4f46e5)]/15' : 'border-slate-200 hover:border-slate-400'}`}
               aria-label={`Show product image ${index + 1}`}
             >
-              <img src={image} alt="" className="h-full w-full rounded-lg object-cover" loading="lazy" />
+              <img src={image} alt="" className="h-full w-full rounded-lg object-cover transition duration-300 hover:scale-110" loading="lazy" />
             </button>
           ))}
         </div>
