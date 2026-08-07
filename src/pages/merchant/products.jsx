@@ -1,787 +1,954 @@
-import { Plus, Search, X, Package, Loader2, Trash2, Pencil, Image as ImageIcon, Tag, Copy, Download, AlertTriangle, ChevronDown, ChevronUp, Upload, Truck } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
+import { supabase } from '@/integrations/supabase/client'
+import { useCurrentStore } from '@/lib/use-current-store'
+import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
-import { supabase } from '@/integrations/supabase/client'
-import { isCloudinaryConfigured, uploadProductImageToCloudinary } from '@/lib/cloudinary'
-import { useAuth } from '@/hooks/use-auth'
-import { useCurrentStore } from '@/lib/use-current-store'
-import { slugify } from '@/lib/utils'
-import { getCategoriesForType } from '@/lib/shop-categories'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import {
+  AlertCircle,
+  ArrowUpRight,
+  CheckCircle2,
+  ChevronsUpDown,
+  ImagePlus,
+  Loader2,
+  Package2,
+  Pencil,
+  Plus,
+  Search,
+  Sparkles,
+  Tag,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
 
-function normalizeDeliveryMode(value) {
-  return ['store_default', 'free', 'custom'].includes(value) ? value : 'store_default'
+const DEFAULT_FORM = {
+  id: null,
+  title: '',
+  slug: '',
+  category: '',
+  status: 'draft',
+  description: '',
+  price: '0',
+  compare_at_price: '',
+  stock: '0',
+  sku: '',
+  tagsInput: '',
+  tags: [],
+  image_url: '',
+  images: [],
+  deliveryMode: 'store_default',
+  deliveryCharge: '',
 }
 
-function productDeliveryLabel(product) {
-  const mode = normalizeDeliveryMode(product?.delivery_charge_mode)
-  if (mode === 'free') return 'Free delivery'
-  if (mode === 'custom') {
-    const inside = Number(product?.delivery_charge_dhaka ?? 0)
-    const outside = Number(product?.delivery_charge_outside_dhaka ?? 0)
-    return `Delivery: Dhaka ৳${inside.toLocaleString()} / Outside ৳${outside.toLocaleString()}`
-  }
-  return 'Store default delivery'
+const STATUS_META = {
+  draft: {
+    label: 'Draft — hidden',
+    chip: 'border-slate-200 bg-slate-100 text-slate-600',
+  },
+  active: {
+    label: 'Active — visible',
+    chip: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  archived: {
+    label: 'Archived',
+    chip: 'border-amber-200 bg-amber-50 text-amber-700',
+  },
 }
 
+const DELIVERY_OPTIONS = [
+  { value: 'store_default', label: 'Use store default delivery charge' },
+  { value: 'free', label: 'Free delivery for this product' },
+  { value: 'custom', label: 'Use custom delivery charge' },
+]
 
-export default function ProductsPage() {
-  const { store } = useCurrentStore()
-  const qc = useQueryClient()
-  const [q, setQ] = useState('')
-  const [filterCat, setFilterCat] = useState('all')
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [editing, setEditing] = useState(null)
-  const [open, setOpen] = useState(false)
-  const [lowStockThreshold, setLowStockThreshold] = useState(5)
-  const csvInputRef = useRef(null)
-  const [importing, setImporting] = useState(false)
+function numberValue(value, fallback = 0) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
 
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ['products', store?.id],
-    enabled: !!store,
-    queryFn: async () => {
-      const { data, error } = await supabase.from('products').select('*').eq('store_id', store.id).order('created_at', { ascending: false })
-      if (error) throw error
-      return data ?? []
-    },
-  })
+function money(value) {
+  return `৳${numberValue(value).toLocaleString('en-BD', { maximumFractionDigits: 2 })}`
+}
 
-  const storeCategories = store?.categories ?? []
-  const lowStockProducts = products.filter(p => p.status === 'published' && (p.stock ?? 0) <= lowStockThreshold && (p.stock ?? 0) > 0)
-  const outOfStock = products.filter(p => p.status === 'published' && (p.stock ?? 0) <= 0)
+function slugify(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}
 
-  const filtered = products.filter(p => {
-    const matchQ = p.title.toLowerCase().includes(q.toLowerCase())
-    const matchCat = filterCat === 'all' || p.category === filterCat
-    const matchStatus = filterStatus === 'all' || p.status === filterStatus
-    return matchQ && matchCat && matchStatus
-  })
+function normalizeTags(input) {
+  if (Array.isArray(input)) return input.map((tag) => String(tag).trim()).filter(Boolean)
+  return String(input || '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+}
 
-  const openNew = () => { setEditing(null); setOpen(true) }
-  const openEdit = p => { setEditing(p); setOpen(true) }
-
-  const duplicate = async p => {
-    if (!store) return
-    const { user } = await supabase.auth.getUser()
-    const { error } = await supabase.from('products').insert({
-      ...p, id: undefined, created_at: undefined, updated_at: undefined,
-      title: `${p.title} (Copy)`, status: 'draft',
-      slug: slugify(p.title + '-copy') + `-${Date.now().toString(36).slice(-4)}`,
-      owner_id: user.data.user?.id, store_id: store.id,
+function normalizeImages(images, imageUrl = '') {
+  const list = []
+  if (Array.isArray(images)) {
+    images.forEach((item) => {
+      if (typeof item === 'string' && item.trim()) list.push(item.trim())
+      else if (item && typeof item.url === 'string' && item.url.trim()) list.push(item.url.trim())
     })
-    if (error) { toast.error(error.message); return }
-    toast.success('Product duplicated as Draft')
-    qc.invalidateQueries({ queryKey: ['products', store?.id] })
   }
+  if (imageUrl && !list.includes(imageUrl)) list.unshift(imageUrl)
+  return [...new Set(list)].slice(0, 6)
+}
 
-  const remove = async p => {
-    const hasOrders = false // check via orders table if needed
-    if (!confirm(`Delete "${p.title}"? This cannot be undone.`)) return
-    const { error } = await supabase.from('products').delete().eq('id', p.id)
-    if (error) { toast.error(error.message); return }
-    toast.success('Product deleted')
-    qc.invalidateQueries({ queryKey: ['products', store?.id] })
+function productStatus(product) {
+  const value = String(product?.status || '').trim().toLowerCase()
+  if (value === 'active' || value === 'published') return 'active'
+  if (value === 'archived') return 'archived'
+  return 'draft'
+}
+
+function ProductStat({ label, value, tone = 'slate' }) {
+  const tones = {
+    slate: 'border-slate-200 bg-white text-slate-900',
+    indigo: 'border-indigo-200 bg-indigo-50/70 text-indigo-900',
+    emerald: 'border-emerald-200 bg-emerald-50/70 text-emerald-900',
+    amber: 'border-amber-200 bg-amber-50/80 text-amber-900',
   }
-
-  const parseCSV = (text) => {
-    const rows = []
-    let current = ''
-    let row = []
-    let inQuotes = false
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i]
-      const next = text[i + 1]
-      if (char === '"' && inQuotes && next === '"') { current += '"'; i++; continue }
-      if (char === '"') { inQuotes = !inQuotes; continue }
-      if (char === ',' && !inQuotes) { row.push(current.trim()); current = ''; continue }
-      if ((char === '\n' || char === '\r') && !inQuotes) {
-        if (char === '\r' && next === '\n') i++
-        row.push(current.trim())
-        if (row.some(Boolean)) rows.push(row)
-        row = []; current = ''
-        continue
-      }
-      current += char
-    }
-    row.push(current.trim())
-    if (row.some(Boolean)) rows.push(row)
-    return rows
-  }
-
-  const importCSV = async (file) => {
-    if (!file || !store) return
-    if (!file.name.toLowerCase().endsWith('.csv')) { toast.error('Please upload a CSV file'); return }
-    setImporting(true)
-    try {
-      const { data: authData } = await supabase.auth.getUser()
-      const userId = authData.user?.id
-      if (!userId) throw new Error('You must be signed in')
-
-      const text = await file.text()
-      const rows = parseCSV(text)
-      if (rows.length < 2) throw new Error('CSV needs a header row and at least one product row')
-
-      const headers = rows[0].map(h => h.toLowerCase().replace(/\s+/g, '_'))
-      const findIndex = (...names) => names.map(n => headers.indexOf(n)).find(i => i >= 0) ?? -1
-      const idx = {
-        title: findIndex('title', 'name', 'product_name'),
-        category: findIndex('category'),
-        price: findIndex('price', 'base_price'),
-        compare: findIndex('compare_at', 'compare_at_price', 'old_price'),
-        stock: findIndex('stock', 'quantity', 'qty'),
-        status: findIndex('status'),
-        description: findIndex('description', 'details'),
-        image: findIndex('image', 'image_url', 'thumbnail'),
-        tags: findIndex('tags'),
-        deliveryMode: findIndex('delivery_mode', 'delivery_charge_mode', 'delivery'),
-        deliveryDhaka: findIndex('delivery_dhaka', 'delivery_charge_dhaka', 'dhaka_delivery'),
-        deliveryOutside: findIndex('delivery_outside_dhaka', 'delivery_charge_outside_dhaka', 'outside_dhaka_delivery'),
-      }
-      if (idx.title < 0 || idx.price < 0) throw new Error('Required columns: title and price')
-
-      const errors = []
-      const productsToInsert = []
-      rows.slice(1).forEach((row, i) => {
-        const line = i + 2
-        const title = row[idx.title]?.trim()
-        const price = Number(row[idx.price])
-        const stock = idx.stock >= 0 ? Number(row[idx.stock] || 0) : 0
-        if (!title) { errors.push(`Line ${line}: title missing`); return }
-        if (!Number.isFinite(price) || price < 0) { errors.push(`Line ${line}: invalid price`); return }
-        if (!Number.isFinite(stock) || stock < 0) { errors.push(`Line ${line}: invalid stock`); return }
-        const image = idx.image >= 0 && row[idx.image] ? row[idx.image].trim() : ''
-        const status = idx.status >= 0 && ['draft','published','archived'].includes((row[idx.status] || '').toLowerCase()) ? row[idx.status].toLowerCase() : 'draft'
-        const deliveryMode = idx.deliveryMode >= 0 ? normalizeDeliveryMode((row[idx.deliveryMode] || '').toLowerCase().trim()) : 'store_default'
-        const deliveryDhaka = idx.deliveryDhaka >= 0 && row[idx.deliveryDhaka] ? Number(row[idx.deliveryDhaka]) : null
-        const deliveryOutside = idx.deliveryOutside >= 0 && row[idx.deliveryOutside] ? Number(row[idx.deliveryOutside]) : null
-        if (deliveryMode === 'custom') {
-          if (!Number.isFinite(deliveryDhaka) || deliveryDhaka < 0) { errors.push(`Line ${line}: invalid Dhaka delivery charge`); return }
-          if (!Number.isFinite(deliveryOutside) || deliveryOutside < 0) { errors.push(`Line ${line}: invalid outside Dhaka delivery charge`); return }
-        }
-        productsToInsert.push({
-          owner_id: userId,
-          store_id: store.id,
-          title,
-          slug: slugify(title) + `-${Date.now().toString(36)}-${i}`,
-          category: idx.category >= 0 ? row[idx.category] || null : null,
-          description: idx.description >= 0 ? row[idx.description] || null : null,
-          price,
-          compare_at_price: idx.compare >= 0 && row[idx.compare] ? Number(row[idx.compare]) : null,
-          stock,
-          status,
-          images: image ? [image] : [],
-          tags: idx.tags >= 0 && row[idx.tags] ? row[idx.tags].split('|').map(t => t.trim()).filter(Boolean) : null,
-          delivery_charge_mode: deliveryMode,
-          delivery_charge_dhaka: deliveryMode === 'custom' ? deliveryDhaka : null,
-          delivery_charge_outside_dhaka: deliveryMode === 'custom' ? deliveryOutside : null,
-        })
-      })
-
-      if (errors.length) {
-        toast.error(`CSV has ${errors.length} problem(s). First: ${errors[0]}`)
-        setImporting(false)
-        return
-      }
-      if (!productsToInsert.length) throw new Error('No valid products found')
-      if (productsToInsert.length > 500) throw new Error('Maximum 500 products per CSV import')
-
-      const { error } = await supabase.from('products').insert(productsToInsert)
-      if (error) throw error
-      toast.success(`Imported ${productsToInsert.length} product${productsToInsert.length === 1 ? '' : 's'}`)
-      qc.invalidateQueries({ queryKey: ['products', store.id] })
-      qc.invalidateQueries({ queryKey: ['product-count', store.id] })
-    } catch (error) {
-      toast.error(error.message || 'CSV import failed')
-    } finally {
-      setImporting(false)
-      if (csvInputRef.current) csvInputRef.current.value = ''
-    }
-  }
-
-  // CSV Export — SRS M4
-  const exportCSV = () => {
-    if (!products.length) { toast.error('No products to export'); return }
-    const headers = ['Title','Category','Price','Compare At','Stock','Status','Delivery Mode','Dhaka Delivery','Outside Dhaka Delivery','Description']
-    const rows = products.map(p => [
-      `"${(p.title||'').replace(/"/g,'""')}"`,
-      `"${p.category||''}"`,
-      p.price, p.compare_at_price||'',
-      p.stock, p.status,
-      p.delivery_charge_mode || 'store_default',
-      p.delivery_charge_dhaka ?? '',
-      p.delivery_charge_outside_dhaka ?? '',
-      `"${(p.description||'').replace(/"/g,'""').replace(/\n/g,' ')}"`,
-    ])
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url
-    a.download = `${store?.shop_name || 'products'}-export.csv`
-    a.click(); URL.revokeObjectURL(url)
-    toast.success(`Exported ${products.length} products`)
-  }
-
-  if (!store) return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center text-center">
-      <Package className="h-10 w-10 text-muted-foreground" />
-      <h3 className="mt-4 font-semibold">No store selected</h3>
+  return (
+    <div className={`rounded-2xl border px-4 py-3 shadow-sm ${tones[tone]}`}>
+      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-black tracking-tight">{value}</p>
     </div>
   )
+}
+
+function ProductListCard({ product, onEdit, onDelete }) {
+  const images = normalizeImages(product?.images, product?.image_url)
+  const hasDiscount = numberValue(product?.compare_at_price) > numberValue(product?.price)
+  const productTone = productStatus(product)
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Products</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {products.length} products · {products.filter(p=>p.status==='published').length} published
-          </p>
+    <motion.article
+      layout
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.18 }}
+      className="group overflow-hidden rounded-[1.45rem] border border-slate-200 bg-white shadow-[0_18px_50px_-36px_rgba(15,23,42,.26)]"
+    >
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start">
+        <div className="relative h-24 w-full overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 sm:h-24 sm:w-24 sm:min-w-24">
+          {images[0] ? (
+            <img
+              src={images[0]}
+              alt={product?.title || 'Product'}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-slate-300">
+              <Package2 className="h-8 w-8" />
+            </div>
+          )}
+          {hasDiscount && (
+            <span className="absolute left-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-rose-600 shadow-sm">
+              -{Math.round((1 - numberValue(product.price) / numberValue(product.compare_at_price)) * 100)}%
+            </span>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(event) => importCSV(event.target.files?.[0])} />
-          <Button variant="outline" onClick={() => csvInputRef.current?.click()} disabled={importing} className="gap-2">
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Import CSV
-          </Button>
-          <Button variant="outline" onClick={exportCSV} className="gap-2"><Download className="h-4 w-4" />Export CSV</Button>
-          <Button onClick={openNew} className="bg-gradient-primary shadow-glow gap-2"><Plus className="h-4 w-4" />Add product</Button>
-        </div>
-      </div>
 
-      {/* Low stock alerts — SRS M4 */}
-      <AnimatePresence>
-        {(lowStockProducts.length > 0 || outOfStock.length > 0) && (
-          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-800">Stock alerts</p>
-                {outOfStock.length > 0 && (
-                  <p className="text-xs text-amber-700 mt-0.5">❌ Out of stock: {outOfStock.map(p=>p.title).join(', ')}</p>
-                )}
-                {lowStockProducts.length > 0 && (
-                  <p className="text-xs text-amber-700 mt-0.5">⚠️ Low stock (≤{lowStockThreshold}): {lowStockProducts.map(p=>`${p.title} (${p.stock})`).join(', ')}</p>
-                )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-base font-black text-slate-950">{product?.title || 'Untitled product'}</h3>
+                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${STATUS_META[productTone]?.chip || STATUS_META.draft.chip}`}>
+                  {STATUS_META[productTone]?.label || 'Draft'}
+                </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-amber-700">
-                <Label className="text-xs">Threshold:</Label>
-                <Input type="number" min={1} max={50} value={lowStockThreshold} onChange={e=>setLowStockThreshold(Number(e.target.value))}
-                  className="h-7 w-16 text-xs bg-white" />
+              <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">
+                {product?.description || 'No description added yet.'}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-bold text-slate-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5 text-slate-400" /> {product?.category || 'General'}
+                </span>
+                <span>SKU: {product?.sku || 'Not set'}</span>
+                <span>{normalizeImages(product?.images, product?.image_url).length} image(s)</span>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      <div className="rounded-2xl border border-border bg-card shadow-sm">
-        {/* Search + filters */}
-        <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search products…" value={q} onChange={e=>setQ(e.target.value)} className="pl-9" />
+            <div className="shrink-0 text-right">
+              <p className="text-2xl font-black tracking-tight text-slate-950">{money(product?.price)}</p>
+              {numberValue(product?.compare_at_price) > numberValue(product?.price) ? (
+                <p className="mt-1 text-xs font-semibold text-slate-400 line-through">{money(product?.compare_at_price)}</p>
+              ) : null}
+              <p className={`mt-2 text-xs font-black ${numberValue(product?.stock) > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {numberValue(product?.stock) > 0 ? `${numberValue(product?.stock)} in stock` : 'Out of stock'}
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-              </SelectContent>
-            </Select>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+            <div className="flex flex-wrap gap-2">
+              {normalizeTags(product?.tags).slice(0, 4).map((tag) => (
+                <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="rounded-full" onClick={() => onEdit(product)}>
+                <Pencil className="mr-2 h-4 w-4" /> Edit
+              </Button>
+              <Button variant="outline" className="rounded-full border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => onDelete(product)}>
+                <Trash2 className="mr-2 h-4 w-4" /> Delete
+              </Button>
+            </div>
           </div>
         </div>
-
-        {/* Category filter bar */}
-        {storeCategories.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto border-b border-border px-4 py-2">
-            {['all', ...storeCategories].map(c => (
-              <button key={c} onClick={() => setFilterCat(c)}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-all ${filterCat === c ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
-                {c === 'all' ? 'All categories' : c}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="space-y-3 p-4">{[0,1,2].map(i=><Skeleton key={i} className="h-16 rounded-xl"/>)}</div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <Package className="h-10 w-10 text-muted-foreground" />
-            <h3 className="mt-4 font-semibold">{q||filterCat!=='all'||filterStatus!=='all' ? 'No matches' : 'No products yet'}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{q||filterCat!=='all' ? 'Try clearing filters.' : 'Add your first product to start selling.'}</p>
-            {!q && filterCat==='all' && <Button onClick={openNew} className="mt-4 bg-gradient-primary shadow-glow"><Plus className="mr-1.5 h-4 w-4"/>Add product</Button>}
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {filtered.map(p => (
-              <div key={p.id} className="flex items-center gap-4 p-4 transition-colors hover:bg-muted/20">
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-muted">
-                  {p.images?.[0]
-                    ? <img src={p.images[0]} alt={p.title} className="h-full w-full object-cover"/>
-                    : <div className="flex h-full w-full items-center justify-center text-muted-foreground"><ImageIcon className="h-5 w-5"/></div>}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate font-medium">{p.title}</span>
-                    <Badge variant={p.status==='published'?'default':'secondary'} className="capitalize text-[10px]">{p.status}</Badge>
-                    {p.category && <span className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"><Tag className="h-2.5 w-2.5"/>{p.category}</span>}
-                    {(p.stock??0) <= 0 && p.status==='published' && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] text-red-700">Out of stock</span>}
-                    {(p.stock??0) > 0 && (p.stock??0) <= lowStockThreshold && p.status==='published' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">Low stock</span>}
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    ৳ {Number(p.price).toLocaleString()}
-                    {p.compare_at_price && <span className="ml-1 line-through text-muted-foreground/60">৳ {Number(p.compare_at_price).toLocaleString()}</span>}
-                    {' · '}Stock: {p.stock ?? 0}
-                    {Array.isArray(p.variants) && p.variants.length > 0 && <span className="ml-1">· {p.variants.length} variant{p.variants.length!==1?'s':''}</span>}
-                  </div>
-                  <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    <Truck className="h-3 w-3" /> {productDeliveryLabel(p)}
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(p)} title="Edit"><Pencil className="h-4 w-4"/></Button>
-                  <Button variant="ghost" size="icon" onClick={() => duplicate(p)} title="Duplicate"><Copy className="h-4 w-4"/></Button>
-                  <Button variant="ghost" size="icon" onClick={() => remove(p)} title="Delete"><Trash2 className="h-4 w-4 text-destructive"/></Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
-
-      <ProductDialog open={open} onOpenChange={setOpen} product={editing} store={store} />
-    </div>
+    </motion.article>
   )
 }
 
-// ── PRODUCT DIALOG with Variants ──
-function ProductDialog({ open, onOpenChange, product, store }) {
-  const { user } = useAuth()
-  const qc = useQueryClient()
-  const fileInput = useRef(null)
+function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving, suggestedCategories, onUploadFiles }) {
+  const inputRef = useRef(null)
 
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [price, setPrice] = useState('')
-  const [compareAt, setCompareAt] = useState('')
-  const [stock, setStock] = useState('0')
-  const [deliveryMode, setDeliveryMode] = useState('store_default')
-  const [deliveryDhaka, setDeliveryDhaka] = useState('')
-  const [deliveryOutside, setDeliveryOutside] = useState('')
-  const [status, setStatus] = useState('draft')
-  const [category, setCategory] = useState('')
-  const [tags, setTags] = useState([])
-  const [tagInput, setTagInput] = useState('')
-  const [images, setImages] = useState([])
-  const [primaryImg, setPrimaryImg] = useState(0) // SRS M4: designate primary thumbnail
-  const [uploading, setUploading] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const images = useMemo(() => normalizeImages(form.images, form.image_url), [form.images, form.image_url])
+  const price = numberValue(form.price)
+  const compareAt = numberValue(form.compare_at_price)
+  const stock = numberValue(form.stock)
+  const discount = compareAt > price && price > 0 ? Math.round((1 - price / compareAt) * 100) : 0
+  const canPublish = Boolean(form.title.trim() && form.category.trim() && price > 0 && images.length > 0)
 
-  // SRS M4: Product variants
-  const [hasVariants, setHasVariants] = useState(false)
-  const [variantTypes, setVariantTypes] = useState([]) // [{name:'Size', values:['S','M','L']}]
-  const [variants, setVariants] = useState([]) // [{combo:'S/Red', price:'', stock:'0'}]
-  const [newVTypeName, setNewVTypeName] = useState('')
-  const [newVTypeValues, setNewVTypeValues] = useState('')
+  function updateField(key, value) {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
 
-  const storeCategories = store?.categories ?? []
-  const allCats = storeCategories.length > 0 ? storeCategories : getCategoriesForType(store?.business_category || '')
+  function handleTitleChange(event) {
+    const value = event.target.value
+    setForm((current) => ({
+      ...current,
+      title: value,
+      slug: current.id || current.slug ? current.slug : slugify(value),
+    }))
+  }
 
-  useEffect(() => {
-    if (!open) return
-    if (product) {
-      setTitle(product.title ?? '')
-      setDescription(product.description ?? '')
-      setPrice(String(product.price ?? ''))
-      setCompareAt(product.compare_at_price != null ? String(product.compare_at_price) : '')
-      setStock(String(product.stock ?? 0))
-      setDeliveryMode(normalizeDeliveryMode(product.delivery_charge_mode))
-      setDeliveryDhaka(product.delivery_charge_dhaka != null ? String(product.delivery_charge_dhaka) : '')
-      setDeliveryOutside(product.delivery_charge_outside_dhaka != null ? String(product.delivery_charge_outside_dhaka) : '')
-      setStatus(product.status ?? 'draft')
-      setCategory(product.category ?? '')
-      setTags(product.tags ?? [])
-      setImages(product.images ?? [])
-      setPrimaryImg(0)
-      const vts = product.variant_types ?? []
-      const vs = product.variants ?? []
-      setVariantTypes(vts)
-      setVariants(vs)
-      setHasVariants(vts.length > 0)
-    } else {
-      setTitle(''); setDescription(''); setPrice(''); setCompareAt('')
-      setStock('0'); setDeliveryMode('store_default'); setDeliveryDhaka(''); setDeliveryOutside(''); setStatus('draft'); setCategory(''); setTags([])
-      setImages([]); setPrimaryImg(0); setVariantTypes([]); setVariants([]); setHasVariants(false)
-    }
-  }, [product, open])
+  function handleTagKeyDown(event) {
+    if (event.key !== 'Enter' && event.key !== ',') return
+    event.preventDefault()
+    const next = normalizeTags(form.tagsInput)
+    if (!next.length) return
+    setForm((current) => ({
+      ...current,
+      tags: [...new Set([...current.tags, ...next])].slice(0, 10),
+      tagsInput: '',
+    }))
+  }
 
-  // Generate variant combinations when variant types change
-  const generateCombos = (types) => {
-    if (!types.length) return []
-    const combos = types.reduce((acc, t) => {
-      if (!acc.length) return t.values.map(v => v)
-      return acc.flatMap(a => t.values.map(v => `${a} / ${v}`))
-    }, [])
-    return combos.map(combo => {
-      const existing = variants.find(v => v.combo === combo)
-      return existing || { combo, price: '', stock: '0' }
+  function removeTag(tag) {
+    setForm((current) => ({ ...current, tags: current.tags.filter((item) => item !== tag) }))
+  }
+
+  function removeImage(url) {
+    setForm((current) => {
+      const nextImages = normalizeImages(current.images, current.image_url).filter((item) => item !== url)
+      return {
+        ...current,
+        image_url: nextImages[0] || '',
+        images: nextImages,
+      }
     })
   }
 
-  const addVariantType = () => {
-    const name = newVTypeName.trim()
-    const vals = newVTypeValues.split(',').map(v => v.trim()).filter(Boolean)
-    if (!name || !vals.length) { toast.error('Enter type name and values'); return }
-    if (variantTypes.find(t => t.name === name)) { toast.error('Variant type already exists'); return }
-    const newTypes = [...variantTypes, { name, values: vals }]
-    setVariantTypes(newTypes)
-    setVariants(generateCombos(newTypes))
-    setNewVTypeName(''); setNewVTypeValues('')
+  function setPrimaryImage(url) {
+    setForm((current) => ({
+      ...current,
+      image_url: url,
+      images: [url, ...normalizeImages(current.images, current.image_url).filter((item) => item !== url)],
+    }))
   }
 
-  const removeVariantType = (name) => {
-    const newTypes = variantTypes.filter(t => t.name !== name)
-    setVariantTypes(newTypes)
-    setVariants(generateCombos(newTypes))
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] max-w-6xl overflow-hidden rounded-[1.8rem] border-0 p-0 shadow-[0_40px_120px_-30px_rgba(15,23,42,.35)]">
+        <div className="grid max-h-[92vh] grid-cols-1 overflow-hidden lg:grid-cols-[1.35fr_.8fr]">
+          <div className="overflow-y-auto bg-white">
+            <DialogHeader className="sticky top-0 z-20 border-b border-slate-200 bg-white/96 px-6 py-5 backdrop-blur">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-indigo-700">
+                    <Sparkles className="h-3.5 w-3.5" /> Realtime product editor
+                  </span>
+                  <DialogTitle className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+                    {form.id ? 'Edit product' : 'Add new product'}
+                  </DialogTitle>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Update product information and preview the final storefront card instantly.
+                  </p>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-7 px-6 py-6">
+              <section className="rounded-[1.4rem] border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Title *</Label>
+                    <Input
+                      value={form.title}
+                      onChange={handleTitleChange}
+                      placeholder="Product name"
+                      className="h-12 rounded-2xl border-slate-200 text-[15px] font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Slug</Label>
+                    <Input
+                      value={form.slug}
+                      onChange={(event) => updateField('slug', slugify(event.target.value))}
+                      placeholder="product-slug"
+                      className="h-12 rounded-2xl border-slate-200 text-[15px] font-semibold"
+                    />
+                    <p className="text-[11px] font-medium text-slate-400">Realtime URL preview: /shop/your-shop/product/{form.slug || 'product-slug'}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-5 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Category</Label>
+                    <Input
+                      list="merchant-product-categories"
+                      value={form.category}
+                      onChange={(event) => updateField('category', event.target.value)}
+                      placeholder="Choose or type category"
+                      className="h-11 rounded-2xl border-slate-200 font-semibold"
+                    />
+                    <datalist id="merchant-product-categories">
+                      {suggestedCategories.map((item) => <option key={item} value={item} />)}
+                    </datalist>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Status</Label>
+                    <select
+                      value={form.status}
+                      onChange={(event) => updateField('status', event.target.value)}
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-indigo-500"
+                    >
+                      <option value="draft">Draft — hidden</option>
+                      <option value="active">Active — visible</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">SKU</Label>
+                    <Input
+                      value={form.sku}
+                      onChange={(event) => updateField('sku', event.target.value.toUpperCase())}
+                      placeholder="SKU or item code"
+                      className="h-11 rounded-2xl border-slate-200 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-2">
+                  <Label className="text-[13px] font-bold text-slate-700">Description</Label>
+                  <Textarea
+                    value={form.description}
+                    onChange={(event) => updateField('description', event.target.value)}
+                    placeholder="Describe your product, main highlights, material and usage..."
+                    className="min-h-[116px] rounded-[1.2rem] border-slate-200 text-[15px] leading-6"
+                  />
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                    <span>Short, benefit-led copy performs better in the storefront.</span>
+                    <span>{form.description.length}/600</span>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-[1.4rem] border border-slate-200 bg-white p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-black text-slate-950">Images</h3>
+                    <p className="text-sm text-slate-500">Max 6 images. Click any image to set it as the primary storefront image.</p>
+                  </div>
+                  <Button type="button" variant="outline" className="rounded-full" onClick={() => inputRef.current?.click()}>
+                    <Upload className="mr-2 h-4 w-4" /> Upload image
+                  </Button>
+                  <input
+                    ref={inputRef}
+                    hidden
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(event) => onUploadFiles(Array.from(event.target.files || []))}
+                  />
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => inputRef.current?.click()}
+                    className="flex aspect-square items-center justify-center rounded-[1.3rem] border border-dashed border-slate-300 bg-slate-50 text-slate-500 transition hover:border-indigo-300 hover:bg-indigo-50"
+                  >
+                    <span className="text-center">
+                      <ImagePlus className="mx-auto h-8 w-8" />
+                      <span className="mt-3 block text-sm font-bold">Upload</span>
+                    </span>
+                  </button>
+
+                  {images.map((url, index) => (
+                    <div key={url} className="group relative overflow-hidden rounded-[1.3rem] border border-slate-200 bg-slate-50">
+                      <button type="button" onClick={() => setPrimaryImage(url)} className="block aspect-square w-full overflow-hidden">
+                        <img src={url} alt="Product" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                      </button>
+                      <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-2 p-3">
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${index === 0 ? 'bg-indigo-600 text-white' : 'bg-white/95 text-slate-700'}`}>
+                          {index === 0 ? 'Primary' : `Image ${index + 1}`}
+                        </span>
+                        <button type="button" onClick={() => removeImage(url)} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-600">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-[1.4rem] border border-slate-200 bg-white p-5">
+                <div className="grid gap-5 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Price (৳) *</Label>
+                    <Input
+                      value={form.price}
+                      onChange={(event) => updateField('price', event.target.value)}
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      className="h-11 rounded-2xl border-slate-200 font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Compare at (৳)</Label>
+                    <Input
+                      value={form.compare_at_price}
+                      onChange={(event) => updateField('compare_at_price', event.target.value)}
+                      inputMode="decimal"
+                      placeholder="Original"
+                      className="h-11 rounded-2xl border-slate-200 font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Stock</Label>
+                    <Input
+                      value={form.stock}
+                      onChange={(event) => updateField('stock', event.target.value)}
+                      inputMode="numeric"
+                      placeholder="0"
+                      className="h-11 rounded-2xl border-slate-200 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-[1.2rem] border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-cyan-50 px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm font-semibold text-slate-700">
+                    <span>Realtime pricing insight</span>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 shadow-sm">
+                      {discount > 0 ? `${discount}% discount` : 'No discount'}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl bg-white/80 px-4 py-3 shadow-sm">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Selling price</p>
+                      <p className="mt-2 text-lg font-black text-slate-950">{money(price)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/80 px-4 py-3 shadow-sm">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Original price</p>
+                      <p className="mt-2 text-lg font-black text-slate-950">{compareAt > 0 ? money(compareAt) : '—'}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/80 px-4 py-3 shadow-sm">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">Inventory</p>
+                      <p className={`mt-2 text-lg font-black ${stock > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{stock > 0 ? `${stock} available` : 'Out of stock'}</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-[1.4rem] border border-slate-200 bg-white p-5">
+                <h3 className="text-base font-black text-slate-950">Product delivery charge</h3>
+                <p className="mt-1 text-sm text-slate-500">Set free delivery or a custom delivery charge for this product. Custom charge overrides store default at checkout.</p>
+                <div className="mt-4 grid gap-4 md:grid-cols-[1.1fr_.7fr]">
+                  <select
+                    value={form.deliveryMode}
+                    onChange={(event) => updateField('deliveryMode', event.target.value)}
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-indigo-500"
+                  >
+                    {DELIVERY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                  <Input
+                    value={form.deliveryCharge}
+                    onChange={(event) => updateField('deliveryCharge', event.target.value)}
+                    inputMode="decimal"
+                    disabled={form.deliveryMode !== 'custom'}
+                    placeholder="Custom charge"
+                    className="h-12 rounded-2xl border-slate-200 font-semibold disabled:opacity-50"
+                  />
+                </div>
+              </section>
+
+              <section className="rounded-[1.4rem] border border-slate-200 bg-white p-5">
+                <div className="space-y-2">
+                  <Label className="text-[13px] font-bold text-slate-700">Tags (optional — for search & filtering)</Label>
+                  <Input
+                    value={form.tagsInput}
+                    onChange={(event) => updateField('tagsInput', event.target.value)}
+                    onKeyDown={handleTagKeyDown}
+                    placeholder="Add tags (press Enter)..."
+                    className="h-12 rounded-2xl border-slate-200 font-semibold"
+                  />
+                  <p className="text-[11px] font-medium text-slate-400">Examples: featured, skincare, bestselling, gift</p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {form.tags.map((tag) => (
+                    <button
+                      type="button"
+                      key={tag}
+                      onClick={() => removeTag(tag)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                    >
+                      #{tag}
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <DialogFooter className="sticky bottom-0 z-20 flex flex-col gap-3 border-t border-slate-200 bg-white/96 px-6 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+                <CheckCircle2 className={`h-4 w-4 ${canPublish ? 'text-emerald-600' : 'text-slate-300'}`} />
+                {canPublish ? 'Ready to publish' : 'Title, category, price and one image are required for publishing'}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" className="rounded-full" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" className="rounded-full bg-slate-950 px-6 hover:bg-indigo-600" onClick={onSave} disabled={saving}>
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />} {form.id ? 'Save changes' : 'Create product'}
+                </Button>
+              </div>
+            </DialogFooter>
+          </div>
+
+          <aside className="hidden overflow-y-auto border-l border-slate-200 bg-gradient-to-br from-slate-50 to-indigo-50/60 p-6 lg:block">
+            <div className="sticky top-0 space-y-5">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Live storefront preview</p>
+                <h3 className="mt-2 text-xl font-black tracking-tight text-slate-950">See changes in realtime</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-500">This preview updates instantly as you edit the form on the left.</p>
+              </div>
+
+              <div className="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-[0_28px_70px_-40px_rgba(15,23,42,.3)]">
+                <div className="relative aspect-square overflow-hidden bg-slate-100">
+                  {images[0] ? (
+                    <img src={images[0]} alt="Preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-slate-300">
+                      <Package2 className="h-16 w-16" />
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 top-0 flex items-start justify-between p-4">
+                    {discount > 0 ? <span className="rounded-full bg-white px-3 py-1 text-[11px] font-black text-rose-600 shadow">-{discount}%</span> : <span />}
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] shadow-sm ${STATUS_META[productStatus(form)]?.chip || STATUS_META.draft.chip}`}>
+                      {productStatus(form)}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>{form.category || 'General'}</span>
+                    <span>{stock > 0 ? `${stock} in stock` : 'Out of stock'}</span>
+                  </div>
+                  <h4 className="mt-2 text-[1.05rem] font-black leading-6 text-slate-950">{form.title || 'Your product title will appear here'}</h4>
+                  <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-500">{form.description || 'Your product description preview will update here as you type.'}</p>
+                  <div className="mt-4 flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-2xl font-black tracking-tight text-slate-950">{money(price)}</p>
+                      {compareAt > price ? <p className="mt-1 text-xs font-semibold text-slate-400 line-through">{money(compareAt)}</p> : null}
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${stock > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'}`}>
+                      {stock > 0 ? 'Available' : 'Unavailable'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <div className="rounded-[1.3rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">SEO / URL</p>
+                  <p className="mt-2 text-sm font-bold text-slate-900">/{form.slug || 'product-slug'}</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">Keep slug short and readable for cleaner product links.</p>
+                </div>
+                <div className="rounded-[1.3rem] border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Search tags</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {form.tags.length ? form.tags.slice(0, 5).map((tag) => (
+                      <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-600">#{tag}</span>
+                    )) : <span className="text-xs font-medium text-slate-400">No tags yet</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[1.3rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Publishing checklist</p>
+                <div className="mt-4 space-y-3 text-sm font-semibold text-slate-700">
+                  {[
+                    { ok: Boolean(form.title.trim()), text: 'Product title added' },
+                    { ok: Boolean(form.category.trim()), text: 'Category selected' },
+                    { ok: price > 0, text: 'Valid selling price added' },
+                    { ok: images.length > 0, text: 'At least one product image added' },
+                  ].map((item) => (
+                    <div key={item.text} className="flex items-center gap-3">
+                      <span className={`flex h-6 w-6 items-center justify-center rounded-full ${item.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                        <CheckCircle2 className="h-4 w-4" />
+                      </span>
+                      <span>{item.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export default function MerchantProductsPage() {
+  const { user } = useAuth()
+  const { store, isLoading: storeLoading } = useCurrentStore()
+
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [form, setForm] = useState(DEFAULT_FORM)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  const channelRef = useRef(null)
+
+  useEffect(() => {
+    if (!store?.id) {
+      setLoading(false)
+      return
+    }
+    loadProducts()
+    subscribeRealtime()
+    return () => unsubscribeRealtime()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store?.id])
+
+  function unsubscribeRealtime() {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
   }
 
-  const updateVariant = (combo, field, value) => {
-    setVariants(prev => prev.map(v => v.combo === combo ? { ...v, [field]: value } : v))
+  function subscribeRealtime() {
+    unsubscribeRealtime()
+    if (!store?.id) return
+    const channel = supabase
+      .channel(`merchant-products-${store.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `store_id=eq.${store.id}` }, () => {
+        loadProducts({ silent: true })
+      })
+      .subscribe()
+    channelRef.current = channel
   }
 
-  const upload = async file => {
-    if (!user) return
-    if (file.size > 2 * 1024 * 1024) { toast.error('Image must be under 2 MB'); return }
-    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) { toast.error('Use PNG, JPG or WEBP'); return }
+  async function loadProducts({ silent = false } = {}) {
+    if (!store?.id) return
+    if (!silent) setLoading(true)
+
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('store_id', store.id)
+      .order('updated_at', { ascending: false, nullsFirst: false })
+
+    if (error) {
+      toast.error(error.message || 'Could not load products')
+      setProducts([])
+    } else {
+      setProducts((data || []).map((product) => ({
+        ...product,
+        images: normalizeImages(product.images, product.image_url),
+        tags: normalizeTags(product.tags),
+      })))
+    }
+
+    if (!silent) setLoading(false)
+  }
+
+  const filteredProducts = useMemo(() => {
+    const search = query.trim().toLowerCase()
+    return products.filter((product) => {
+      const status = productStatus(product)
+      const haystack = [product.title, product.category, product.sku, normalizeTags(product.tags).join(' ')].join(' ').toLowerCase()
+      return (statusFilter === 'all' || status === statusFilter) && (!search || haystack.includes(search))
+    })
+  }, [products, query, statusFilter])
+
+  const stats = useMemo(() => {
+    const active = products.filter((item) => productStatus(item) === 'active').length
+    const draft = products.filter((item) => productStatus(item) === 'draft').length
+    const lowStock = products.filter((item) => numberValue(item.stock) > 0 && numberValue(item.stock) <= 5).length
+    return { active, draft, lowStock }
+  }, [products])
+
+  const suggestedCategories = useMemo(() => {
+    return [...new Set(products.map((item) => String(item.category || '').trim()).filter(Boolean))]
+  }, [products])
+
+  function openCreate() {
+    setForm({ ...DEFAULT_FORM })
+    setEditorOpen(true)
+  }
+
+  function openEdit(product) {
+    setForm({
+      id: product.id,
+      title: product.title || '',
+      slug: product.slug || slugify(product.title || ''),
+      category: product.category || '',
+      status: productStatus(product),
+      description: product.description || '',
+      price: String(product.price ?? '0'),
+      compare_at_price: String(product.compare_at_price ?? ''),
+      stock: String(product.stock ?? '0'),
+      sku: product.sku || '',
+      tagsInput: '',
+      tags: normalizeTags(product.tags),
+      image_url: normalizeImages(product.images, product.image_url)[0] || '',
+      images: normalizeImages(product.images, product.image_url),
+      deliveryMode: 'store_default',
+      deliveryCharge: '',
+    })
+    setEditorOpen(true)
+  }
+
+  async function uploadImages(files) {
+    if (!files.length || !store?.id) return
+    if (!user?.id) {
+      toast.error('Your login session is not ready. Refresh the page and try again.')
+      return
+    }
     setUploading(true)
     try {
-      if (isCloudinaryConfigured()) {
-        const uploaded = await uploadProductImageToCloudinary(file, { folder: `${user.id}/products` })
-        setImages(arr => [...arr, uploaded.url])
-        toast.success(`Image compressed and uploaded (${Math.round((uploaded.compressedBytes || uploaded.bytes || 0) / 1024)} KB)`)
-        setUploading(false)
-        return
+      const uploaded = []
+      for (const file of files.slice(0, 6)) {
+        const ext = String(file.name.split('.').pop() || 'jpg').toLowerCase()
+        // Existing shop-branding RLS expects the authenticated user id as the
+        // first folder segment: <auth.uid()>/<file-name>. Keep product images
+        // isolated under products/<store-id>/ while preserving that contract.
+        const path = `${user.id}/products/${store.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+        const { error: uploadError } = await supabase.storage.from('shop-branding').upload(path, file, { upsert: false })
+        if (uploadError) throw uploadError
+        const { data } = supabase.storage.from('shop-branding').getPublicUrl(path)
+        if (data?.publicUrl) uploaded.push(data.publicUrl)
       }
 
-      const ext = file.name.split('.').pop() || 'png'
-      const path = `${user.id}/products/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`
-      const { error } = await supabase.storage.from('shop-branding').upload(path, file, { contentType: file.type })
-      if (error) throw error
-      const { data } = supabase.storage.from('shop-branding').getPublicUrl(path)
-      setImages(arr => [...arr, data.publicUrl])
-      toast.info('Uploaded to Supabase Storage. Add Cloudinary env keys to enable compression.')
+      setForm((current) => {
+        const next = [...normalizeImages(current.images, current.image_url), ...uploaded].slice(0, 6)
+        return {
+          ...current,
+          image_url: current.image_url || next[0] || '',
+          images: next,
+        }
+      })
+
+      if (uploaded.length) toast.success(`${uploaded.length} image${uploaded.length > 1 ? 's' : ''} uploaded`)
     } catch (error) {
-      toast.error(error?.message || 'Image upload failed')
+      const message = String(error?.message || '')
+      toast.error(
+        message.includes('row-level security')
+          ? 'Image upload was blocked by Storage access rules. Sign out, sign in again, and retry.'
+          : message || 'Could not upload image to the shop-branding bucket.'
+      )
     } finally {
       setUploading(false)
     }
   }
 
-  // Reorder images so primary is first
-  const getOrderedImages = () => {
-    if (!images.length) return images
-    const ordered = [...images]
-    const [primary] = ordered.splice(primaryImg, 1)
-    return [primary, ...ordered]
-  }
+  async function saveProduct() {
+    if (!store?.id) return
+    if (!form.title.trim()) return toast.error('Enter product title')
+    if (!form.category.trim()) return toast.error('Choose a category')
+    if (numberValue(form.price) <= 0) return toast.error('Enter a valid selling price')
 
-  const addTag = () => {
-    const t = tagInput.trim()
-    if (!t || tags.includes(t)) return
-    setTags([...tags, t]); setTagInput('')
-  }
-
-  const save = async () => {
-    if (!user || !store) return
-    if (!title.trim() || title.length < 2) { toast.error('Title must be at least 2 characters'); return }
-    const priceNum = Number(price || 0)
-    if (isNaN(priceNum) || priceNum < 0) { toast.error('Invalid price'); return }
-    const compareNum = compareAt ? Number(compareAt) : null
-    const deliveryDhakaNum = deliveryDhaka === '' ? null : Number(deliveryDhaka)
-    const deliveryOutsideNum = deliveryOutside === '' ? null : Number(deliveryOutside)
-    if (deliveryMode === 'custom') {
-      if (!Number.isFinite(deliveryDhakaNum) || deliveryDhakaNum < 0) { toast.error('Enter a valid Dhaka delivery charge'); return }
-      if (!Number.isFinite(deliveryOutsideNum) || deliveryOutsideNum < 0) { toast.error('Enter a valid outside Dhaka delivery charge'); return }
-    }
-    const stockNum = hasVariants ? variants.reduce((s, v) => s + parseInt(v.stock||0, 10), 0) : parseInt(stock||'0', 10)
     setSaving(true)
+    try {
+      const imageList = normalizeImages(form.images, form.image_url)
+      const payload = {
+        store_id: store.id,
+        user_id: user?.id,
+        title: form.title.trim(),
+        slug: slugify(form.slug || form.title),
+        category: form.category.trim(),
+        status: form.status === 'active' ? 'active' : form.status === 'archived' ? 'archived' : 'draft',
+        description: form.description.trim(),
+        price: numberValue(form.price),
+        compare_at_price: form.compare_at_price ? numberValue(form.compare_at_price) : null,
+        stock: Math.max(0, Math.round(numberValue(form.stock, 0))),
+        sku: form.sku.trim() || null,
+        tags: form.tags,
+        image_url: imageList[0] || null,
+        images: imageList,
+        updated_at: new Date().toISOString(),
+      }
 
-    const orderedImages = getOrderedImages()
-    const payload = {
-      title: title.trim(),
-      description: description || null,
-      price: priceNum,
-      compare_at_price: compareNum,
-      stock: stockNum,
-      low_stock_threshold: 5,
-      status,
-      category: category || null,
-      tags: tags.length ? tags : null,
-      images: orderedImages,
-      has_variants: hasVariants,
-      variant_types: hasVariants ? variantTypes : [],
-      variants: hasVariants ? variants.map((variant) => {
-        const variantStock = Math.max(0, parseInt(variant.stock || 0, 10))
-        return {
-          ...variant,
-          stock: String(variantStock),
-          available: variantStock > 0,
-          status: variantStock > 0 ? (variant.status || 'available') : 'unavailable',
-        }
-      }) : [],
-      delivery_charge_mode: deliveryMode,
-      delivery_charge_dhaka: deliveryMode === 'custom' ? deliveryDhakaNum : null,
-      delivery_charge_outside_dhaka: deliveryMode === 'custom' ? deliveryOutsideNum : null,
+      let response
+      if (form.id) {
+        response = await supabase.from('products').update(payload).eq('id', form.id).select('*').single()
+      } else {
+        response = await supabase.from('products').insert({ ...payload, created_at: new Date().toISOString() }).select('*').single()
+      }
+
+      if (response.error) throw response.error
+
+      toast.success(form.id ? 'Product updated successfully' : 'Product created successfully')
+      setEditorOpen(false)
+      await loadProducts({ silent: true })
+    } catch (error) {
+      toast.error(error.message || 'Could not save product')
+    } finally {
+      setSaving(false)
     }
+  }
 
-    const res = product
-      ? await supabase.from('products').update(payload).eq('id', product.id)
-      : await supabase.from('products').insert({
-          ...payload, owner_id: user.id, store_id: store.id,
-          slug: slugify(title) + `-${Date.now().toString(36).slice(-4)}`,
-        })
-    setSaving(false)
-    if (res.error) { toast.error(res.error.message); return }
-    toast.success(product ? 'Product updated' : 'Product created')
-    qc.invalidateQueries({ queryKey: ['products', store.id] })
-    qc.invalidateQueries({ queryKey: ['product-count', store.id] })
-    onOpenChange(false)
+  async function deleteProduct(product) {
+    if (!window.confirm(`Delete “${product?.title || 'this product'}”?`)) return
+    const { error } = await supabase.from('products').delete().eq('id', product.id)
+    if (error) {
+      toast.error(error.message || 'Could not delete product')
+      return
+    }
+    toast.success('Product deleted')
+    loadProducts({ silent: true })
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{product ? 'Edit product' : 'Add new product'}</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid gap-5 py-2">
-          {/* Title */}
-          <div className="grid gap-2">
-            <Label>Title <span className="text-destructive">*</span></Label>
-            <Input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Product name" maxLength={120} autoFocus />
-          </div>
-
-          {/* Category + Status */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label>Category</Label>
-              {allCats.length > 0 ? (
-                <Select
-                  value={category || '__none__'}
-                  onValueChange={value => setCategory(value === '__none__' ? '' : value)}
-                >
-                  <SelectTrigger><SelectValue placeholder="Select category"/></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— None —</SelectItem>
-                    {allCats.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input value={category} onChange={e=>setCategory(e.target.value)} placeholder="e.g. Men, Electronics…"/>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">Draft — hidden</SelectItem>
-                  <SelectItem value="published">Published — live</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="grid gap-2">
-            <Label>Description</Label>
-            <Textarea value={description} onChange={e=>setDescription(e.target.value)} rows={3} maxLength={2000} placeholder="Describe your product…"/>
-          </div>
-
-          {/* Images — SRS M4: 1-6, set primary thumbnail */}
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Images <span className="text-xs text-muted-foreground">(max 6) — click to set as primary</span></Label>
-              {images.length > 0 && <span className="text-xs text-muted-foreground">⭐ = primary thumbnail</span>}
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              {images.map((url, i) => (
-                <div key={i} className={`group relative aspect-square overflow-hidden rounded-xl border-2 cursor-pointer transition-all ${i===primaryImg?'border-primary shadow-glow':'border-border hover:border-primary/50'}`}
-                  onClick={()=>setPrimaryImg(i)}>
-                  <img src={url} alt="" className="h-full w-full object-cover"/>
-                  {i===primaryImg && <div className="absolute left-1 top-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-white">⭐ Primary</div>}
-                  <button onClick={e=>{e.stopPropagation();setImages(arr=>arr.filter((_,idx)=>idx!==i));if(primaryImg>=images.length-1)setPrimaryImg(0)}}
-                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background/90 shadow opacity-0 group-hover:opacity-100">
-                    <X className="h-3 w-3"/>
-                  </button>
-                </div>
-              ))}
-              {images.length < 6 && (
-                <button onClick={()=>fileInput.current?.click()} disabled={uploading}
-                  className="flex aspect-square flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary">
-                  {uploading?<Loader2 className="h-5 w-5 animate-spin"/>:<><ImageIcon className="mb-1 h-5 w-5"/><span className="text-xs">Upload</span></>}
-                </button>
-              )}
-              <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                onChange={e=>e.target.files?.[0]&&upload(e.target.files[0])}/>
-            </div>
-          </div>
-
-          {/* Price / Compare / Stock */}
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label>Price (৳) <span className="text-destructive">*</span></Label>
-              <Input type="number" min={0} step="0.01" value={price} onChange={e=>setPrice(e.target.value)} placeholder="0.00"/>
-            </div>
-            <div className="grid gap-2">
-              <Label>Compare at (৳)</Label>
-              <Input type="number" min={0} step="0.01" value={compareAt} onChange={e=>setCompareAt(e.target.value)} placeholder="Original"/>
-            </div>
-            {!hasVariants && (
-              <div className="grid gap-2">
-                <Label>Stock</Label>
-                <Input type="number" min={0} value={stock} onChange={e=>setStock(e.target.value)}/>
-              </div>
-            )}
-          </div>
-
-          {/* Delivery charge per product */}
-          <div className="rounded-xl border border-border bg-muted/20 p-4">
-            <div className="mb-3 flex items-start gap-2">
-              <Truck className="mt-0.5 h-4 w-4 text-primary" />
-              <div>
-                <Label className="text-sm font-semibold">Product delivery charge</Label>
-                <p className="mt-1 text-xs text-muted-foreground">Set free delivery or a custom delivery charge for this product. Custom charge overrides store default at checkout.</p>
-              </div>
-            </div>
-            <Select value={deliveryMode} onValueChange={setDeliveryMode}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="store_default">Use store default delivery charge</SelectItem>
-                <SelectItem value="free">Free delivery for this product</SelectItem>
-                <SelectItem value="custom">Custom delivery charge for this product</SelectItem>
-              </SelectContent>
-            </Select>
-            {deliveryMode === 'custom' && (
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label>Inside Dhaka (৳)</Label>
-                  <Input type="number" min={0} step="1" value={deliveryDhaka} onChange={e=>setDeliveryDhaka(e.target.value)} placeholder="e.g. 60" />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Outside Dhaka (৳)</Label>
-                  <Input type="number" min={0} step="1" value={deliveryOutside} onChange={e=>setDeliveryOutside(e.target.value)} placeholder="e.g. 120" />
-                </div>
-              </div>
-            )}
-          </div>
-          {compareAt && Number(compareAt)>Number(price) && (
-            <p className="rounded-lg bg-success/10 px-3 py-1.5 text-xs text-success">
-              ✓ Sale badge will show — {Math.round((1-Number(price)/Number(compareAt))*100)}% off
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="space-y-6 pb-8">
+      <section className="overflow-hidden rounded-[1.8rem] border border-slate-200 bg-gradient-to-br from-white via-[#f8faff] to-indigo-50/80 p-6 shadow-[0_28px_80px_-48px_rgba(15,23,42,.35)]">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white">
+              <Sparkles className="h-3.5 w-3.5" /> Realtime catalog manager
+            </span>
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">Products</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-500 sm:text-[15px]">
+              Manage product information, images, prices and stock with a cleaner editor and live storefront preview.
             </p>
-          )}
-
-          {/* Tags — SRS M4 */}
-          <div className="grid gap-2">
-            <Label>Tags <span className="text-xs text-muted-foreground">(optional — for search & filtering)</span></Label>
-            <div className="flex flex-wrap gap-2 rounded-xl border border-border p-2 min-h-[2.5rem]">
-              {tags.map(t=>(
-                <span key={t} className="flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
-                  {t}<button type="button" onClick={()=>setTags(tags.filter(x=>x!==t))} className="hover:text-destructive"><X className="h-3 w-3"/></button>
-                </span>
-              ))}
-              <input value={tagInput} onChange={e=>setTagInput(e.target.value)}
-                onKeyDown={e=>{if(e.key==='Enter'||e.key===','){e.preventDefault();addTag()}}}
-                placeholder={tags.length?'':'Add tags (press Enter)…'} className="flex-1 min-w-24 bg-transparent text-xs outline-none placeholder:text-muted-foreground"/>
-            </div>
           </div>
-
-          {/* SRS M4: Product Variants */}
-          <div className="rounded-xl border border-border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <Label className="text-sm font-semibold">Product variants</Label>
-                <p className="text-xs text-muted-foreground">Size, Color, etc. — each with own stock & price</p>
-              </div>
-              <Switch checked={hasVariants} onCheckedChange={v=>{setHasVariants(v);if(!v){setVariantTypes([]);setVariants([])}}}/>
-            </div>
-
-            {hasVariants && (
-              <div className="space-y-4">
-                {/* Add variant type */}
-                <div className="rounded-lg bg-muted/40 p-3">
-                  <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add variant type</p>
-                  <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
-                    <Input value={newVTypeName} onChange={e=>setNewVTypeName(e.target.value)} placeholder="Type (e.g. Size)"/>
-                    <Input value={newVTypeValues} onChange={e=>setNewVTypeValues(e.target.value)} placeholder="Values: S, M, L, XL"/>
-                    <Button type="button" onClick={addVariantType} size="sm" variant="outline"><Plus className="h-4 w-4"/></Button>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">Separate values with commas</p>
-                </div>
-
-                {/* Existing variant types */}
-                {variantTypes.map(t => (
-                  <div key={t.name} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
-                    <div className="flex-1">
-                      <span className="text-sm font-medium">{t.name}:</span>
-                      <span className="ml-2 text-sm text-muted-foreground">{t.values.join(', ')}</span>
-                    </div>
-                    <button onClick={()=>removeVariantType(t.name)} className="text-muted-foreground hover:text-destructive"><X className="h-4 w-4"/></button>
-                  </div>
-                ))}
-
-                {/* Variant combinations table */}
-                {variants.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Set price & stock per variant</p>
-                    <div className="overflow-hidden rounded-xl border border-border">
-                      <div className="grid grid-cols-[1fr_100px_80px] border-b border-border bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground">
-                        <span>Variant</span><span>Price (৳)</span><span>Stock</span>
-                      </div>
-                      <div className="divide-y divide-border max-h-60 overflow-y-auto">
-                        {variants.map(v => (
-                          <div key={v.combo} className="grid grid-cols-[1fr_100px_80px] items-center gap-2 px-3 py-2">
-                            <span className="text-sm font-medium">{v.combo}</span>
-                            <Input type="number" min={0} step="0.01" value={v.price} onChange={e=>updateVariant(v.combo,'price',e.target.value)}
-                              placeholder={price||'0'} className="h-8 text-xs"/>
-                            <Input type="number" min={0} value={v.stock} onChange={e=>updateVariant(v.combo,'stock',e.target.value)}
-                              className="h-8 text-xs"/>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">Total stock: {variants.reduce((s,v)=>s+parseInt(v.stock||0,10),0)} units</p>
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" className="rounded-full px-5" onClick={() => loadProducts()} disabled={loading || storeLoading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChevronsUpDown className="mr-2 h-4 w-4" />} Refresh
+            </Button>
+            <Button className="rounded-full bg-slate-950 px-5 hover:bg-indigo-600" onClick={openCreate}>
+              <Plus className="mr-2 h-4 w-4" /> Add product
+            </Button>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={()=>onOpenChange(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving} className="bg-gradient-primary">
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-            {product ? 'Save changes' : 'Create product'}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ProductStat label="Total products" value={products.length} tone="slate" />
+          <ProductStat label="Published" value={stats.active} tone="emerald" />
+          <ProductStat label="Draft" value={stats.draft} tone="indigo" />
+          <ProductStat label="Low stock" value={stats.lowStock} tone="amber" />
+        </div>
+      </section>
+
+      <section className="rounded-[1.55rem] border border-slate-200 bg-white p-4 shadow-[0_20px_60px_-42px_rgba(15,23,42,.22)] sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search product, category, SKU or tags..." className="h-12 rounded-full border-slate-200 pl-11 pr-4 text-sm font-semibold" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              ['all', 'All'],
+              ['active', 'Published'],
+              ['draft', 'Draft'],
+              ['archived', 'Archived'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setStatusFilter(value)}
+                className={`rounded-full border px-4 py-2 text-sm font-black transition ${statusFilter === value ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {storeLoading || loading ? (
+        <div className="grid gap-4">
+          {[0, 1, 2].map((item) => <div key={item} className="h-40 animate-pulse rounded-[1.45rem] border border-slate-200 bg-slate-100" />)}
+        </div>
+      ) : !store?.id ? (
+        <div className="rounded-[1.6rem] border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-800">
+          Select or create a merchant store first to manage products.
+        </div>
+      ) : filteredProducts.length ? (
+        <div className="grid gap-4">
+          <AnimatePresence mode="popLayout">
+            {filteredProducts.map((product) => (
+              <ProductListCard key={product.id} product={product} onEdit={openEdit} onDelete={deleteProduct} />
+            ))}
+          </AnimatePresence>
+        </div>
+      ) : (
+        <div className="rounded-[1.6rem] border border-dashed border-slate-300 bg-gradient-to-br from-white to-slate-50 px-6 py-16 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
+            <Package2 className="h-7 w-7" />
+          </div>
+          <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950">No products yet</h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-7 text-slate-500">
+            Add your first product to start selling. The new editor gives you a live preview, faster image handling and cleaner pricing controls.
+          </p>
+          <Button className="mt-6 rounded-full bg-slate-950 px-6 hover:bg-indigo-600" onClick={openCreate}>
+            <ArrowUpRight className="mr-2 h-4 w-4" /> Add new product
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      )}
+
+      <ProductEditorDialog
+        open={editorOpen}
+        onOpenChange={(open) => {
+          if (!saving) setEditorOpen(open)
+        }}
+        form={form}
+        setForm={setForm}
+        saving={saving || uploading}
+        onSave={saveProduct}
+        suggestedCategories={suggestedCategories}
+        onUploadFiles={uploadImages}
+      />
+
+      {uploading ? (
+        <div className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-lg">
+          <Loader2 className="h-4 w-4 animate-spin" /> Uploading image...
+        </div>
+      ) : null}
+    </motion.div>
   )
 }

@@ -288,17 +288,16 @@ function ProductCard({ product, currency, storeId, storeSlug, shopName, onView, 
       addToCartLabel={
         outOfStock
           ? "Out of stock"
-          : requiresVariant
-            ? "Choose option"
-            : flash
-              ? "Added to cart"
-              : adding
-                ? "Adding..."
-                : "Add to cart"
+          : flash
+            ? "Added to cart"
+            : adding
+              ? "Adding..."
+              : "Add to cart"
       }
       addToCartDisabled={outOfStock || adding}
       statusMessage={error}
       statusTone={error ? "error" : "neutral"}
+      showViewDetails={false}
       className="shop-storefront-product-card"
     />
   );
@@ -920,7 +919,11 @@ export default function ShopPage() {
         .shop-hero-visual { filter: drop-shadow(0 28px 80px rgba(15,23,42,.13)); }
         .shop-float-soft { animation: shopFloatSoft 6s ease-in-out infinite; }
         [data-theme-font] { font-family: var(--shop-font-family); background: var(--shop-page-bg); }
-        [data-theme-button] button, [data-theme-button] a, [data-theme-button] .shop-theme-button { border-radius: var(--shop-button-radius) !important; }
+
+       [data-theme-button] button,
+[data-theme-button] .shop-theme-button {
+  border-radius: var(--shop-button-radius) !important;
+}
         [data-theme-radius] .shop-hover-lift, [data-theme-radius] .shop-themed-card, [data-theme-radius] .shop-hero-copy, [data-theme-radius] .shop-hero-visual, [data-theme-radius] .shop-product-surface { border-radius: var(--shop-card-radius) !important; }
         [data-theme-card="flat"] .shop-hover-lift { box-shadow: none !important; border-color: rgba(148,163,184,.28) !important; }
         [data-theme-card="bordered"] .shop-hover-lift { box-shadow: none !important; border-width: 1.5px !important; }
@@ -1078,6 +1081,9 @@ export default function ShopPage() {
           .shop-scroll-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
           .shop-hover-lift, .shop-hover-lift:hover { transform: none !important; }
         }
+          .shop-storefront-product-card > a {
+  border-radius: 0 !important;
+}
       `}</style>
 
       {store.announcement_enabled && store.announcement_text && (
@@ -1175,22 +1181,22 @@ export default function ShopPage() {
                 {tagline}
               </p>
 
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="mt-7 flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <Button
-                  className="h-12 rounded-full bg-[var(--shop-primary)] px-8 font-black text-white shadow-[0_18px_46px_var(--shop-primary-ring)] transition duration-300 hover:-translate-y-0.5 hover:bg-[var(--shop-primary)]/90"
+                  className="h-11 shrink-0 rounded-full bg-[var(--shop-primary)] px-6 font-black text-white shadow-[0_18px_46px_var(--shop-primary-ring)] transition duration-300 hover:-translate-y-0.5 hover:bg-[var(--shop-primary)]/90"
                   onClick={() => document.getElementById("products")?.scrollIntoView({ behavior: "smooth" })}
                 >
                   Shop products <ArrowRight className="h-4 w-4" />
                 </Button>
                 <Button
-                  className="h-12 rounded-full bg-white/70 px-8 font-bold text-slate-950 shadow-[0_14px_35px_rgba(15,23,42,.06)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white/90 dark:bg-white/12 dark:text-white dark:hover:bg-white/18"
+                  className="h-11 shrink-0 rounded-full bg-white/70 px-6 font-bold text-slate-950 shadow-[0_14px_35px_rgba(15,23,42,.06)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white/90 dark:bg-white/12 dark:text-white dark:hover:bg-white/18"
                   variant="ghost"
                   onClick={() => setCartOpen(true)}
                 >
                   View cart
                 </Button>
                 <Button
-                  className="h-12 rounded-full bg-transparent px-5 font-bold text-slate-600 transition hover:-translate-y-0.5 hover:bg-white/45 hover:text-[var(--shop-primary)] dark:text-slate-200 dark:hover:bg-white/10"
+                  className="h-11 shrink-0 rounded-full bg-transparent px-5 font-bold text-slate-600 transition hover:-translate-y-0.5 hover:bg-white/45 hover:text-[var(--shop-primary)] dark:text-slate-200 dark:hover:bg-white/10"
                   variant="ghost"
                   onClick={() => navigate({ to: aboutPath })}
                 >
@@ -1198,7 +1204,7 @@ export default function ShopPage() {
                 </Button>
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3 text-xs font-bold text-slate-600 dark:text-slate-200/90">
+              <div className="mt-6 flex flex-nowrap items-center gap-4 overflow-x-auto whitespace-nowrap pb-1 text-xs font-bold text-slate-600 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:text-slate-200/90">
                 <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-[var(--shop-primary)]" /> Secure checkout</span>
                 <span className="inline-flex items-center gap-1.5"><Truck className="h-4 w-4 text-[var(--shop-primary)]" /> Local delivery</span>
                 <span className="inline-flex items-center gap-1.5"><ShoppingBag className="h-4 w-4 text-[var(--shop-primary)]" /> Curated products</span>
