@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/integrations/supabase/client'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { useAuth } from '@/hooks/use-auth'
+import { buildVariantRows, normalizeVariantTypes, parseCsv, uniqueCatalogSlug, validateProductCsv, variantsForDatabase } from '@/lib/product-catalog-tools'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,7 +15,11 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ChevronsUpDown,
+  Copy,
+  Download,
+  FileSpreadsheet,
   ImagePlus,
+  Layers3,
   Loader2,
   Package2,
   Pencil,
@@ -37,11 +42,15 @@ const DEFAULT_FORM = {
   price: '0',
   compare_at_price: '',
   stock: '0',
+  lowStockThreshold: '5',
   sku: '',
   tagsInput: '',
   tags: [],
   image_url: '',
   images: [],
+  hasVariants: false,
+  variantTypes: [],
+  variants: [],
   deliveryMode: 'store_default',
   deliveryCharge: '',
 }
@@ -127,7 +136,7 @@ function ProductStat({ label, value, tone = 'slate' }) {
   )
 }
 
-function ProductListCard({ product, onEdit, onDelete }) {
+function ProductListCard({ product, onEdit, onDuplicate, onDelete, duplicating }) {
   const images = normalizeImages(product?.images, product?.image_url)
   const hasDiscount = numberValue(product?.compare_at_price) > numberValue(product?.price)
   const productTone = productStatus(product)
@@ -203,6 +212,9 @@ function ProductListCard({ product, onEdit, onDelete }) {
               <Button variant="outline" className="rounded-full" onClick={() => onEdit(product)}>
                 <Pencil className="mr-2 h-4 w-4" /> Edit
               </Button>
+              <Button variant="outline" className="rounded-full" onClick={() => onDuplicate(product)} disabled={duplicating === product.id}>
+                {duplicating === product.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Copy className="mr-2 h-4 w-4" />} Duplicate
+              </Button>
               <Button variant="outline" className="rounded-full border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => onDelete(product)}>
                 <Trash2 className="mr-2 h-4 w-4" /> Delete
               </Button>
@@ -214,15 +226,279 @@ function ProductListCard({ product, onEdit, onDelete }) {
   )
 }
 
+
+function VariantEditorSection({ form, setForm }) {
+  const normalizedTypes = useMemo(() => normalizeVariantTypes(form.variantTypes), [form.variantTypes])
+  const completeTypes = useMemo(() => normalizedTypes.filter((item) => item.name && item.values.length), [normalizedTypes])
+  const variantRows = useMemo(
+    () => buildVariantRows(completeTypes, form.variants, numberValue(form.price), numberValue(form.lowStockThreshold, 5)),
+    [completeTypes, form.variants, form.price, form.lowStockThreshold],
+  )
+  const totalStock = variantRows.reduce((sum, item) => sum + Math.max(0, Math.round(numberValue(item.stock))), 0)
+
+  function enableVariants(enabled) {
+    setForm((current) => {
+      if (!enabled) return { ...current, hasVariants: false, variantTypes: [], variants: [] }
+      const nextTypes = current.variantTypes?.length
+        ? current.variantTypes
+        : [{ id: 'type-1', name: 'Size', valuesInput: 'Small, Medium, Large', values: ['Small', 'Medium', 'Large'] }]
+      return {
+        ...current,
+        hasVariants: true,
+        variantTypes: nextTypes,
+        variants: buildVariantRows(nextTypes, current.variants, numberValue(current.price), numberValue(current.lowStockThreshold, 5)),
+      }
+    })
+  }
+
+  function updateVariantTypes(nextTypes) {
+    setForm((current) => ({
+      ...current,
+      variantTypes: nextTypes,
+      variants: buildVariantRows(nextTypes, current.variants, numberValue(current.price), numberValue(current.lowStockThreshold, 5)),
+    }))
+  }
+
+  function updateType(index, key, value) {
+    const next = normalizedTypes.map((item, itemIndex) => {
+      if (itemIndex !== index) return item
+      if (key === 'valuesInput') {
+        return {
+          ...item,
+          valuesInput: value,
+          values: [...new Set(String(value).split(',').map((entry) => entry.trim()).filter(Boolean))],
+        }
+      }
+      return { ...item, [key]: value }
+    })
+    updateVariantTypes(next)
+  }
+
+  function addType() {
+    if (normalizedTypes.length >= 3) return toast.error('You can add up to 3 variant types per product')
+    updateVariantTypes([
+      ...normalizedTypes,
+      { id: `type-${Date.now()}`, name: normalizedTypes.length ? 'Color' : 'Size', valuesInput: '', values: [] },
+    ])
+  }
+
+  function removeType(index) {
+    updateVariantTypes(normalizedTypes.filter((_, itemIndex) => itemIndex !== index))
+  }
+
+  function updateVariant(id, key, value) {
+    setForm((current) => {
+      const currentRows = buildVariantRows(current.variantTypes, current.variants, numberValue(current.price), numberValue(current.lowStockThreshold, 5))
+      return {
+        ...current,
+        variants: currentRows.map((item) => item.id === id ? { ...item, [key]: value } : item),
+      }
+    })
+  }
+
+  return (
+    <section className="rounded-[1.4rem] border border-violet-200 bg-gradient-to-br from-violet-50/70 via-white to-indigo-50/60 p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-600 text-white"><Layers3 className="h-4 w-4" /></span>
+            <div>
+              <h3 className="text-base font-black text-slate-950">Product variants</h3>
+              <p className="text-sm text-slate-500">Create Size, Color or other option combinations with their own stock and price adjustment.</p>
+            </div>
+          </div>
+        </div>
+        <label className="inline-flex cursor-pointer items-center gap-3 rounded-full border border-violet-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(form.hasVariants)}
+            onChange={(event) => enableVariants(event.target.checked)}
+            className="h-4 w-4 accent-violet-600"
+          />
+          This product has variants
+        </label>
+      </div>
+
+      {form.hasVariants ? (
+        <div className="mt-5 space-y-5">
+          <div className="rounded-[1.25rem] border border-violet-100 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-slate-900">Variant types & options</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Enter values separated by commas. Example: Small, Medium, Large.</p>
+              </div>
+              <Button type="button" variant="outline" className="rounded-full" onClick={addType} disabled={normalizedTypes.length >= 3}>
+                <Plus className="mr-2 h-4 w-4" /> Add option type
+              </Button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {normalizedTypes.map((type, index) => (
+                <div key={type.id || index} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[.6fr_1.4fr_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-black text-slate-600">Type name</Label>
+                    <Input value={type.name} onChange={(event) => updateType(index, 'name', event.target.value)} placeholder="Size" className="h-10 rounded-xl bg-white font-semibold" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-black text-slate-600">Options</Label>
+                    <Input value={type.valuesInput ?? type.values.join(', ')} onChange={(event) => updateType(index, 'valuesInput', event.target.value)} placeholder="Small, Medium, Large" className="h-10 rounded-xl bg-white font-semibold" />
+                  </div>
+                  <Button type="button" variant="outline" className="h-10 rounded-xl border-rose-200 text-rose-600" onClick={() => removeType(index)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {completeTypes.length && variantRows.length ? (
+            <div className="overflow-hidden rounded-[1.25rem] border border-violet-100 bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4">
+                <div>
+                  <p className="text-sm font-black text-slate-900">Generated combinations</p>
+                  <p className="mt-1 text-xs text-slate-500">Stock is managed per combination. Final price = base price + adjustment.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-black text-violet-700">{variantRows.length} variants</span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{totalStock} total stock</span>
+                </div>
+              </div>
+              <div className="max-h-[420px] overflow-auto">
+                <div className="min-w-[940px]">
+                  <div className="grid grid-cols-[1.45fr_.65fr_.72fr_.85fr_.8fr] gap-3 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                    <span>Combination</span><span>Stock</span><span>Alert at ≤</span><span>Price adjustment</span><span>SKU</span>
+                  </div>
+                  {variantRows.map((variant) => {
+                    const finalPrice = Math.max(0, numberValue(form.price) + numberValue(variant.price_adjustment))
+                    return (
+                      <div key={variant.id} className="grid grid-cols-[1.45fr_.65fr_.72fr_.85fr_.8fr] gap-3 border-t border-slate-100 px-4 py-3 md:items-center">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">{variant.label}</p>
+                          <p className={`mt-1 text-xs font-bold ${numberValue(variant.stock) > 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{numberValue(variant.stock) > 0 ? `${variant.stock} available` : 'Unavailable'}</p>
+                        </div>
+                        <Input value={variant.stock} onChange={(event) => updateVariant(variant.id, 'stock', event.target.value)} inputMode="numeric" className="h-10 rounded-xl" />
+                        <div>
+                          <Input value={variant.low_stock_threshold ?? ''} onChange={(event) => updateVariant(variant.id, 'low_stock_threshold', event.target.value)} inputMode="numeric" placeholder={`Default ${Math.max(0, Math.round(numberValue(form.lowStockThreshold, 5)))}`} className="h-10 rounded-xl" />
+                          <p className="mt-1 text-[10px] font-bold text-slate-400">Blank uses product default</p>
+                        </div>
+                        <div>
+                          <Input value={variant.price_adjustment} onChange={(event) => updateVariant(variant.id, 'price_adjustment', event.target.value)} inputMode="decimal" className="h-10 rounded-xl" />
+                          <p className="mt-1 text-[10px] font-bold text-slate-400">Final {money(finalPrice)}</p>
+                        </div>
+                        <Input value={variant.sku || ''} onChange={(event) => updateVariant(variant.id, 'sku', event.target.value.toUpperCase())} placeholder="Optional" className="h-10 rounded-xl" />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-violet-200 bg-white/70 px-4 py-6 text-center text-sm font-semibold text-slate-500">
+              Add a type name and at least one comma-separated option to generate combinations.
+            </div>
+          )}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function BulkImportDialog({ open, onOpenChange, onImport, importing }) {
+  const inputRef = useRef(null)
+  const [fileName, setFileName] = useState('')
+  const [result, setResult] = useState({ records: [], errors: [] })
+
+  async function chooseFile(file) {
+    if (!file) return
+    setFileName(file.name)
+    try {
+      const text = await file.text()
+      setResult(validateProductCsv(parseCsv(text), { maxRows: 500 }))
+    } catch (error) {
+      setResult({ records: [], errors: [{ row: 'File', message: error?.message || 'Could not read CSV file.' }] })
+    }
+  }
+
+  const ready = result.records.length > 0 && result.errors.length === 0
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !importing && onOpenChange(next)}>
+      <DialogContent className="max-h-[88vh] max-w-5xl overflow-y-auto rounded-[1.6rem]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-2xl font-black"><FileSpreadsheet className="h-6 w-6 text-emerald-600" /> Bulk product import</DialogTitle>
+          <p className="text-sm leading-6 text-slate-500">Import up to 500 products in one CSV. The file is fully validated before anything is inserted.</p>
+        </DialogHeader>
+
+        <div className="mt-3 grid gap-4 md:grid-cols-[1.2fr_.8fr]">
+          <button type="button" onClick={() => inputRef.current?.click()} className="rounded-[1.35rem] border border-dashed border-emerald-300 bg-emerald-50/60 p-8 text-center transition hover:bg-emerald-50">
+            <Upload className="mx-auto h-9 w-9 text-emerald-700" />
+            <p className="mt-3 text-base font-black text-slate-900">{fileName || 'Choose CSV file'}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Required columns: title, category, price. Max 500 rows.</p>
+          </button>
+          <div className="rounded-[1.35rem] border border-slate-200 bg-slate-50 p-5">
+            <p className="text-sm font-black text-slate-900">Template & optional columns</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">Required: title, description, category and price. Optional: compare_at_price, stock, low_stock_threshold, status, sku, tags, image_url, images, delivery_mode, delivery_dhaka, delivery_outside_dhaka. Advanced imports can also include JSON variant_types and variants columns.</p>
+            <a href="/samples/product-import-template.csv" download className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:border-emerald-300 hover:text-emerald-700">
+              <Download className="h-4 w-4" /> Download CSV template
+            </a>
+          </div>
+        </div>
+        <input ref={inputRef} hidden type="file" accept=".csv,text/csv" onChange={(event) => chooseFile(event.target.files?.[0])} />
+
+        {fileName ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-400">Valid rows</p><p className="mt-2 text-2xl font-black text-emerald-700">{result.records.length}</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-400">Errors</p><p className={`mt-2 text-2xl font-black ${result.errors.length ? 'text-rose-600' : 'text-slate-900'}`}>{result.errors.length}</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-400">Import state</p><p className={`mt-2 text-sm font-black ${ready ? 'text-emerald-700' : 'text-amber-700'}`}>{ready ? 'Ready to import' : result.errors.length ? 'Fix CSV errors first' : 'Choose a valid file'}</p></div>
+          </div>
+        ) : null}
+
+        {result.errors.length ? (
+          <div className="rounded-[1.25rem] border border-rose-200 bg-rose-50 p-4">
+            <div className="flex items-center gap-2 font-black text-rose-800"><AlertCircle className="h-4 w-4" /> Import blocked — fix these rows</div>
+            <div className="mt-3 max-h-52 space-y-2 overflow-auto">
+              {result.errors.slice(0, 100).map((error, index) => <p key={`${error.row}-${index}`} className="rounded-xl bg-white/80 px-3 py-2 text-xs font-semibold text-rose-700">Row {error.row}: {error.message}</p>)}
+            </div>
+          </div>
+        ) : null}
+
+        {result.records.length ? (
+          <div className="overflow-hidden rounded-[1.25rem] border border-slate-200">
+            <div className="grid grid-cols-[.4fr_1.6fr_1fr_.8fr_.7fr] bg-slate-950 px-4 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+              <span>Row</span><span>Title</span><span>Category</span><span>Price</span><span>Stock</span>
+            </div>
+            <div className="max-h-64 overflow-auto">
+              {result.records.slice(0, 30).map((record) => (
+                <div key={record.row} className="grid grid-cols-[.4fr_1.6fr_1fr_.8fr_.7fr] border-t border-slate-100 px-4 py-3 text-xs font-semibold text-slate-700">
+                  <span>{record.row}</span><span className="truncate font-black text-slate-900">{record.title}</span><span>{record.category}</span><span>{money(record.price)}</span><span>{record.stock}</span>
+                </div>
+              ))}
+              {result.records.length > 30 ? <p className="border-t border-slate-100 px-4 py-3 text-center text-xs font-bold text-slate-400">+ {result.records.length - 30} more valid rows</p> : null}
+            </div>
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <Button variant="outline" className="rounded-full" onClick={() => onOpenChange(false)} disabled={importing}>Cancel</Button>
+          <Button className="rounded-full bg-emerald-600 px-6 hover:bg-emerald-700" onClick={() => onImport(result.records)} disabled={!ready || importing}>
+            {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />} Import {result.records.length || ''} product{result.records.length === 1 ? '' : 's'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving, suggestedCategories, onUploadFiles }) {
   const inputRef = useRef(null)
 
   const images = useMemo(() => normalizeImages(form.images, form.image_url), [form.images, form.image_url])
   const price = numberValue(form.price)
   const compareAt = numberValue(form.compare_at_price)
-  const stock = numberValue(form.stock)
+  const previewVariantRows = useMemo(() => form.hasVariants ? buildVariantRows(form.variantTypes, form.variants, price) : [], [form.hasVariants, form.variantTypes, form.variants, price])
+  const stock = form.hasVariants ? previewVariantRows.reduce((sum, item) => sum + Math.max(0, Math.round(numberValue(item.stock))), 0) : numberValue(form.stock)
   const discount = compareAt > price && price > 0 ? Math.round((1 - price / compareAt) * 100) : 0
-  const canPublish = Boolean(form.title.trim() && form.category.trim() && price > 0 && images.length > 0)
+  const canPublish = Boolean(form.title.trim() && form.description.trim() && form.category.trim() && price > 0 && images.length > 0)
 
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -355,8 +631,11 @@ function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving
                 </div>
 
                 <div className="mt-5 space-y-2">
-                  <Label className="text-[13px] font-bold text-slate-700">Description</Label>
+                  <Label className="text-[13px] font-bold text-slate-700">Description <span className="text-rose-500">*</span></Label>
                   <Textarea
+                    required
+                    aria-required="true"
+                    maxLength={600}
                     value={form.description}
                     onChange={(event) => updateField('description', event.target.value)}
                     placeholder="Describe your product, main highlights, material and usage..."
@@ -419,7 +698,7 @@ function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving
               </section>
 
               <section className="rounded-[1.4rem] border border-slate-200 bg-white p-5">
-                <div className="grid gap-5 md:grid-cols-3">
+                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-2">
                     <Label className="text-[13px] font-bold text-slate-700">Price (৳) *</Label>
                     <Input
@@ -441,14 +720,28 @@ function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[13px] font-bold text-slate-700">Stock</Label>
+                    <Label className="text-[13px] font-bold text-slate-700">{form.hasVariants ? 'Stock (from variants)' : 'Stock'}</Label>
                     <Input
-                      value={form.stock}
+                      value={form.hasVariants ? String(stock) : form.stock}
                       onChange={(event) => updateField('stock', event.target.value)}
                       inputMode="numeric"
                       placeholder="0"
+                      disabled={form.hasVariants}
+                      className="h-11 rounded-2xl border-slate-200 font-semibold disabled:bg-slate-100 disabled:text-slate-500"
+                    />
+                    {form.hasVariants ? <p className="text-[10px] font-semibold text-slate-400">Automatically calculated from all variant combinations.</p> : null}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-bold text-slate-700">Low-stock alert at ≤</Label>
+                    <Input
+                      value={form.lowStockThreshold}
+                      onChange={(event) => updateField('lowStockThreshold', event.target.value)}
+                      inputMode="numeric"
+                      min="0"
+                      placeholder="5"
                       className="h-11 rounded-2xl border-slate-200 font-semibold"
                     />
+                    <p className="text-[10px] font-semibold text-slate-400">0 means alert only when out of stock. Variants can override this value.</p>
                   </div>
                 </div>
 
@@ -475,6 +768,8 @@ function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving
                   </div>
                 </div>
               </section>
+
+              <VariantEditorSection form={form} setForm={setForm} />
 
               <section className="rounded-[1.4rem] border border-slate-200 bg-white p-5">
                 <h3 className="text-base font-black text-slate-950">Product delivery charge</h3>
@@ -529,7 +824,7 @@ function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving
             <DialogFooter className="sticky bottom-0 z-20 flex flex-col gap-3 border-t border-slate-200 bg-white/96 px-6 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
               <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
                 <CheckCircle2 className={`h-4 w-4 ${canPublish ? 'text-emerald-600' : 'text-slate-300'}`} />
-                {canPublish ? 'Ready to publish' : 'Title, category, price and one image are required for publishing'}
+                {canPublish ? 'Ready to publish' : 'Title, description, category, price and one image are required for publishing'}
               </div>
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" className="rounded-full" onClick={() => onOpenChange(false)}>
@@ -636,16 +931,19 @@ export default function MerchantProductsPage() {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [editorOpen, setEditorOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [form, setForm] = useState(DEFAULT_FORM)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [duplicating, setDuplicating] = useState(null)
 
   const channelRef = useRef(null)
 
   useEffect(() => {
     if (!store?.id) {
-      setLoading(false)
-      return
+      const timer = window.setTimeout(() => setLoading(false), 0)
+      return () => window.clearTimeout(timer)
     }
     loadProducts()
     subscribeRealtime()
@@ -732,13 +1030,17 @@ export default function MerchantProductsPage() {
       price: String(product.price ?? '0'),
       compare_at_price: String(product.compare_at_price ?? ''),
       stock: String(product.stock ?? '0'),
+      lowStockThreshold: String(product.low_stock_threshold ?? 5),
       sku: product.sku || '',
       tagsInput: '',
       tags: normalizeTags(product.tags),
       image_url: normalizeImages(product.images, product.image_url)[0] || '',
       images: normalizeImages(product.images, product.image_url),
-      deliveryMode: 'store_default',
-      deliveryCharge: '',
+      hasVariants: Boolean(product.has_variants && Array.isArray(product.variants) && product.variants.length),
+      variantTypes: normalizeVariantTypes(Array.isArray(product.variant_types) ? product.variant_types : []),
+      variants: buildVariantRows(Array.isArray(product.variant_types) ? product.variant_types : [], Array.isArray(product.variants) ? product.variants : [], numberValue(product.price), numberValue(product.low_stock_threshold, 5)),
+      deliveryMode: product.delivery_charge_mode || 'store_default',
+      deliveryCharge: String(product.delivery_charge_dhaka ?? product.delivery_charge_outside_dhaka ?? ''),
     })
     setEditorOpen(true)
   }
@@ -786,30 +1088,66 @@ export default function MerchantProductsPage() {
     }
   }
 
+  async function kickNotificationDelivery(reason = 'merchant_inventory_change') {
+    if (!store?.id) return
+    try {
+      await supabase.functions.invoke('process-notification-queue', {
+        body: { storeId: store.id, reason },
+      })
+    } catch {
+      // Durable queues + cron retry remain the source of truth; UI save must not fail.
+    }
+  }
+
   async function saveProduct() {
     if (!store?.id) return
     if (!form.title.trim()) return toast.error('Enter product title')
+    if (!form.description.trim()) return toast.error('Enter product description')
     if (!form.category.trim()) return toast.error('Choose a category')
     if (numberValue(form.price) <= 0) return toast.error('Enter a valid selling price')
+    if (!Number.isInteger(numberValue(form.lowStockThreshold, NaN)) || numberValue(form.lowStockThreshold, NaN) < 0) return toast.error('Low-stock threshold must be a non-negative whole number')
+    if (form.hasVariants) {
+      const invalidThreshold = (form.variants || []).find((variant) => {
+        if (variant.low_stock_threshold == null || String(variant.low_stock_threshold).trim() === '') return false
+        const value = Number(variant.low_stock_threshold)
+        return !Number.isInteger(value) || value < 0
+      })
+      if (invalidThreshold) return toast.error(`Low-stock threshold for ${invalidThreshold.label || 'a variant'} must be a non-negative whole number`)
+    }
 
     setSaving(true)
     try {
       const imageList = normalizeImages(form.images, form.image_url)
+      const variantData = form.hasVariants
+        ? variantsForDatabase(form.variantTypes, form.variants, numberValue(form.price), numberValue(form.lowStockThreshold, 5))
+        : { variantTypes: [], variants: [], totalStock: Math.max(0, Math.round(numberValue(form.stock, 0))) }
+
+      if (form.hasVariants && (!variantData.variantTypes.length || !variantData.variants.length)) {
+        throw new Error('Add at least one complete variant type and option before saving.')
+      }
+
       const payload = {
         store_id: store.id,
         user_id: user?.id,
         title: form.title.trim(),
         slug: slugify(form.slug || form.title),
         category: form.category.trim(),
-        status: form.status === 'active' ? 'active' : form.status === 'archived' ? 'archived' : 'draft',
+        status: form.status === 'active' ? 'published' : form.status === 'archived' ? 'archived' : 'draft',
         description: form.description.trim(),
         price: numberValue(form.price),
         compare_at_price: form.compare_at_price ? numberValue(form.compare_at_price) : null,
-        stock: Math.max(0, Math.round(numberValue(form.stock, 0))),
+        stock: variantData.totalStock,
+        low_stock_threshold: Math.max(0, Math.round(numberValue(form.lowStockThreshold, 5))),
         sku: form.sku.trim() || null,
         tags: form.tags,
         image_url: imageList[0] || null,
         images: imageList,
+        has_variants: Boolean(form.hasVariants && variantData.variants.length),
+        variant_types: variantData.variantTypes,
+        variants: variantData.variants,
+        delivery_charge_mode: form.deliveryMode || 'store_default',
+        delivery_charge_dhaka: form.deliveryMode === 'custom' ? Math.max(0, numberValue(form.deliveryCharge, 0)) : null,
+        delivery_charge_outside_dhaka: form.deliveryMode === 'custom' ? Math.max(0, numberValue(form.deliveryCharge, 0)) : null,
         updated_at: new Date().toISOString(),
       }
 
@@ -822,6 +1160,7 @@ export default function MerchantProductsPage() {
 
       if (response.error) throw response.error
 
+      void kickNotificationDelivery('product_inventory_change')
       toast.success(form.id ? 'Product updated successfully' : 'Product created successfully')
       setEditorOpen(false)
       await loadProducts({ silent: true })
@@ -829,6 +1168,107 @@ export default function MerchantProductsPage() {
       toast.error(error.message || 'Could not save product')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function duplicateProduct(product) {
+    if (!store?.id || !product?.id) return
+    setDuplicating(product.id)
+    try {
+      const existingSlugs = new Set(products.map((item) => String(item.slug || '').trim()).filter(Boolean))
+      const slug = uniqueCatalogSlug(product.title || 'product', existingSlugs, 'copy')
+      const variantTypes = Array.isArray(product.variant_types) ? product.variant_types : []
+      const sourceVariants = Array.isArray(product.variants) ? product.variants : []
+      const clonedVariants = sourceVariants.map((variant, index) => ({
+        ...variant,
+        id: `${variant.id || `variant-${index + 1}`}-copy-${Date.now().toString(36)}-${index + 1}`,
+      }))
+
+      const payload = {
+        store_id: store.id,
+        user_id: user?.id,
+        title: `${product.title || 'Untitled product'} Copy`,
+        slug,
+        category: product.category || 'General',
+        status: 'draft',
+        description: product.description || '',
+        price: numberValue(product.price),
+        compare_at_price: product.compare_at_price ?? null,
+        stock: Math.max(0, Math.round(numberValue(product.stock, 0))),
+        low_stock_threshold: Math.max(0, Math.round(numberValue(product.low_stock_threshold, 5))),
+        sku: null,
+        tags: normalizeTags(product.tags),
+        image_url: normalizeImages(product.images, product.image_url)[0] || null,
+        images: normalizeImages(product.images, product.image_url),
+        has_variants: Boolean(product.has_variants && clonedVariants.length),
+        variant_types: variantTypes,
+        variants: clonedVariants,
+        delivery_charge_mode: product.delivery_charge_mode || 'store_default',
+        delivery_charge_dhaka: product.delivery_charge_dhaka ?? null,
+        delivery_charge_outside_dhaka: product.delivery_charge_outside_dhaka ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
+      const { data, error } = await supabase.from('products').insert(payload).select('*').single()
+      if (error) throw error
+
+      void kickNotificationDelivery('product_duplicate')
+      toast.success('Draft duplicate created')
+      await loadProducts({ silent: true })
+      if (data) openEdit({ ...data, status: 'draft' })
+    } catch (error) {
+      toast.error(error?.message || 'Could not duplicate product')
+    } finally {
+      setDuplicating(null)
+    }
+  }
+
+  async function importProducts(records) {
+    if (!store?.id || !records?.length) return
+    if (records.length > 500) return toast.error('A single import can contain up to 500 products')
+
+    setImporting(true)
+    try {
+      const existingSlugs = new Set(products.map((item) => String(item.slug || '').trim()).filter(Boolean))
+      const now = new Date().toISOString()
+      const payloads = records.map((record, index) => ({
+        store_id: store.id,
+        user_id: user?.id,
+        title: record.title,
+        slug: uniqueCatalogSlug(record.title, existingSlugs, index ? '' : ''),
+        category: record.category,
+        status: record.status,
+        description: record.description || '',
+        price: record.price,
+        compare_at_price: record.compare_at_price,
+        stock: record.stock,
+        low_stock_threshold: record.low_stock_threshold,
+        sku: record.sku,
+        tags: record.tags,
+        image_url: record.image_url,
+        images: record.images,
+        has_variants: record.has_variants,
+        variant_types: record.variant_types,
+        variants: record.variants,
+        delivery_charge_mode: record.delivery_charge_mode || 'store_default',
+        delivery_charge_dhaka: record.delivery_charge_dhaka,
+        delivery_charge_outside_dhaka: record.delivery_charge_outside_dhaka,
+        created_at: now,
+        updated_at: now,
+      }))
+
+      const { data, error } = await supabase.from('products').insert(payloads).select('id')
+      if (error) throw error
+
+      void kickNotificationDelivery('bulk_product_import')
+      toast.success(`${data?.length || payloads.length} products imported successfully`)
+      setImportOpen(false)
+      await loadProducts({ silent: true })
+    } catch (error) {
+      toast.error(error?.message || 'Bulk import failed. No products were imported.')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -859,6 +1299,9 @@ export default function MerchantProductsPage() {
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" className="rounded-full px-5" onClick={() => loadProducts()} disabled={loading || storeLoading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChevronsUpDown className="mr-2 h-4 w-4" />} Refresh
+            </Button>
+            <Button variant="outline" className="rounded-full px-5" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" /> Import CSV
             </Button>
             <Button className="rounded-full bg-slate-950 px-5 hover:bg-indigo-600" onClick={openCreate}>
               <Plus className="mr-2 h-4 w-4" /> Add product
@@ -912,7 +1355,7 @@ export default function MerchantProductsPage() {
         <div className="grid gap-4">
           <AnimatePresence mode="popLayout">
             {filteredProducts.map((product) => (
-              <ProductListCard key={product.id} product={product} onEdit={openEdit} onDelete={deleteProduct} />
+              <ProductListCard key={product.id} product={product} onEdit={openEdit} onDuplicate={duplicateProduct} onDelete={deleteProduct} duplicating={duplicating} />
             ))}
           </AnimatePresence>
         </div>
@@ -930,6 +1373,15 @@ export default function MerchantProductsPage() {
           </Button>
         </div>
       )}
+
+      {importOpen ? (
+        <BulkImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onImport={importProducts}
+          importing={importing}
+        />
+      ) : null}
 
       <ProductEditorDialog
         open={editorOpen}

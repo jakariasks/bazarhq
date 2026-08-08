@@ -50,6 +50,8 @@ export function MerchantSecuritySuite({ user, onSignedOut }) {
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [newEmail, setNewEmail] = useState('')
   const [emailLoading, setEmailLoading] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState('')
+  const [emailRequestedAt, setEmailRequestedAt] = useState('')
 
   const [factor, setFactor] = useState(null)
   const [mfaLoading, setMfaLoading] = useState(false)
@@ -65,6 +67,34 @@ export function MerchantSecuritySuite({ user, onSignedOut }) {
   const passwordValid = newPwd.length >= 8 && /\d/.test(newPwd)
   const passwordMatch = confirmPwd && newPwd === confirmPwd
   const currentSession = useMemo(() => sessions.find((session) => session.current), [sessions])
+
+  const loadPendingEmail = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('pending_email,email_change_requested_at')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (error) throw error
+
+      const pending = String(data?.pending_email || '').trim().toLowerCase()
+      if (pending && pending === String(user?.email || '').trim().toLowerCase()) {
+        await supabase
+          .from('profiles')
+          .update({ pending_email: null, email_change_requested_at: null, updated_at: new Date().toISOString() })
+          .eq('id', user.id)
+        setPendingEmail('')
+        setEmailRequestedAt('')
+        return
+      }
+
+      setPendingEmail(pending)
+      setEmailRequestedAt(data?.email_change_requested_at || '')
+    } catch (error) {
+      console.warn('Pending email status load failed:', error?.message)
+    }
+  }, [user?.email, user?.id])
 
   const loadMfa = useCallback(async () => {
     try {
@@ -84,7 +114,7 @@ export function MerchantSecuritySuite({ user, onSignedOut }) {
   const loadSessions = useCallback(async () => {
     setSessionLoading(true)
     try {
-      await heartbeatMerchantSession()
+      await heartbeatMerchantSession({ force: true })
       const data = await listMerchantSessions()
       setSessions(data?.sessions || [])
     } catch (error) {
@@ -97,7 +127,8 @@ export function MerchantSecuritySuite({ user, onSignedOut }) {
   useEffect(() => {
     loadMfa()
     loadSessions()
-  }, [loadMfa, loadSessions, user?.id])
+    loadPendingEmail()
+  }, [loadMfa, loadPendingEmail, loadSessions, user?.id])
 
   async function changePassword() {
     if (isGoogleUser) return toast.error('Google accounts use Google password settings.')
@@ -129,8 +160,17 @@ export function MerchantSecuritySuite({ user, onSignedOut }) {
     try {
       const { error } = await supabase.auth.updateUser({ email: clean }, { emailRedirectTo: `${window.location.origin}/merchant/settings` })
       if (error) throw error
-      await supabase.from('profiles').update({ pending_email: clean, email_change_requested_at: new Date().toISOString() }).eq('id', user.id)
-      toast.success('Verification links sent. Confirm the new email to complete the change.')
+
+      const requestedAt = new Date().toISOString()
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ pending_email: clean, email_change_requested_at: requestedAt, updated_at: requestedAt })
+        .eq('id', user.id)
+      if (profileError) throw profileError
+
+      setPendingEmail(clean)
+      setEmailRequestedAt(requestedAt)
+      toast.success('Verification sent. Your current email stays active until the new email is confirmed.')
       setNewEmail('')
     } catch (error) {
       toast.error(error?.message || 'Could not start email change.')
@@ -253,11 +293,19 @@ export function MerchantSecuritySuite({ user, onSignedOut }) {
       </Card>
 
       <Card title="Email change verification" desc="Your new email must be verified before it becomes active." icon={Mail}>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new-email@example.com" className="rounded-xl" />
-          <Button onClick={requestEmailChange} disabled={emailLoading || !newEmail.trim()} className="gap-2 rounded-xl whitespace-nowrap">
-            {emailLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Send verification
-          </Button>
+        <div className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new-email@example.com" className="rounded-xl" />
+            <Button onClick={requestEmailChange} disabled={emailLoading || !newEmail.trim()} className="gap-2 rounded-xl whitespace-nowrap">
+              {emailLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Send verification
+            </Button>
+          </div>
+          {pendingEmail && pendingEmail !== String(user?.email || '').toLowerCase() && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">Pending verification: {pendingEmail}</p>
+              <p className="mt-1 text-xs">Current login email remains <strong>{user?.email}</strong>{emailRequestedAt ? ` · requested ${new Date(emailRequestedAt).toLocaleString('en-BD')}` : ''}.</p>
+            </div>
+          )}
         </div>
       </Card>
 

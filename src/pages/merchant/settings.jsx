@@ -16,6 +16,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { MerchantSecuritySuite } from '@/components/merchant-security-suite'
 import { MerchantNotificationPreferences } from '@/components/merchant-notification-preferences'
 import { MerchantLifecycleCard } from '@/components/merchant-lifecycle-card'
+import { MerchantAccountProfile } from '@/components/merchant-account-profile'
 
 const CATEGORIES = ['Fashion & Apparel','Electronics','Grocery & Food','Beauty & Personal Care','Home & Living','Books & Stationery','Handmade & Crafts','Sports & Outdoors','Other']
 const CURRENCIES = [{ v:'BDT', l:'BDT — Bangladeshi Taka' },{ v:'USD', l:'USD — US Dollar' },{ v:'EUR', l:'EUR — Euro' }]
@@ -215,12 +216,13 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Manage your store profile, security and preferences</p>
+        <p className="mt-1 text-sm text-muted-foreground">Manage your store, merchant profile, security and account lifecycle</p>
       </div>
 
       <Tabs defaultValue="profile">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
           <TabsTrigger value="profile">Store Profile</TabsTrigger>
+          <TabsTrigger value="account-profile">My Profile</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="danger">Account</TabsTrigger>
@@ -425,6 +427,13 @@ export default function SettingsPage() {
               </div>
             </>
           )}
+        </TabsContent>
+
+
+
+        {/* ── MERCHANT ACCOUNT PROFILE ── */}
+        <TabsContent value="account-profile" className="mt-6">
+          <MerchantAccountProfile user={user} />
         </TabsContent>
 
         {/* ── SECURITY TAB ── */}

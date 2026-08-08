@@ -1,4 +1,5 @@
-title,description,category,price,compare_at_price,stock,status,tags,delivery_mode,delivery_dhaka,delivery_outside_dhaka
-Demo Product,Demo description,General,500,650,20,published,new|featured,store_default,,
-Free Delivery Product,Free delivery offer product,General,900,1100,10,published,offer,free,,
-Custom Delivery Product,Heavy item with custom delivery,Electronics,3000,3500,5,draft,heavy,custom,100,180
+title,description,category,price,compare_at_price,stock,low_stock_threshold,status,sku,tags,image_url,images,delivery_mode,delivery_dhaka,delivery_outside_dhaka,variant_types,variants
+Demo Product,Demo description,General,500,650,20,5,published,DEMO-001,new|featured,,,store_default,,,,
+Free Delivery Product,Free delivery offer product,General,900,1100,10,5,published,FREE-001,offer,,,free,,,,
+Custom Delivery Product,Heavy item with custom delivery,Electronics,3000,3500,5,5,draft,HEAVY-001,heavy,,,custom,100,180,,
+Variant Product,Wallet with size/color options,Fashion,1000,1200,0,4,draft,WALLET-001,leather|wallet,,,store_default,,,"[{""name"":""Size"",""values"":[""Small"",""Large""]},{""name"":""Color"",""values"":[""Black"",""Brown""]}]","[{""options"":{""Size"":""Small"",""Color"":""Black""},""stock"":5,""low_stock_threshold"":2,""price_adjustment"":0,""sku"":""W-S-BLK""},{""options"":{""Size"":""Small"",""Color"":""Brown""},""stock"":4,""low_stock_threshold"":2,""price_adjustment"":50,""sku"":""W-S-BRN""},{""options"":{""Size"":""Large"",""Color"":""Black""},""stock"":3,""low_stock_threshold"":1,""price_adjustment"":100,""sku"":""W-L-BLK""},{""options"":{""Size"":""Large"",""Color"":""Brown""},""stock"":2,""low_stock_threshold"":1,""price_adjustment"":150,""sku"":""W-L-BRN""}]"

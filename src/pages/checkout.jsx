@@ -602,6 +602,19 @@ export default function CheckoutPage() {
 
       const createdOrderId = data?.order_id || publicOrderId;
 
+      // Kick the durable notification worker immediately so merchant SMS/email
+      // delivery normally starts within seconds. Cron remains the retry fallback.
+      try {
+        await Promise.race([
+          supabase.functions.invoke("process-notification-queue", {
+            body: { storeId: store.id, orderId: createdOrderId, reason: "order_placed" },
+          }),
+          new Promise((resolve) => window.setTimeout(resolve, 10_000)),
+        ]);
+      } catch {
+        // Order placement must never fail because a notification provider is slow.
+      }
+
       await trackStoreEvent({
         storeSlug: subdomain,
         storeId: store.id,

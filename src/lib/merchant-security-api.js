@@ -229,3 +229,7 @@ export async function recoverMfaWithCode(code) {
 export async function completeMfaRecovery() {
   return invoke('merchant-mfa-recovery', { action: 'complete_recovery' }, { retryAuth: true, retryTransient: false })
 }
+
+export async function checkMerchantSessionRegistry() {
+  return invoke('merchant-session', { action: 'health' }, { retryAuth: true, retryTransient: true })
+}
