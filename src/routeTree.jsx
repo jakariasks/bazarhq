@@ -43,6 +43,8 @@ import SAThemes           from "@/pages/superadmin/themes";
 import SAAnnouncements    from "@/pages/superadmin/announcements";
 import SAContent          from "@/pages/superadmin/content";
 import SAAuditLog         from "@/pages/superadmin/audit-log";
+import SAReports          from "@/pages/superadmin/reports";
+import SASecurity         from "@/pages/superadmin/security";
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 const rootRoute = createRootRoute({ component: Outlet });
@@ -93,6 +95,8 @@ const saThemesRoute     = createRoute({ getParentRoute: () => saLayoutRoute,    
 const saAnnouncRoute    = createRoute({ getParentRoute: () => saLayoutRoute,      path: "/announcements",       component: SAAnnouncements  });
 const saContentRoute    = createRoute({ getParentRoute: () => saLayoutRoute,      path: "/content",             component: SAContent        });
 const saAuditRoute      = createRoute({ getParentRoute: () => saLayoutRoute,      path: "/audit-log",           component: SAAuditLog       });
+const saReportsRoute    = createRoute({ getParentRoute: () => saLayoutRoute,      path: "/reports",             component: SAReports        });
+const saSecurityRoute   = createRoute({ getParentRoute: () => saLayoutRoute,      path: "/security",            component: SASecurity       });
 
 // ── Route Tree ────────────────────────────────────────────────────────────────
 export const routeTree = rootRoute.addChildren([
@@ -143,5 +147,7 @@ export const routeTree = rootRoute.addChildren([
     saAnnouncRoute,
     saContentRoute,
     saAuditRoute,
+    saReportsRoute,
+    saSecurityRoute,
   ]),
 ]);

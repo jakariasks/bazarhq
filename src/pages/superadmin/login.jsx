@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AlertCircle, Eye, EyeOff, Lock, Shield } from 'lucide-react'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
-import { AuthCaptcha, isCaptchaConfigured } from '@/components/auth-captcha'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,21 +16,12 @@ export default function SuperAdminLoginPage() {
   const [showPw, setShowPw] = useState(false)
   const [step, setStep] = useState('credentials')
   const [challengeToken, setChallengeToken] = useState('')
-  const [captchaToken, setCaptchaToken] = useState('')
-  const [captchaResetKey, setCaptchaResetKey] = useState(0)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-
-  const captchaEnabled = isCaptchaConfigured()
 
   useEffect(() => {
     if (!loading && isLoggedIn) navigate({ to: '/superadmin' })
   }, [loading, isLoggedIn, navigate])
-
-  function resetCaptcha() {
-    setCaptchaToken('')
-    setCaptchaResetKey((value) => value + 1)
-  }
 
   async function handleCredentials(event) {
     event.preventDefault()
@@ -42,14 +32,9 @@ export default function SuperAdminLoginPage() {
       return
     }
 
-    if (captchaEnabled && !captchaToken) {
-      setError('Complete the security check first.')
-      return
-    }
-
     setSubmitting(true)
     try {
-      const result = await login(email, password, '', captchaToken)
+      const result = await login(email, password)
       if (result.requiresTOTP) {
         setChallengeToken(result.challengeToken)
         setStep('totp')
@@ -59,7 +44,6 @@ export default function SuperAdminLoginPage() {
       if (result.success) navigate({ to: '/superadmin' })
     } catch (err) {
       setError(err.message || 'Admin sign in failed.')
-      resetCaptcha()
     } finally {
       setSubmitting(false)
     }
@@ -117,10 +101,6 @@ export default function SuperAdminLoginPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-white p-2 text-slate-900">
-                  <AuthCaptcha resetKey={captchaResetKey} onVerify={(token) => { setCaptchaToken(token || ''); if (token) setError('') }} />
-                </div>
-
                 {error && (
                   <div className="flex items-start gap-2 rounded-lg border border-red-700 bg-red-900/30 px-3 py-2.5 text-sm text-red-300">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -128,7 +108,7 @@ export default function SuperAdminLoginPage() {
                   </div>
                 )}
 
-                <Button type="submit" className="w-full bg-violet-600 font-semibold text-white hover:bg-violet-500" disabled={submitting || (captchaEnabled && !captchaToken)}>
+                <Button type="submit" className="w-full bg-violet-600 font-semibold text-white hover:bg-violet-500" disabled={submitting}>
                   {submitting ? 'Verifying…' : 'Sign In'}
                 </Button>
               </form>
@@ -160,7 +140,7 @@ export default function SuperAdminLoginPage() {
                   {submitting ? 'Verifying…' : 'Verify & Continue'}
                 </Button>
 
-                <button type="button" className="w-full text-sm text-slate-500 transition hover:text-slate-300" onClick={() => { setStep('credentials'); setChallengeToken(''); setTotpCode(''); setError(''); resetCaptcha() }}>
+                <button type="button" className="w-full text-sm text-slate-500 transition hover:text-slate-300" onClick={() => { setStep('credentials'); setChallengeToken(''); setTotpCode(''); setError('') }}>
                   ← Back to sign in
                 </button>
               </form>
