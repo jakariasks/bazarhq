@@ -324,9 +324,14 @@ function runtimeCss() {
     }
 
     [data-bazarhq-dynamic-theme="true"] .shop-main {
+      width: 100% !important;
+      max-width: none !important;
       color: var(--shop-text) !important;
+      transition: padding .3s ease, background .3s ease;
+    }
+    [data-bazarhq-dynamic-theme="true"] .shop-main-inner {
       margin-inline: auto !important;
-      transition: max-width .3s ease, padding .3s ease, gap .3s ease, background .3s ease;
+      transition: max-width .3s ease, padding .3s ease, gap .3s ease;
     }
 
     [data-bazarhq-dynamic-theme="true"] .shop-storefront-product-card,
@@ -413,19 +418,19 @@ function runtimeCss() {
     [data-bazarhq-dynamic-theme="true"][data-theme-nav="dark"] > header button,
     [data-bazarhq-dynamic-theme="true"][data-theme-nav="dark"] > header span { color: inherit; }
 
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="modern-brand"] .shop-main { max-width: 88rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="marketplace"] .shop-main { max-width: 100rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="boutique"] .shop-main { max-width: 82rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="minimal"] .shop-main { max-width: 76rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="tech"] .shop-main { max-width: 94rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="editorial"] .shop-main { max-width: 84rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="catalog"] .shop-main { max-width: 106rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-layout="luxury"] .shop-main { max-width: 86rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="modern-brand"] .shop-main-inner { max-width: 88rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="marketplace"] .shop-main-inner { max-width: 100rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="boutique"] .shop-main-inner { max-width: 82rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="minimal"] .shop-main-inner { max-width: 76rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="tech"] .shop-main-inner { max-width: 94rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="editorial"] .shop-main-inner { max-width: 84rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="catalog"] .shop-main-inner { max-width: 106rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-layout="luxury"] .shop-main-inner { max-width: 86rem !important; }
 
-    [data-bazarhq-dynamic-theme="true"][data-theme-width="narrow"] .shop-main { max-width: 74rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-width="standard"] .shop-main { max-width: 88rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-width="wide"] .shop-main { max-width: 102rem !important; }
-    [data-bazarhq-dynamic-theme="true"][data-theme-width="full"] .shop-main { max-width: none !important; width: 100% !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-width="narrow"] .shop-main-inner { max-width: 74rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-width="standard"] .shop-main-inner { max-width: 88rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-width="wide"] .shop-main-inner { max-width: 102rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-width="full"] .shop-main-inner { max-width: none !important; width: 100% !important; }
 
     [data-bazarhq-dynamic-theme="true"][data-theme-hero="compact"] .shop-hero-grid {
       min-height: 280px !important;
@@ -581,19 +586,19 @@ function runtimeCss() {
     [data-bazarhq-dynamic-theme="true"][data-theme-density="compact"] .shop-main {
       padding-top: 1.3rem !important;
       padding-bottom: 1.3rem !important;
-      gap: 1.8rem !important;
     }
-    [data-bazarhq-dynamic-theme="true"][data-theme-density="comfortable"] .shop-main { gap: 3rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-density="compact"] .shop-main-inner { gap: 1.8rem !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-density="comfortable"] .shop-main-inner { gap: 3rem !important; }
     [data-bazarhq-dynamic-theme="true"][data-theme-density="spacious"] .shop-main {
       padding-top: 4rem !important;
       padding-bottom: 4rem !important;
-      gap: 4.5rem !important;
     }
+    [data-bazarhq-dynamic-theme="true"][data-theme-density="spacious"] .shop-main-inner { gap: 4.5rem !important; }
     [data-bazarhq-dynamic-theme="true"][data-theme-density="airy"] .shop-main {
       padding-top: 5.5rem !important;
       padding-bottom: 5.5rem !important;
-      gap: 6rem !important;
     }
+    [data-bazarhq-dynamic-theme="true"][data-theme-density="airy"] .shop-main-inner { gap: 6rem !important; }
 
     [data-bazarhq-dynamic-theme="true"] .shop-featured-grid,
     [data-bazarhq-dynamic-theme="true"] .shop-product-grid {
@@ -619,6 +624,13 @@ function runtimeCss() {
       [data-bazarhq-dynamic-theme="true"][data-theme-grid="six"] .shop-product-grid { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
     }
 
+    /* Image ratio must be applied to the media wrapper, not only the absolute
+       image. Otherwise the card remains 4:3 even when a merchant selects a
+       square/portrait/wide storefront image ratio. */
+    [data-bazarhq-dynamic-theme="true"][data-theme-image-ratio="square"] .shop-card-media { aspect-ratio: 1 / 1 !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-image-ratio="portrait"] .shop-card-media { aspect-ratio: 4 / 5 !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-image-ratio="landscape"] .shop-card-media { aspect-ratio: 4 / 3 !important; }
+    [data-bazarhq-dynamic-theme="true"][data-theme-image-ratio="wide"] .shop-card-media { aspect-ratio: 16 / 9 !important; }
     [data-bazarhq-dynamic-theme="true"][data-theme-image-ratio="square"] .shop-storefront-product-card img { aspect-ratio: 1 / 1 !important; }
     [data-bazarhq-dynamic-theme="true"][data-theme-image-ratio="portrait"] .shop-storefront-product-card img { aspect-ratio: 4 / 5 !important; }
     [data-bazarhq-dynamic-theme="true"][data-theme-image-ratio="landscape"] .shop-storefront-product-card img { aspect-ratio: 4 / 3 !important; }

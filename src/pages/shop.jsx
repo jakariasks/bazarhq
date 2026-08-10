@@ -4,15 +4,19 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addToCart,
+  clearCart,
   getCartTotals,
+  reconcileCartWithProducts,
   removeItem,
   updateQty,
 } from "@/lib/cart";
 import { useCustomerAuth } from "@/hooks/use-customer-auth";
 import { getStoreTheme, getThemeCssVars, themeDataAttributes } from "@/lib/theme-system";
+import { getProductCommerceSummary } from "@/lib/product-variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import MarketplaceProductCard from "@/components/marketplace-product-card";
+import { normalizeProductImages } from "@/components/product-image-gallery";
 import {
   AlertTriangle,
   ArrowRight,
@@ -61,91 +65,18 @@ function toNumber(value, fallback = 0) {
 }
 
 function money(value, currency = "BDT") {
-  return `${currency} ${toNumber(value).toLocaleString("en-BD")}`;
+  const amount = toNumber(value).toLocaleString("en-BD", { maximumFractionDigits: 2 });
+  return String(currency || "BDT").toUpperCase() === "BDT" ? `৳${amount}` : `${currency} ${amount}`;
+}
+
+function commercePriceLabel(product, currency = "BDT") {
+  const commerce = getProductCommerceSummary(product);
+  return `${commerce.hasPriceRange ? "From " : ""}${money(commerce.price, currency)}`;
 }
 
 function clampText(text, fallback = "") {
   if (typeof text !== "string") return fallback;
   return text.trim() || fallback;
-}
-
-function getImage(product) {
-  if (Array.isArray(product?.images) && product.images.length > 0) return product.images[0];
-  if (product?.image_url) return product.image_url;
-  return null;
-}
-
-function getImages(product) {
-  if (Array.isArray(product?.images)) return product.images.filter(Boolean);
-  if (typeof product?.images === "string" && product.images.trim()) {
-    try {
-      const parsed = JSON.parse(product.images);
-      if (Array.isArray(parsed)) return parsed.filter(Boolean);
-    } catch {
-      return product.images.split(",").map((item) => item.trim()).filter(Boolean);
-    }
-  }
-  return product?.image_url ? [product.image_url] : [];
-}
-
-function getCartProduct(product) {
-  const image = getImage(product);
-  const images = Array.isArray(product?.images) && product.images.length > 0
-    ? product.images
-    : image
-      ? [image]
-      : [];
-  return { ...product, images };
-}
-
-function getTags(product) {
-  if (Array.isArray(product?.tags)) return product.tags.map((tag) => String(tag).toLowerCase());
-  if (typeof product?.tags === "string") {
-    return product.tags
-      .split(",")
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function getDiscount(product) {
-  const price = toNumber(product?.price, 0);
-  const compareAt = toNumber(product?.compare_at_price, 0);
-  if (!price || compareAt <= price) return 0;
-  return Math.round((1 - price / compareAt) * 100);
-}
-
-function getStock(product) {
-  return toNumber(product?.stock, 0);
-}
-
-function isFeatured(product) {
-  const tags = getTags(product);
-  return Boolean(
-    product?.is_featured ||
-    product?.featured ||
-    tags.includes("featured") ||
-    tags.includes("hero") ||
-    tags.includes("highlight")
-  );
-}
-
-function getVariantId(variant) {
-  if (!variant) return null;
-  return variant.id || variant.combo || variant.label || (variant.options ? JSON.stringify(variant.options) : null);
-}
-
-function getVariantLabel(variant) {
-  if (!variant) return null;
-  if (variant.combo) return variant.combo;
-  if (variant.label) return variant.label;
-  if (variant.options) {
-    return Object.entries(variant.options)
-      .map(([key, value]) => `${key}: ${value}`)
-      .join(", ");
-  }
-  return getVariantId(variant);
 }
 
 function parseArrayValue(value) {
@@ -174,23 +105,61 @@ function normalizeCategoryList(value) {
     .filter(Boolean);
 }
 
-function normalizeVariants(product) {
-  const variants = Array.isArray(product?.variants) ? product.variants : parseArrayValue(product?.variants);
-  if (!variants.length) return [];
+function getImages(product) {
+  return normalizeProductImages(product?.images, product?.image_url);
+}
 
-  return variants
-    .filter((variant) => variant && typeof variant === "object")
-    .map((variant, index) => ({
-      ...variant,
-      id: getVariantId(variant) || `variant-${index}`,
-      label: getVariantLabel(variant) || `Variant ${index + 1}`,
-      price: variant.price === "" || variant.price == null ? product.price : variant.price,
-      stock: toNumber(variant.stock, 0),
-    }));
+function getImage(product) {
+  return getImages(product)[0] || null;
+}
+
+function getCartProduct(product) {
+  return { ...product, images: getImages(product) };
+}
+
+function getTags(product) {
+  const value = product?.tags;
+  if (Array.isArray(value)) return value.map((tag) => String(tag?.name || tag?.label || tag).trim().toLowerCase()).filter(Boolean);
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map((tag) => String(tag?.name || tag?.label || tag).trim().toLowerCase()).filter(Boolean);
+    } catch {
+      // Fall through to comma-separated tags.
+    }
+    return value.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean);
+  }
+  return [];
+}
+
+function getProductPrice(product) {
+  return getProductCommerceSummary(product).price;
+}
+
+function getDiscount(product) {
+  const price = getProductPrice(product);
+  const compareAt = toNumber(product?.compare_at_price, 0);
+  if (!price || compareAt <= price) return 0;
+  return Math.round((1 - price / compareAt) * 100);
+}
+
+function getStock(product) {
+  return getProductCommerceSummary(product).stock;
+}
+
+function isFeatured(product) {
+  const tags = getTags(product);
+  return Boolean(
+    product?.is_featured ||
+    product?.featured ||
+    tags.includes("featured") ||
+    tags.includes("hero") ||
+    tags.includes("highlight")
+  );
 }
 
 function hasVariants(product) {
-  return Boolean(product?.has_variants && normalizeVariants(product).length > 0);
+  return getProductCommerceSummary(product).hasVariants;
 }
 
 function hexToRgb(hex) {
@@ -243,9 +212,9 @@ function ProductCard({ product, currency, storeId, storeSlug, shopName, onView, 
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState("");
 
-  const stock = getStock(product);
-  const outOfStock = stock <= 0;
-  const requiresVariant = hasVariants(product);
+  const commerce = getProductCommerceSummary(product);
+  const outOfStock = !commerce.inStock;
+  const requiresVariant = commerce.hasVariants;
   const normalizedProduct = {
     ...product,
     average_rating: product?.average_rating ?? product?.rating ?? 0,
@@ -298,20 +267,21 @@ function ProductCard({ product, currency, storeId, storeSlug, shopName, onView, 
       statusMessage={error}
       statusTone={error ? "error" : "neutral"}
       showViewDetails={false}
+      themeAware
       className="shop-storefront-product-card"
     />
   );
 }
 
-function ProductRail({ title, products, currency, storeId, storeSlug, shopName, onView, onCartChange, onOpenCart }) {
+function ProductRail({ title, products, currency, storeId, storeSlug, shopName, onView, onCartChange, onOpenCart, curated = true }) {
   if (!products.length) return null;
 
   return (
     <section className="shop-scroll-reveal space-y-5">
       <SectionHeader
-        eyebrow="Curated collection"
+        eyebrow={curated ? "Curated collection" : "Recently added"}
         title={title}
-        description="Handpicked products from this store for a smoother shopping experience."
+        description={curated ? "Products highlighted by this store for easier discovery." : "Fresh additions from this store, ordered by the latest published items."}
       />
       <div className="shop-featured-grid grid gap-4">
         {products.map((product, index) => (
@@ -340,7 +310,7 @@ function HeroSlider({ slides, activeSlide, setActiveSlide, shopName, className =
   const activeIndex = activeSlide % safeSlides.length;
 
   return (
-    <div className={`absolute inset-0 overflow-hidden ${className}`} aria-hidden="true">
+    <div className={`absolute inset-0 overflow-hidden ${className}`}>
       <div className="absolute inset-0 bg-[linear-gradient(135deg,#eef2ff_0%,#f8fafc_42%,#e0e7ff_100%)] dark:bg-[linear-gradient(135deg,#020617_0%,#111827_48%,#020617_100%)]" />
 
       {safeSlides.map((slide, index) => (
@@ -375,6 +345,7 @@ function HeroSlider({ slides, activeSlide, setActiveSlide, shopName, className =
               key={index}
               type="button"
               aria-label={`Show banner ${index + 1}`}
+              aria-current={activeIndex === index ? "true" : undefined}
               onClick={() => setActiveSlide(index)}
               className={`h-2.5 rounded-full transition-all duration-300 ${activeIndex === index ? "w-9 bg-white shadow-sm" : "w-2.5 bg-white/55 hover:bg-white/90"}`}
             />
@@ -402,11 +373,12 @@ function OfferSection({ store, product, currency, onView }) {
   const subtitle = clampText(
     store?.offer_subtitle,
     product
-      ? "Get the best value from this store. Compare price, check stock, and add it to your cart before the offer ends."
+      ? "Compare the current price and stock, then open the product details before adding it to your cart."
       : "Explore current offers, featured picks, and customer-friendly checkout from this merchant."
   );
-  const badge = clampText(store?.offer_badge, "Limited offer");
+  const badge = clampText(store?.offer_badge, product && discount > 0 ? `${discount}% off` : "Store offer");
   const buttonText = clampText(store?.offer_button_text, product ? "View product" : "Shop products");
+  const offerLayoutClass = image ? "lg:grid-cols-[1.4fr_.6fr]" : "";
 
   function handleAction() {
     if (product) onView(product);
@@ -414,45 +386,40 @@ function OfferSection({ store, product, currency, onView }) {
   }
 
   return (
-    <section id="offers" className="shop-scroll-reveal overflow-hidden rounded-[2rem] border border-white/60 bg-slate-950 text-white shadow-xl transition duration-500 hover:-translate-y-1 hover:shadow-2xl dark:border-white/10">
-      <div className="grid gap-6 p-5 sm:p-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <div className="space-y-5">
+    <section id="offers" className="shop-scroll-reveal w-full overflow-hidden rounded-[1.5rem] border border-white/60 bg-slate-950 text-white shadow-xl transition duration-500 hover:-translate-y-0.5 hover:shadow-2xl dark:border-white/10">
+      <div className={`grid gap-4 p-4 sm:p-5 lg:items-center ${offerLayoutClass}`}>
+        <div className="space-y-3.5">
           <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-white/80">
             <Zap className="h-3.5 w-3.5 text-amber-300" /> {badge}
           </span>
           <div>
-            <h2 className="text-2xl font-black tracking-tight sm:text-4xl">{title}</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/70">{subtitle}</p>
+            <h2 className="text-xl font-black tracking-tight sm:text-2xl">{title}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">{subtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {discount > 0 && <span className="rounded-full bg-rose-500 px-4 py-2 text-sm font-black">Save {discount}%</span>}
-            {product && <span className="rounded-full bg-white/10 px-4 py-2 text-sm font-bold">{money(product.price, currency)}</span>}
+            {discount > 0 && <span className="rounded-full bg-rose-500 px-3 py-1.5 text-xs font-black">Save {discount}%</span>}
+            {product && <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold">{commercePriceLabel(product, currency)}</span>}
           </div>
-          <Button className="rounded-2xl bg-white text-slate-950 transition hover:-translate-y-0.5 hover:bg-white/90" onClick={handleAction}>
+          <Button className="h-9 rounded-xl bg-white px-4 text-sm text-slate-950 transition hover:-translate-y-0.5 hover:bg-white/90" onClick={handleAction}>
             {buttonText} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="relative min-h-[220px] overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/10">
-          {image ? (
-            <>
-              <img src={image} alt={title} className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-xl" />
-              <img src={image} alt={title} className="relative z-10 h-full min-h-[220px] w-full object-contain p-4" />
-            </>
-          ) : (
-            <div className="flex h-full min-h-[220px] items-center justify-center text-white/40">
-              <ShoppingBag className="h-20 w-20" />
-            </div>
-          )}
-        </div>
+        {image && (
+          <div className="relative h-[132px] overflow-hidden rounded-[1.1rem] border border-white/10 bg-white/10 sm:h-[144px] lg:h-[132px]">
+            <img src={image} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-xl" />
+            <img src={image} alt={title} className="relative z-10 h-full w-full object-contain p-3" />
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
-function CartDrawer({ open, store, subdomain, currency, onClose, onCartChange }) {
+function CartDrawer({ open, store, products, subdomain, currency, onClose, onCartChange }) {
   const navigate = useNavigate();
   const [cart, setCart] = useState(() => getCartTotals(store?.id));
+  const [cartNotice, setCartNotice] = useState("");
 
   const refresh = useCallback(() => {
     if (!store?.id) return;
@@ -461,8 +428,12 @@ function CartDrawer({ open, store, subdomain, currency, onClose, onCartChange })
   }, [store?.id, onCartChange]);
 
   useEffect(() => {
-    if (open) refresh();
-  }, [open, refresh]);
+    if (!open || !store?.id) return;
+    const reconciliation = reconcileCartWithProducts(store.id, products || []);
+    const changes = [...(reconciliation?.priceChanges || []), ...(reconciliation?.stockChanges || [])];
+    setCartNotice(changes.length ? "Your cart was refreshed with the latest product price and stock." : "");
+    refresh();
+  }, [open, products, refresh, store?.id]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -473,6 +444,12 @@ function CartDrawer({ open, store, subdomain, currency, onClose, onCartChange })
   }, [open]);
 
   if (!open) return null;
+
+  const deliveryHints = [
+    store?.delivery_charge_dhaka != null ? `Dhaka ${money(store.delivery_charge_dhaka, currency)}` : null,
+    store?.delivery_charge_outside != null ? `Outside Dhaka ${money(store.delivery_charge_outside, currency)}` : null,
+    toNumber(store?.free_delivery_min_amount, 0) > 0 ? `Free delivery from ${money(store.free_delivery_min_amount, currency)}` : null,
+  ].filter(Boolean);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm" onClick={onClose}>
@@ -485,12 +462,28 @@ function CartDrawer({ open, store, subdomain, currency, onClose, onCartChange })
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--shop-primary)]">Shopping cart</p>
             <h2 className="text-xl font-black text-slate-950 dark:text-white">Your selected items</h2>
           </div>
-          <button type="button" className="rounded-full border border-slate-200 p-2 dark:border-white/10" onClick={onClose}>
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {cart.itemCount > 0 && (
+              <button
+                type="button"
+                className="rounded-full px-3 py-2 text-xs font-black text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                onClick={() => { clearCart(store.id); setCartNotice("Cart cleared."); refresh(); }}
+              >
+                Clear
+              </button>
+            )}
+            <button type="button" className="rounded-full border border-slate-200 p-2 transition hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10" onClick={onClose} aria-label="Close cart">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
+          {cartNotice && (
+            <p className="mb-4 rounded-xl border border-[var(--shop-primary-ring)] bg-[var(--shop-primary-soft)] px-3 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200">
+              {cartNotice}
+            </p>
+          )}
           {cart.items.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <div className="mb-4 rounded-full bg-[var(--shop-primary-soft)] p-5 text-[var(--shop-primary)]">
@@ -524,9 +517,15 @@ function CartDrawer({ open, store, subdomain, currency, onClose, onCartChange })
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <p className="font-black text-[var(--shop-primary)]">{money(item.price, currency)}</p>
                       <div className="flex items-center overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-                        <button type="button" className="px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-white/10" onClick={() => { updateQty(store.id, item.key, item.qty - 1); refresh(); }}>-</button>
+                        <button type="button" aria-label={`Decrease quantity of ${item.title}`} className="px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-white/10" onClick={() => { updateQty(store.id, item.key, item.qty - 1); refresh(); }}>-</button>
                         <span className="min-w-8 text-center text-xs font-black">{item.qty}</span>
-                        <button type="button" className="px-2 py-1.5 hover:bg-slate-100 dark:hover:bg-white/10" onClick={() => { updateQty(store.id, item.key, item.qty + 1); refresh(); }}>+</button>
+                        <button
+                          type="button"
+                          aria-label={`Increase quantity of ${item.title}`}
+                          disabled={item.qty >= item.stock}
+                          className="px-2 py-1.5 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-white/10"
+                          onClick={() => { updateQty(store.id, item.key, item.qty + 1); refresh(); }}
+                        >+</button>
                       </div>
                     </div>
                   </div>
@@ -539,8 +538,11 @@ function CartDrawer({ open, store, subdomain, currency, onClose, onCartChange })
         <div className="border-t border-slate-200 p-5 dark:border-white/10">
           <div className="mb-4 space-y-2 text-sm">
             <div className="flex justify-between text-slate-500"><span>Items</span><span>{cart.itemCount}</span></div>
-            <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{money(cart.subtotal, currency)}</span></div>
-            <div className="flex justify-between text-lg font-black text-slate-950 dark:text-white"><span>Total</span><span>{money(cart.total, currency)}</span></div>
+            <div className="flex justify-between text-lg font-black text-slate-950 dark:text-white"><span>Products subtotal</span><span>{money(cart.subtotal, currency)}</span></div>
+            <p className="text-xs font-semibold text-slate-400">Delivery charge is calculated at checkout from the destination and current store rules.</p>
+            {deliveryHints.length > 0 && (
+              <p className="text-[11px] font-bold leading-5 text-slate-500">{deliveryHints.join(" • ")}</p>
+            )}
           </div>
           <Button
             disabled={cart.itemCount === 0}
@@ -570,11 +572,13 @@ function LoadingState() {
   );
 }
 
-function EmptyShopState({ title, message, emoji = "🔍" }) {
+function EmptyShopState({ title, message, icon: Icon = ShoppingBag }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-8 text-center dark:bg-slate-950">
-      <div className="text-5xl">{emoji}</div>
-      <h1 className="mt-4 text-2xl font-black text-slate-950 dark:text-white">{title}</h1>
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-sm dark:border-white/10 dark:bg-white/5">
+        <Icon className="h-8 w-8" />
+      </div>
+      <h1 className="mt-5 text-2xl font-black text-slate-950 dark:text-white">{title}</h1>
       <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">{message}</p>
     </div>
   );
@@ -652,10 +656,17 @@ export default function ShopPage() {
 
       if (productError) {
         console.error("Product load failed:", productError.message);
+        setStore(storeData);
+        setProducts([]);
+        setStatus("catalog-error");
+        return;
       }
 
+      const freshProducts = productData || [];
       setStore(storeData);
-      setProducts(productData || []);
+      setProducts(freshProducts);
+      reconcileCartWithProducts(storeData.id, freshProducts);
+      setCartCount(getCartTotals(storeData.id).itemCount);
       setStatus("ok");
     }
 
@@ -693,20 +704,33 @@ export default function ShopPage() {
   const themeAttrs = themeDataAttributes(activeTheme);
 
   const categories = useMemo(() => {
-    const counts = new Map();
+    const categoryMap = new Map();
+    const ensureCategory = (rawName) => {
+      const name = clampText(rawName, "General");
+      const key = name.toLocaleLowerCase();
+      if (!categoryMap.has(key)) categoryMap.set(key, { key, name, count: 0 });
+      return categoryMap.get(key);
+    };
+
+    normalizeCategoryList(store?.categories).forEach((name) => ensureCategory(name));
     products.forEach((product) => {
-      const name = clampText(product.category, "General");
-      counts.set(name, (counts.get(name) || 0) + 1);
+      const entry = ensureCategory(product.category);
+      entry.count += 1;
     });
 
-    const merchantCategories = normalizeCategoryList(store?.categories);
-    const names = new Set([...merchantCategories, ...counts.keys()]);
-
     return [
-      { name: "all", count: products.length },
-      ...Array.from(names).map((name) => ({ name, count: counts.get(name) || 0 })),
+      { name: "all", key: "all", count: products.length },
+      ...Array.from(categoryMap.values()).filter((item) => item.count > 0),
     ];
   }, [store?.categories, products]);
+
+  useEffect(() => {
+    if (category === "all") return;
+    const categoryStillAvailable = categories.some(
+      (item) => item.name.toLocaleLowerCase() === category.toLocaleLowerCase(),
+    );
+    if (!categoryStillAvailable) setCategory("all");
+  }, [categories, category]);
 
   const collections = useMemo(() => {
     const byNewest = [...products].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -715,9 +739,17 @@ export default function ShopPage() {
 
     return {
       featured: (featured.length ? featured : byNewest).slice(0, 6),
-      deal: byDiscount.find((product) => getDiscount(product) > 0) || products.find((product) => getStock(product) > 0) || null,
+      hasExplicitFeatured: featured.length > 0,
+      deal: byDiscount.find((product) => getDiscount(product) > 0) || null,
     };
   }, [products]);
+
+  const showProductRail = collections.hasExplicitFeatured || products.length > 6;
+  const productRailLabel = collections.hasExplicitFeatured ? "Featured" : "New arrivals";
+
+  const hasOfferSection = store?.offer_enabled !== false && Boolean(
+    collections.deal || clampText(store?.offer_title) || clampText(store?.offer_subtitle) || clampText(store?.offer_image_url)
+  );
 
   const heroSlides = useMemo(() => {
     const rawImages = [];
@@ -734,26 +766,27 @@ export default function ShopPage() {
     const uniqueImages = Array.from(new Set(rawImages)).slice(0, 4);
     while (uniqueImages.length > 0 && uniqueImages.length < 2) uniqueImages.push(uniqueImages[0]);
 
-    const heroTitle = clampText(store?.hero_title, "Clean shopping, trusted checkout");
-    const heroSubtitle = clampText(store?.hero_subtitle || store?.tagline, "Shop curated products with secure payment and smooth delivery.");
+    const heroTitle = clampText(store?.hero_title, "Browse this store with confidence");
+    const heroSubtitle = clampText(store?.hero_subtitle || store?.tagline, "Explore products, check current stock, and review checkout details before ordering.");
 
     if (uniqueImages.length === 0) {
       return [
-        { image: null, eyebrow: "Premium online store", title: heroTitle, subtitle: heroSubtitle },
+        { image: null, eyebrow: "Online store", title: heroTitle, subtitle: heroSubtitle },
         { image: null, eyebrow: "Store highlights", title: "Shop confidently from this merchant", subtitle: "Browse the collection and add your favorites to cart." },
       ];
     }
 
     return uniqueImages.map((image, index) => ({
       image,
-      eyebrow: index === 0 ? "Premium online store" : index === 1 ? "Featured collection" : index === 2 ? "Special offer" : "Store highlights",
+      eyebrow: index === 0 ? "Online store" : index === 1 ? "Featured collection" : index === 2 ? "Special offer" : "Store highlights",
       title: index === 0 ? heroTitle : index === 1 ? "Discover this store's featured picks" : index === 2 ? "Offers made for smart shoppers" : "Shop with confidence",
       subtitle: index === 0 ? heroSubtitle : "Compare products, check stock, and checkout safely from this storefront.",
     }));
   }, [store, products]);
 
   useEffect(() => {
-    if (heroSlides.length <= 1) return undefined;
+    if (heroSlides.length <= 1 || typeof window === "undefined") return undefined;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
     const timer = window.setInterval(() => {
       setActiveSlide((value) => (value + 1) % heroSlides.length);
     }, 4500);
@@ -766,28 +799,31 @@ export default function ShopPage() {
     if (search.trim()) {
       const query = search.toLowerCase();
       list = list.filter((product) => (
-        product.title?.toLowerCase().includes(query) ||
-        product.description?.toLowerCase().includes(query) ||
-        product.category?.toLowerCase().includes(query) ||
+        String(product.title || product.name || "").toLowerCase().includes(query) ||
+        String(product.description || "").toLowerCase().includes(query) ||
+        String(product.category || "").toLowerCase().includes(query) ||
         getTags(product).some((tag) => tag.includes(query))
       ));
     }
 
-    if (category !== "all") list = list.filter((product) => clampText(product.category, "General") === category);
-    if (priceMin !== "") list = list.filter((product) => toNumber(product.price, 0) >= Number(priceMin));
-    if (priceMax !== "") list = list.filter((product) => toNumber(product.price, 0) <= Number(priceMax));
+    if (category !== "all") list = list.filter((product) => clampText(product.category, "General").toLocaleLowerCase() === category.toLocaleLowerCase());
+    if (priceMin !== "") list = list.filter((product) => getProductPrice(product) >= Number(priceMin));
+    if (priceMax !== "") list = list.filter((product) => getProductPrice(product) <= Number(priceMax));
     if (inStockOnly) list = list.filter((product) => getStock(product) > 0);
     if (discountOnly) list = list.filter((product) => getDiscount(product) > 0);
 
     switch (sort) {
       case "price-asc":
-        list.sort((a, b) => toNumber(a.price, 0) - toNumber(b.price, 0));
+        list.sort((a, b) => getProductPrice(a) - getProductPrice(b));
         break;
       case "price-desc":
-        list.sort((a, b) => toNumber(b.price, 0) - toNumber(a.price, 0));
+        list.sort((a, b) => getProductPrice(b) - getProductPrice(a));
         break;
       case "discount":
         list.sort((a, b) => getDiscount(b) - getDiscount(a));
+        break;
+      case "rating":
+        list.sort((a, b) => toNumber(b.average_rating) - toNumber(a.average_rating) || toNumber(b.rating_count) - toNumber(a.rating_count));
         break;
       case "name":
         list.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
@@ -846,6 +882,17 @@ export default function ShopPage() {
       <EmptyShopState
         title="Shop not found"
         message="No shop was found for this shop URL. Open a URL like /shop/your-shop."
+        icon={Search}
+      />
+    );
+  }
+
+  if (status === "catalog-error") {
+    return (
+      <EmptyShopState
+        title="Products could not be loaded"
+        message="The shop is online, but its product catalog could not be loaded right now. Please refresh and try again."
+        icon={AlertTriangle}
       />
     );
   }
@@ -855,7 +902,7 @@ export default function ShopPage() {
       <EmptyShopState
         title="Shop is currently unavailable"
         message="The merchant has temporarily unpublished this storefront. Please check again later."
-        emoji="🚧"
+        icon={AlertTriangle}
       />
     );
   }
@@ -865,7 +912,7 @@ export default function ShopPage() {
       <EmptyShopState
         title="This shop is suspended"
         message="This storefront is temporarily offline because the merchant account was suspended by BazarHQ. Please contact the merchant or BazarHQ support for details."
-        emoji="⛔"
+        icon={AlertTriangle}
       />
     );
   }
@@ -875,14 +922,14 @@ export default function ShopPage() {
       <EmptyShopState
         title="This shop is no longer available"
         message="This storefront has been removed from BazarHQ."
-        emoji="🗑️"
+        icon={Package}
       />
     );
   }
 
   const shopName = clampText(store.shop_name, "BazarHQ Store");
-  const tagline = clampText(store.tagline, "Discover quality products, smooth checkout, and reliable delivery.");
-  const about = clampText(store.about_text || store.description, "A modern online store powered by BazarHQ for a fast and secure shopping experience.");
+  const tagline = clampText(store.tagline, "Discover products from this BazarHQ storefront.");
+  const about = clampText(store.about_text || store.description, "An online store powered by BazarHQ for product discovery, cart, checkout, and order tracking.");
   const heroVisible = store.show_hero !== false;
 
   return (
@@ -943,7 +990,31 @@ export default function ShopPage() {
         [data-theme-hero="compact"] .shop-hero-copy, [data-theme-hero="compact"] .shop-hero-slider { min-height: 260px !important; }
         [data-theme-hero="editorial"] .shop-hero-grid { grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr) !important; }
         [data-theme-hero="editorial"] .shop-hero-copy { color: white !important; }
-        [data-theme-layout="marketplace"] .shop-main { max-width: 92rem !important; }
+        [data-theme-layout="marketplace"] .shop-main-inner { max-width: 92rem !important; }
+
+        .shop-page-shell {
+          width: 100%;
+          max-width: 92rem;
+          margin-inline: auto;
+          padding-inline: clamp(1.25rem, 3vw, 2.75rem);
+        }
+        [data-theme-width="narrow"] .shop-page-shell { max-width: 76rem; }
+        [data-theme-width="standard"] .shop-page-shell { max-width: 88rem; }
+        [data-theme-width="wide"] .shop-page-shell { max-width: 92rem; }
+        [data-theme-width="full"] .shop-page-shell { max-width: 96rem; }
+        .shop-main {
+          width: 100% !important;
+          max-width: none !important;
+        }
+        .shop-main-inner {
+          width: 100%;
+          margin-inline: auto;
+          align-items: stretch;
+        }
+        [data-theme-width="narrow"] .shop-main-inner.shop-page-shell { max-width: 76rem !important; }
+        [data-theme-width="standard"] .shop-main-inner.shop-page-shell { max-width: 88rem !important; }
+        [data-theme-width="wide"] .shop-main-inner.shop-page-shell { max-width: 92rem !important; }
+        [data-theme-width="full"] .shop-main-inner.shop-page-shell { max-width: 96rem !important; }
 
         /* Explicit storefront polish rules. These are intentionally placed after
            theme rules so the merchant-selected theme cannot revert the updated
@@ -1030,16 +1101,16 @@ export default function ShopPage() {
         .shop-discovery-inner {
           position: relative;
           z-index: 1;
-          padding-top: 1.1rem;
-          padding-bottom: 1.35rem;
+          padding-top: .85rem;
+          padding-bottom: 1rem;
         }
         .shop-category-strip {
-          padding: .3rem .15rem .55rem;
+          padding: .15rem 0 .35rem;
         }
         .shop-search-surface {
-          border-radius: 1.35rem;
+          border-radius: 1.15rem;
           background: rgba(255,255,255,.82);
-          box-shadow: 0 12px 36px rgba(15,23,42,.055);
+          box-shadow: 0 10px 30px rgba(15,23,42,.05);
           backdrop-filter: blur(14px);
         }
         .shop-search-surface input {
@@ -1047,9 +1118,9 @@ export default function ShopPage() {
           border-color: rgba(148,163,184,.24) !important;
         }
         .shop-inline-filter {
-          background: rgba(255,255,255,.68) !important;
-          border-color: rgba(148,163,184,.24) !important;
-          box-shadow: 0 12px 34px rgba(15,23,42,.045);
+          background: rgba(255,255,255,.66) !important;
+          border-color: rgba(148,163,184,.22) !important;
+          box-shadow: 0 10px 28px rgba(15,23,42,.04);
           backdrop-filter: blur(14px);
         }
         [data-theme-bg="dark"] .shop-discovery-section {
@@ -1063,8 +1134,9 @@ export default function ShopPage() {
           border-color: rgba(255,255,255,.1) !important;
         }
         @media (max-width: 639px) {
-          .shop-discovery-inner { padding-top: .8rem; padding-bottom: 1rem; }
-          .shop-search-surface { border-radius: 1.1rem; }
+          .shop-page-shell { padding-inline: 1rem; }
+          .shop-discovery-inner { padding-top: .7rem; padding-bottom: .85rem; }
+          .shop-search-surface { border-radius: 1rem; }
         }
         @media (max-width: 639px) {
           .shop-storefront-product-card { border-radius: 1rem !important; }
@@ -1072,8 +1144,10 @@ export default function ShopPage() {
         [data-theme-layout="minimal"] .shop-hero-copy { color: var(--shop-text) !important; }
         [data-theme-layout="minimal"] .shop-hero-copy h1, [data-theme-layout="minimal"] .shop-hero-copy p { color: var(--shop-text) !important; }
         [data-theme-layout="tech"] .shop-hero-copy h1 { color: white !important; }
-        [data-theme-density="compact"] .shop-main { padding-top: 1.75rem !important; padding-bottom: 1.75rem !important; gap: 2rem !important; }
-        [data-theme-density="spacious"] .shop-main { padding-top: 4.5rem !important; padding-bottom: 4.5rem !important; gap: 5rem !important; }
+        [data-theme-density="compact"] .shop-main { padding-top: 1.75rem !important; padding-bottom: 1.75rem !important; }
+        [data-theme-density="compact"] .shop-main-inner { gap: 2rem !important; }
+        [data-theme-density="spacious"] .shop-main { padding-top: 4.5rem !important; padding-bottom: 4.5rem !important; }
+        [data-theme-density="spacious"] .shop-main-inner { gap: 5rem !important; }
         [data-theme-animation="none"] .shop-animate, [data-theme-animation="none"] .shop-scroll-reveal, [data-theme-animation="none"] .shop-float-soft { animation: none !important; transition: none !important; opacity: 1 !important; transform: none !important; }
         [data-theme-animation="premium"] .shop-hover-lift:hover { transform: translateY(-9px) scale(1.01); }
         @media (prefers-reduced-motion: reduce) {
@@ -1093,7 +1167,7 @@ export default function ShopPage() {
       )}
 
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/90">
-        <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="shop-page-shell flex h-16 items-center gap-4">
           <button type="button" className="flex items-center gap-3" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
             {store.logo_url ? (
               <img src={store.logo_url} alt={shopName} className="h-10 w-10 rounded-2xl object-cover" />
@@ -1106,9 +1180,9 @@ export default function ShopPage() {
           </button>
 
           <nav className="ml-4 hidden items-center gap-5 text-sm font-semibold text-slate-600 lg:flex dark:text-slate-300">
-            <a href="#featured" className="transition hover:text-[var(--shop-primary)]">Featured</a>
+            {showProductRail && <a href="#featured" className="transition hover:text-[var(--shop-primary)]">{productRailLabel}</a>}
             <a href="#products" className="transition hover:text-[var(--shop-primary)]">Products</a>
-            <a href="#offers" className="transition hover:text-[var(--shop-primary)]">Offers</a>
+            {hasOfferSection && <a href="#offers" className="transition hover:text-[var(--shop-primary)]">Offers</a>}
             <Link to={aboutPath} className="transition hover:text-[var(--shop-primary)]">About</Link>
           </nav>
 
@@ -1167,7 +1241,7 @@ export default function ShopPage() {
           <div className="shop-float-soft absolute -left-24 top-20 z-0 h-72 w-72 rounded-full bg-[var(--shop-primary-ring)] blur-3xl opacity-55" />
           <div className="shop-float-soft absolute right-16 top-8 z-0 h-64 w-64 rounded-full bg-white/55 blur-3xl opacity-60 [animation-delay:1.2s]" />
 
-          <div className="shop-hero-inner relative z-10 mx-auto flex w-full max-w-[1380px] items-center px-6 py-8 sm:px-8 lg:px-12 xl:px-16 2xl:px-20">
+          <div className="shop-hero-inner shop-page-shell relative z-10 flex items-center py-8">
             <div className="shop-scroll-reveal max-w-2xl">
               <span className="mb-6 inline-flex items-center gap-2 rounded-full bg-white/70 px-4 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-[var(--shop-primary)] shadow-[0_16px_45px_rgba(15,23,42,.08)] backdrop-blur-xl dark:bg-white/12 dark:text-white/90">
                 <Sparkles className="h-3.5 w-3.5" /> Digital shop
@@ -1205,7 +1279,7 @@ export default function ShopPage() {
               </div>
 
               <div className="mt-6 flex flex-nowrap items-center gap-4 overflow-x-auto whitespace-nowrap pb-1 text-xs font-bold text-slate-600 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:text-slate-200/90">
-                <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-[var(--shop-primary)]" /> Secure checkout</span>
+                <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-[var(--shop-primary)]" /> Checkout ready</span>
                 <span className="inline-flex items-center gap-1.5"><Truck className="h-4 w-4 text-[var(--shop-primary)]" /> Local delivery</span>
                 <span className="inline-flex items-center gap-1.5"><ShoppingBag className="h-4 w-4 text-[var(--shop-primary)]" /> Curated products</span>
               </div>
@@ -1214,8 +1288,9 @@ export default function ShopPage() {
         </section>
       )}
 
+      {products.length > 0 && (
       <section className="shop-discovery-section border-y border-slate-200 dark:border-white/10">
-        <div className="shop-discovery-inner mx-auto w-[94%] max-w-[92rem]">
+        <div className="shop-discovery-inner shop-page-shell">
           <div className="shop-category-strip flex items-center gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categories.map((item) => {
               const active = category === item.name;
@@ -1224,22 +1299,23 @@ export default function ShopPage() {
                   key={item.name}
                   type="button"
                   onClick={() => setCategory(item.name)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-black transition sm:gap-2 sm:px-4 sm:text-xs ${active ? "border-[var(--shop-primary)] bg-[var(--shop-primary)] text-white shadow-sm" : "border-slate-200 bg-white text-slate-600 hover:border-[var(--shop-primary)] hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-300"}`}
+                  aria-pressed={active}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-black transition sm:gap-2 sm:px-3.5 sm:text-xs ${active ? "border-[var(--shop-primary)] bg-[var(--shop-primary)] text-white shadow-[0_8px_20px_-14px_var(--shop-primary-ring)]" : "border-slate-200/90 bg-white/80 text-slate-600 hover:border-[var(--shop-primary)] hover:bg-white hover:text-[var(--shop-primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-300"}`}
                 >
                   {item.name === "all" ? "All categories" : item.name}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/18 text-white" : "bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300"}`}>{item.count}</span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/18 text-white" : "bg-slate-100/90 text-slate-500 dark:bg-white/10 dark:text-slate-300"}`}>{item.count}</span>
                 </button>
               );
             })}
           </div>
 
-          <div className="shop-search-surface relative mt-3 p-1.5">
+          <div className="shop-search-surface relative mt-2.5 p-1">
             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
             <Input
-              placeholder="Search products, category, or tags..."
+              placeholder="Search products, categories, or tags..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-13 rounded-[1.05rem] border-slate-200 pl-12 pr-12 text-base font-semibold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10"
+              className="h-12 rounded-[0.95rem] border-slate-200 pl-12 pr-12 text-sm font-semibold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] sm:text-[15px] dark:border-white/10"
             />
             {search && (
               <button className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-200" onClick={() => setSearch("")} type="button" aria-label="Clear search">
@@ -1248,20 +1324,21 @@ export default function ShopPage() {
             )}
           </div>
 
-          <div className="shop-inline-filter mt-3 rounded-[1.35rem] border border-slate-200/90 bg-white/72 p-2.5 shadow-[0_18px_42px_-30px_rgba(15,23,42,.32)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72 sm:p-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(190px,1.2fr)_repeat(2,minmax(120px,.7fr))]">
+          <div className="shop-inline-filter mt-2 rounded-[1.1rem] border border-slate-200/90 bg-white/72 p-2 shadow-[0_16px_36px_-30px_rgba(15,23,42,.3)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-[minmax(180px,1.15fr)_repeat(2,minmax(112px,.7fr))]">
               <label className="relative col-span-2 sm:col-span-1">
                 <Filter className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--shop-primary)]" />
                 <select
                   value={sort}
                   onChange={(event) => setSort(event.target.value)}
-                  className="h-11 w-full min-w-0 appearance-none rounded-[0.95rem] border border-slate-200 bg-slate-50/90 pl-10 pr-8 text-xs font-black text-slate-700 outline-none transition hover:border-[var(--shop-primary)] focus:border-[var(--shop-primary)] focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                  className="h-10 w-full min-w-0 appearance-none rounded-[0.8rem] border border-slate-200 bg-slate-50/90 pl-10 pr-8 text-xs font-black text-slate-700 outline-none transition hover:border-[var(--shop-primary)] focus:border-[var(--shop-primary)] focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
                   aria-label="Sort products"
                 >
                   <option value="newest">Newest first</option>
                   <option value="price-asc">Price: low to high</option>
                   <option value="price-desc">Price: high to low</option>
                   <option value="discount">Best discount</option>
+                  <option value="rating">Top rated</option>
                   <option value="name">Name A-Z</option>
                 </select>
                 <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">▼</span>
@@ -1269,58 +1346,65 @@ export default function ShopPage() {
 
               <label className="relative min-w-0">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">৳</span>
-                <Input className="h-11 w-full min-w-0 rounded-[0.95rem] border-slate-200 bg-slate-50/90 pl-7 pr-2 text-xs font-bold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5" placeholder="Min price" type="number" inputMode="decimal" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
+                <Input className="h-10 w-full min-w-0 rounded-[0.8rem] border-slate-200 bg-slate-50/90 pl-7 pr-2 text-xs font-bold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5" placeholder="Min price" type="number" min="0" inputMode="decimal" value={priceMin} onChange={(event) => setPriceMin(event.target.value)} />
               </label>
               <label className="relative min-w-0">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">৳</span>
-                <Input className="h-11 w-full min-w-0 rounded-[0.95rem] border-slate-200 bg-slate-50/90 pl-7 pr-2 text-xs font-bold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5" placeholder="Max price" type="number" inputMode="decimal" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
+                <Input className="h-10 w-full min-w-0 rounded-[0.8rem] border-slate-200 bg-slate-50/90 pl-7 pr-2 text-xs font-bold transition focus:ring-4 focus:ring-[var(--shop-primary-ring)] dark:border-white/10 dark:bg-white/5" placeholder="Max price" type="number" min="0" inputMode="decimal" value={priceMax} onChange={(event) => setPriceMax(event.target.value)} />
               </label>
             </div>
 
-            <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mt-1.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <button
                 type="button"
                 onClick={() => setInStockOnly((value) => !value)}
-                className={`h-9 shrink-0 rounded-full border px-3 text-[11px] font-black transition ${inStockOnly ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_10px_24px_-16px_rgba(5,150,105,.85)]" : "border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:border-emerald-400 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300"}`}
+                aria-pressed={inStockOnly}
+                className={`h-8 shrink-0 rounded-full border px-2.5 text-[10px] font-black transition ${inStockOnly ? "border-emerald-600 bg-emerald-600 text-white shadow-[0_10px_24px_-16px_rgba(5,150,105,.85)]" : "border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:border-emerald-400 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300"}`}
               >
                 In stock
               </button>
               <button
                 type="button"
                 onClick={() => setDiscountOnly((value) => !value)}
-                className={`h-9 shrink-0 rounded-full border px-3 text-[11px] font-black transition ${discountOnly ? "border-rose-500 bg-rose-500 text-white shadow-[0_10px_24px_-16px_rgba(244,63,94,.85)]" : "border-rose-200 bg-rose-50/80 text-rose-700 hover:border-rose-400 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300"}`}
+                aria-pressed={discountOnly}
+                className={`h-8 shrink-0 rounded-full border px-2.5 text-[10px] font-black transition ${discountOnly ? "border-rose-500 bg-rose-500 text-white shadow-[0_10px_24px_-16px_rgba(244,63,94,.85)]" : "border-rose-200 bg-rose-50/80 text-rose-700 hover:border-rose-400 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300"}`}
               >
                 On offer
               </button>
 
               {(search || category !== "all" || sort !== "newest" || priceMin || priceMax || inStockOnly || discountOnly) && (
-                <button type="button" onClick={clearFilters} className="h-9 shrink-0 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-black text-[var(--shop-primary)] transition hover:border-[var(--shop-primary)] hover:bg-[var(--shop-primary-soft)] dark:border-white/10 dark:bg-white/5">
+                <button type="button" onClick={clearFilters} className="h-8 shrink-0 rounded-full border border-slate-200 bg-white px-2.5 text-[10px] font-black text-[var(--shop-primary)] transition hover:border-[var(--shop-primary)] hover:bg-[var(--shop-primary-soft)] dark:border-white/10 dark:bg-white/5">
                   Clear all
                 </button>
               )}
 
-              <span className="ml-auto shrink-0 rounded-full bg-slate-950 px-3 py-2 text-[11px] font-black text-white shadow-sm dark:bg-white dark:text-slate-950">
+              <span className="ml-auto shrink-0 rounded-full bg-slate-950 px-2.5 py-1.5 text-[10px] font-black text-white shadow-sm dark:bg-white dark:text-slate-950">
                 {filtered.length} result{filtered.length === 1 ? "" : "s"}
               </span>
             </div>
           </div>
         </div>
       </section>
+      )}
 
-      <main className="shop-main mx-auto w-[94%] max-w-[92rem] space-y-12 px-0 py-10">
-        <div id="featured">
-          <ProductRail
-            title="Featured products"
-            products={collections.featured}
-            currency={currency}
-            storeId={store.id}
-            storeSlug={subdomain}
-            shopName={shopName}
-            onView={openProductDetails}
-            onCartChange={refreshCartCount}
-            onOpenCart={() => setCartOpen(true)}
-          />
-        </div>
+      <main className="shop-main w-full py-8">
+        <div className="shop-main-inner shop-page-shell flex flex-col gap-8 sm:gap-10">
+        {showProductRail && (
+          <div id="featured">
+            <ProductRail
+              title={collections.hasExplicitFeatured ? "Featured products" : "Latest products"}
+              curated={collections.hasExplicitFeatured}
+              products={collections.featured}
+              currency={currency}
+              storeId={store.id}
+              storeSlug={subdomain}
+              shopName={shopName}
+              onView={openProductDetails}
+              onCartChange={refreshCartCount}
+              onOpenCart={() => setCartOpen(true)}
+            />
+          </div>
+        )}
 
         <section id="products" className="shop-scroll-reveal space-y-5">
           <SectionHeader
@@ -1341,7 +1425,7 @@ export default function ShopPage() {
                   <Search className="h-8 w-8" />
                 </div>
                 <h3 className="text-lg font-black">No products found</h3>
-                <p className="mt-2 text-sm text-slate-500">Try another category, keyword, price range, or filter.</p>
+                <p className="mt-2 text-sm text-slate-500">Try different categories, keywords, a price range, or another filter.</p>
                 <Button className="mt-5 rounded-xl" variant="outline" onClick={clearFilters}>Reset filters</Button>
               </div>
             ) : (
@@ -1366,6 +1450,7 @@ export default function ShopPage() {
         </section>
 
         <OfferSection store={store} product={collections.deal} currency={currency} onView={openProductDetails} />
+        </div>
       </main>
 
       <footer className="shop-scroll-reveal border-t border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950">
@@ -1390,16 +1475,16 @@ export default function ShopPage() {
               <Link to="/track" search={{ store: subdomain }} className="block transition hover:text-[var(--shop-primary)]">Track order</Link>
               <Link to={aboutPath} className="block transition hover:text-[var(--shop-primary)]">About merchant</Link>
               <button type="button" onClick={() => document.getElementById("products")?.scrollIntoView({ behavior: "smooth" })} className="block transition hover:text-[var(--shop-primary)]">All products</button>
-              {store.return_policy && <button type="button" onClick={() => alert(store.return_policy)} className="block transition hover:text-[var(--shop-primary)]">Return policy</button>}
-              {store.shipping_policy && <button type="button" onClick={() => alert(store.shipping_policy)} className="block transition hover:text-[var(--shop-primary)]">Shipping policy</button>}
+              {store.return_policy && <a href={`${aboutPath}#return-policy`} className="block transition hover:text-[var(--shop-primary)]">Return policy</a>}
+              {store.shipping_policy && <a href={`${aboutPath}#shipping-policy`} className="block transition hover:text-[var(--shop-primary)]">Shipping policy</a>}
             </div>
           </div>
 
           <div>
             <p className="mb-4 font-black">Contact</p>
             <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-              {store.contact_email && <p>{store.contact_email}</p>}
-              {(store.contact_phone || store.phone) && <p>{store.contact_phone || store.phone}</p>}
+              {store.contact_email && <a href={`mailto:${store.contact_email}`} className="block transition hover:text-[var(--shop-primary)]">{store.contact_email}</a>}
+              {(store.contact_phone || store.phone) && <a href={`tel:${String(store.contact_phone || store.phone).replace(/\s+/g, "")}`} className="block transition hover:text-[var(--shop-primary)]">{store.contact_phone || store.phone}</a>}
               {store.address && <p>{store.address}</p>}
               {!store.contact_email && !(store.contact_phone || store.phone) && !store.address && <p>Contact details will appear here after merchant setup.</p>}
             </div>
@@ -1414,6 +1499,7 @@ export default function ShopPage() {
       <CartDrawer
         open={cartOpen}
         store={store}
+        products={products}
         subdomain={subdomain}
         currency={currency}
         onClose={() => setCartOpen(false)}

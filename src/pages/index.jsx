@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   ArrowRight,
   BadgeCheck,
@@ -118,11 +118,11 @@ function MarketplaceNav() {
 
   return (
     <>
-      <div className="border-b border-slate-200 bg-slate-950 text-white">
-        <div className="mx-auto flex min-h-9 max-w-7xl items-center justify-between gap-4 px-4 py-2 text-[11px] font-semibold sm:px-6 lg:px-8">
-          <p className="truncate text-slate-300">A multi-store marketplace built for buyers and independent sellers in Bangladesh.</p>
-          <a href={APK_DOWNLOAD_URL} className="inline-flex shrink-0 items-center gap-1.5 text-white transition hover:text-slate-200">
-            <Download className="h-3.5 w-3.5" /> Download app
+      <div className="border-b border-slate-800 bg-slate-950 text-white">
+        <div className="mx-auto flex min-h-10 max-w-7xl flex-wrap items-center justify-center gap-x-4 gap-y-1.5 px-4 py-2.5 text-center text-xs font-semibold leading-5 sm:justify-between sm:px-6 sm:text-left sm:text-[13px] lg:px-8">
+          <p className="min-w-0 text-slate-100">A multi-store marketplace built for buyers and independent sellers in Bangladesh.</p>
+          <a href={APK_DOWNLOAD_URL} className="inline-flex shrink-0 items-center gap-1.5 font-bold text-white transition-colors duration-200 hover:text-indigo-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+            <Download className="h-3.5 w-3.5" aria-hidden="true" /> Download BazarHQ App
           </a>
         </div>
       </div>
@@ -132,10 +132,10 @@ function MarketplaceNav() {
           <Link to="/" aria-label="BazarHQ marketplace home"><Logo size="md" /></Link>
 
           <nav className="hidden items-center gap-7 text-sm font-semibold text-slate-600 lg:flex">
-            <a href="#top-shops" className="transition hover:text-slate-950">Top shops</a>
-            <a href="#top-products" className="transition hover:text-slate-950">Top products</a>
-            <a href="#compare" className="transition hover:text-slate-950">Compare</a>
-            <a href="#marketplace" className="transition hover:text-slate-950">All products</a>
+            <a href="#top-shops" className="rounded-sm transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200">Top shops</a>
+            <a href="#top-products" className="rounded-sm transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200">Top products</a>
+            <a href="#compare" className="rounded-sm transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200">Compare</a>
+            <a href="#marketplace" className="rounded-sm transition hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200">Marketplace</a>
           </nav>
 
           <div className="hidden items-center gap-2 md:flex">
@@ -152,7 +152,7 @@ function MarketplaceNav() {
             </Link>
           </div>
 
-          <button type="button" className="rounded-full border border-slate-200 p-2 md:hidden" onClick={() => setOpen((value) => !value)} aria-label="Toggle navigation">
+          <button type="button" className="rounded-full border border-slate-200 p-2 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100 md:hidden" onClick={() => setOpen((value) => !value)} aria-label="Toggle navigation">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
@@ -160,10 +160,10 @@ function MarketplaceNav() {
         {open && (
           <div className="border-t border-slate-200 bg-white p-4 md:hidden">
             <div className="mx-auto grid max-w-7xl gap-1">
-              {[['Top shops', '#top-shops'], ['Top products', '#top-products'], ['Compare', '#compare'], ['All products', '#marketplace']].map(([label, href]) => (
-                <a key={href} href={href} onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">{label}</a>
+              {[['Top shops', '#top-shops'], ['Top products', '#top-products'], ['Compare', '#compare'], ['Marketplace', '#marketplace']].map(([label, href]) => (
+                <a key={href} href={href} onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100">{label}</a>
               ))}
-              <Link to="/track" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Track order</Link>
+              <Link to="/track" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100">Track order</Link>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <Link to={customerPath} onClick={() => setOpen(false)}><Button variant="outline" className="w-full rounded-xl">Customer</Button></Link>
                 <Link to={merchantPath} onClick={() => setOpen(false)}><Button className="w-full rounded-xl bg-slate-950">Merchant</Button></Link>
@@ -240,12 +240,12 @@ function LoadingGrid({ count = 5, className = 'grid-cols-2 md:grid-cols-3 lg:gri
 
 
 const CATEGORY_GROUPS = [
-  { id: 'fashion', label: 'Fashion & Style', keywords: ['fashion', 'clothing', 'jewelry', 'jewellery', 'shoe', 'bag', 'watch', 'belt', 'wallet', 'handmade', 'boutique'] },
-  { id: 'electronics', label: 'Electronics', keywords: ['electronic', 'computer', 'laptop', 'mobile', 'phone', 'gadget', 'accessories', 'camera', 'audio'] },
-  { id: 'beauty', label: 'Beauty & Care', keywords: ['beauty', 'skin', 'hair', 'cosmetic', 'makeup', 'personal care', 'perfume'] },
-  { id: 'home', label: 'Home & Living', keywords: ['home', 'decor', 'furniture', 'kitchen', 'candle', 'crochet', 'knitting', 'garden'] },
-  { id: 'food', label: 'Food & Grocery', keywords: ['food', 'grocery', 'snack', 'drink', 'honey', 'organic'] },
-  { id: 'general', label: 'More Categories', keywords: [] },
+  { id: 'fashion', label: 'Fashion & Style', Icon: ShoppingBag, keywords: ['fashion', 'clothing', 'jewelry', 'jewellery', 'shoe', 'bag', 'watch', 'belt', 'wallet', 'handmade', 'boutique'] },
+  { id: 'electronics', label: 'Electronics', Icon: Smartphone, keywords: ['electronic', 'computer', 'laptop', 'mobile', 'phone', 'gadget', 'accessories', 'camera', 'audio'] },
+  { id: 'beauty', label: 'Beauty & Care', Icon: Sparkles, keywords: ['beauty', 'skin', 'hair', 'cosmetic', 'makeup', 'personal care', 'perfume'] },
+  { id: 'home', label: 'Home & Living', Icon: Home, keywords: ['home', 'decor', 'furniture', 'kitchen', 'candle', 'crochet', 'knitting', 'garden'] },
+  { id: 'food', label: 'Food & Grocery', Icon: Store, keywords: ['food', 'grocery', 'snack', 'drink', 'honey', 'organic'] },
+  { id: 'general', label: 'More Categories', Icon: Menu, keywords: [] },
 ]
 
 function categoryGroupFor(name) {
@@ -253,15 +253,114 @@ function categoryGroupFor(name) {
   return CATEGORY_GROUPS.find((group) => group.id !== 'general' && group.keywords.some((keyword) => value.includes(keyword))) || CATEGORY_GROUPS[CATEGORY_GROUPS.length - 1]
 }
 
+function HeroMarketplaceVisual({ products = [], loading = false }) {
+  const reduceMotion = useReducedMotion()
+  const uniqueProducts = []
+  const seen = new Set()
+
+  for (const product of products) {
+    if (!product?.id || seen.has(product.id)) continue
+    seen.add(product.id)
+    uniqueProducts.push(product)
+    if (uniqueProducts.length === 4) break
+  }
+
+  // Desktop positions intentionally keep only a small amount of visual overlap.
+  // The cards remain layered without hiding product information from each other.
+  const positions = [
+    'lg:left-0 lg:top-10 lg:-rotate-[1.5deg]',
+    'lg:right-0 lg:top-0 lg:rotate-[1.5deg]',
+    'lg:left-8 lg:bottom-0 lg:rotate-[1deg]',
+    'lg:right-4 lg:bottom-8 lg:-rotate-[1deg]',
+  ]
+
+  return (
+    <div className="relative mx-auto w-full max-w-xl overflow-hidden rounded-[2rem] lg:min-h-[440px] lg:max-w-none lg:overflow-visible" aria-label="Featured marketplace products">
+      <div className="pointer-events-none absolute inset-x-10 top-12 hidden h-72 rounded-full bg-gradient-to-br from-indigo-300/25 via-violet-200/16 to-cyan-200/28 blur-3xl lg:block" aria-hidden="true" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 hidden h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-white/35 shadow-[0_30px_90px_-58px_rgba(79,70,229,.55)] backdrop-blur-sm lg:block" aria-hidden="true" />
+
+      <div className="relative grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:block lg:min-h-[440px]">
+        {loading && uniqueProducts.length === 0 ? (
+          Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className={`h-[188px] animate-pulse rounded-2xl border border-white/90 bg-white/80 shadow-sm lg:absolute lg:z-10 lg:w-[194px] ${positions[index]}`} />
+          ))
+        ) : uniqueProducts.length > 0 ? uniqueProducts.map((product, index) => {
+          const image = Array.isArray(product.images) ? product.images[0] : product.image_url
+          const rating = number(product.average_rating)
+          const shopVerified = Boolean(product.shop_verified || product.is_verified || product.store_verified)
+          const storeSlug = product.store_slug || product.subdomain
+          const productId = String(product.slug || product.id || '')
+          const defaultLayer = ['z-10', 'z-20', 'z-30', 'z-40'][index] || 'z-10'
+
+          return (
+            <motion.article
+              key={product.id}
+              initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.985 }}
+              animate={reduceMotion ? { opacity: 1, y: 0, scale: 1 } : { opacity: 1, y: [0, -4, 0], scale: 1 }}
+              transition={reduceMotion ? { duration: 0 } : {
+                opacity: { duration: 0.42, delay: 0.1 + index * 0.08, ease: 'easeOut' },
+                scale: { duration: 0.42, delay: 0.1 + index * 0.08, ease: 'easeOut' },
+                y: { duration: 6.4 + index * 0.55, delay: 0.65 + index * 0.16, repeat: Infinity, ease: 'easeInOut' },
+              }}
+              whileHover={reduceMotion ? { zIndex: 100 } : {
+                y: -6,
+                scale: 1.05,
+                zIndex: 100,
+                boxShadow: '0 34px 82px -34px rgba(79,70,229,.46)',
+                transition: { duration: 0.24, ease: 'easeOut' },
+              }}
+              style={{ transformOrigin: 'center' }}
+              className={`group relative min-w-0 overflow-hidden rounded-2xl border border-white/95 bg-white/95 p-2.5 shadow-[0_22px_58px_-34px_rgba(15,23,42,.42)] backdrop-blur will-change-transform transition-[border-color,box-shadow,opacity] duration-300 hover:border-indigo-300 hover:shadow-[0_30px_72px_-36px_rgba(79,70,229,.34)] focus-within:border-indigo-400 focus-within:shadow-[0_34px_82px_-34px_rgba(79,70,229,.46)] motion-reduce:transform-none motion-reduce:transition-none lg:absolute lg:w-[194px] ${defaultLayer} focus-within:z-[100] ${positions[index]}`}
+            >
+              {storeSlug && productId && (
+                <Link
+                  to="/shop/$storeSlug/product/$productId"
+                  params={{ storeSlug, productId }}
+                  aria-label={`View ${product.title || 'marketplace product'} from ${product.shop_name || 'BazarHQ shop'}`}
+                  className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200/90"
+                />
+              )}
+              <div className="aspect-[4/3] overflow-hidden rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-2">
+                {image ? (
+                  <img src={image} alt={product.title || 'Marketplace product'} className="h-full w-full object-contain object-center transition-transform duration-500 ease-out group-hover:scale-[1.025] motion-reduce:transform-none motion-reduce:transition-none" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50 text-slate-300"><ShoppingBag className="h-8 w-8" /></div>
+                )}
+              </div>
+              <div className="px-0.5 pb-0.5 pt-2.5">
+                <p className="line-clamp-1 text-[11px] font-black leading-4 text-slate-950 sm:text-xs">{product.title || 'Marketplace product'}</p>
+                <div className="mt-1.5 flex items-center justify-between gap-2">
+                  <p className="text-[12px] font-black tabular-nums text-indigo-700">৳{number(product.price).toLocaleString('en-BD')}</p>
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-slate-600"><Star className="h-3 w-3 fill-current text-amber-400" />{rating ? rating.toFixed(1) : 'New'}</span>
+                </div>
+                <p className="mt-1.5 flex min-w-0 items-center gap-1 truncate text-[9px] font-bold text-slate-500">
+                  {shopVerified && <BadgeCheck className="h-3 w-3 shrink-0 text-indigo-600" />}
+                  <span className="truncate">{product.shop_name || 'BazarHQ shop'}</span>
+                </p>
+              </div>
+            </motion.article>
+          )
+        }) : (
+          <div className="col-span-2 rounded-2xl border border-dashed border-indigo-200 bg-white/70 px-5 py-8 text-center sm:col-span-4 lg:absolute lg:inset-x-8 lg:top-28">
+            <ShoppingBag className="mx-auto h-7 w-7 text-indigo-400" />
+            <p className="mt-3 text-sm font-black text-slate-800">Published marketplace products will appear here.</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">This visual uses the existing live marketplace catalog—no fake products or prices.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function MobileBottomNav({ customerPath, compareCount, onHome, onCategories, onCompare }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-[70] border-t border-slate-200 bg-white/96 px-2 pb-[max(.45rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-14px_34px_-24px_rgba(15,23,42,.35)] backdrop-blur-xl md:hidden">
       <div className="mx-auto grid max-w-md grid-cols-5">
-        <button type="button" onClick={onHome} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Home className="h-5 w-5" />Home</button>
-        <button type="button" onClick={onCategories} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Store className="h-5 w-5" />Categories</button>
-        <button type="button" onClick={onCompare} className="relative flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Scale className="h-5 w-5" />Compare{compareCount > 0 && <span className="absolute right-[22%] top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950 px-1 text-[8px] font-black text-white">{compareCount}</span>}</button>
-        <Link to="/track" className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><ShoppingBag className="h-5 w-5" />Orders</Link>
-        <Link to={customerPath} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600"><Users className="h-5 w-5" />Account</Link>
+        <button type="button" onClick={onHome} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"><Home className="h-5 w-5" />Home</button>
+        <button type="button" onClick={onCategories} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"><Store className="h-5 w-5" />Categories</button>
+        <button type="button" onClick={onCompare} className="relative flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"><Scale className="h-5 w-5" />Compare{compareCount > 0 && <span className="absolute right-[22%] top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-950 px-1 text-[8px] font-black text-white">{compareCount}</span>}</button>
+        <Link to="/track" className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"><ShoppingBag className="h-5 w-5" />Orders</Link>
+        <Link to={customerPath} className="flex flex-col items-center gap-1 rounded-xl py-1 text-[10px] font-bold text-slate-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100"><Users className="h-5 w-5" />Account</Link>
       </div>
     </nav>
   )
@@ -434,6 +533,7 @@ function Footer() {
 }
 
 export default function MarketplaceLandingPage() {
+  const reduceMotion = useReducedMotion()
   const [draftSearch, setDraftSearch] = useState('')
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
@@ -459,7 +559,7 @@ export default function MarketplaceLandingPage() {
   }
 
   const { rawUser, isMerchant, hasCustomerRole } = useAuth()
-  const customerAccessPath = hasCustomerRole ? '/customer/account' : '/customer/login'
+  const customerAccessPath = hasCustomerRole ? '/customer/account' : rawUser ? '/customer/signup' : '/customer/login'
   const merchantAccessPath = isMerchant ? '/merchant' : '/login'
 
   const categoryGroups = useMemo(() => {
@@ -493,7 +593,7 @@ export default function MarketplaceLandingPage() {
       const element = document.getElementById(id)
       if (!element) return
       const top = element.getBoundingClientRect().top + window.scrollY - offset
-      window.scrollTo({ top, behavior: 'smooth' })
+      window.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' })
       if (id === 'marketplace') {
         setResultsPulse(true)
         window.setTimeout(() => setResultsPulse(false), 850)
@@ -541,6 +641,7 @@ export default function MarketplaceLandingPage() {
   const lowestComparePrice = compareItems.length ? Math.min(...compareItems.map((item) => number(item.price)).filter((value) => value > 0)) : 0
   const highestCompareRating = compareItems.length ? Math.max(...compareItems.map((item) => number(item.average_rating))) : 0
   const compareUpdatedAt = marketplaceQuery.dataUpdatedAt ? new Date(marketplaceQuery.dataUpdatedAt) : null
+  const sectionReveal = reduceMotion ? { initial: false, whileInView: { opacity: 1, y: 0 }, viewport: { once: true }, transition: { duration: 0 } } : fadeUp
 
   return (
     <div className="min-h-screen bg-[#f8fafc] pb-20 text-slate-950 md:pb-0">
@@ -548,120 +649,168 @@ export default function MarketplaceLandingPage() {
 
       <main>
         <section className="relative overflow-hidden border-b border-indigo-100 bg-[#f6f7ff]">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_8%,rgba(99,102,241,.22),transparent_28%),radial-gradient(circle_at_92%_12%,rgba(6,182,212,.17),transparent_26%),linear-gradient(115deg,#f8f7ff_0%,#f4f8ff_48%,#effcff_100%)]" />
-          <div className="absolute -left-28 bottom-[-10rem] h-72 w-72 rounded-full bg-indigo-300/20 blur-3xl" />
-          <div className="absolute -right-20 top-[-8rem] h-72 w-72 rounded-full bg-cyan-300/20 blur-3xl" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_8%,rgba(99,102,241,.20),transparent_28%),radial-gradient(circle_at_92%_12%,rgba(6,182,212,.14),transparent_25%),linear-gradient(115deg,#f8f7ff_0%,#f4f8ff_48%,#effcff_100%)]" />
+          <div className="absolute -left-28 bottom-[-10rem] h-72 w-72 rounded-full bg-indigo-300/18 blur-3xl" />
+          <div className="absolute -right-20 top-[-8rem] h-72 w-72 rounded-full bg-cyan-300/18 blur-3xl" />
 
           <motion.div
-            initial={{ opacity: 0, y: 18 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, ease: 'easeOut' }}
-            className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-14"
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.55, ease: 'easeOut' }}
+            className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12"
           >
-            <div className="max-w-5xl">
-              <p className="inline-flex items-center gap-2 rounded-full border border-indigo-200/80 bg-white/70 px-4 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-indigo-700 shadow-sm backdrop-blur">
-                <Sparkles className="h-3.5 w-3.5" /> Bangladesh multi-store marketplace
-              </p>
+            <div className="grid items-center gap-7 lg:grid-cols-[minmax(0,1.15fr)_minmax(390px,.85fr)] lg:gap-8 xl:gap-10">
+              <div className="min-w-0">
+                <p className="inline-flex items-center gap-2 rounded-full border border-indigo-200/80 bg-white/76 px-4 py-2 text-[10px] font-black uppercase tracking-[0.19em] text-indigo-700 shadow-sm backdrop-blur sm:text-[11px]">
+                  <Sparkles className="h-3.5 w-3.5" /> Bangladesh multi-store marketplace
+                </p>
 
-              <h1 className="mt-5 max-w-5xl font-black leading-[.98] tracking-[-0.058em] text-slate-950 text-[2.7rem] sm:text-[3.7rem] lg:text-[4.65rem]">
-                Discover <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-cyan-500 bg-clip-text text-transparent">better products</span> from independent shops.
-              </h1>
+                <h1 className="mt-5 max-w-4xl text-[2.55rem] font-black leading-[.99] tracking-[-0.055em] text-slate-950 sm:text-[3.45rem] lg:text-[4rem] xl:text-[4.45rem]">
+                  Discover <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-cyan-500 bg-clip-text text-transparent">better products</span> from trusted shops.
+                </h1>
 
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base lg:text-lg">
-                Search trusted storefronts, compare current prices and buy with confidence—or launch and manage your own BazarHQ shop.
-              </p>
-            </div>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base lg:text-[17px]">
+                  Search, compare, and shop from trusted independent stores across Bangladesh—all in one marketplace.
+                </p>
 
-            <div className="mt-6 grid max-w-5xl gap-3 sm:grid-cols-2">
-              <Link to={customerAccessPath} className="group flex min-h-14 items-center justify-between rounded-2xl border border-white/90 bg-white/82 px-5 py-3.5 shadow-[0_18px_45px_-32px_rgba(79,70,229,.42)] backdrop-blur transition hover:border-indigo-200 hover:shadow-[0_24px_58px_-34px_rgba(79,70,229,.32)]">
-                <span className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700"><Users className="h-5 w-5" /></span><span><span className="block text-sm font-black text-slate-950">{hasCustomerRole ? 'Open buyer account' : 'Customer login'}</span><span className="mt-0.5 block text-xs font-semibold text-slate-500">Browse, order and track purchases</span></span></span>
-                <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-1" />
-              </Link>
-              <Link to={merchantAccessPath} className="group flex min-h-14 items-center justify-between rounded-2xl border border-slate-950 bg-slate-950 px-5 py-3.5 text-white shadow-[0_20px_50px_-30px_rgba(15,23,42,.7)] transition hover:bg-indigo-700">
-                <span className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10"><Store className="h-5 w-5" /></span><span><span className="block text-sm font-black">{isMerchant ? 'Open seller dashboard' : 'Merchant login'}</span><span className="mt-0.5 block text-xs font-semibold text-slate-300">Create and manage your storefront</span></span></span>
-                <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-1" />
-              </Link>
-            </div>
-
-            <form onSubmit={submitSearch} className="mt-4 max-w-5xl rounded-[1.35rem] border border-white/90 bg-white/88 p-2 shadow-[0_24px_65px_-42px_rgba(15,23,42,.38)] backdrop-blur sm:p-2.5">
-              <div className="flex items-center gap-2">
-                <label className="relative min-w-0 flex-1">
-                  <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 sm:left-5 sm:h-5 sm:w-5" />
-                  <input
-                    value={draftSearch}
-                    onChange={(event) => setDraftSearch(event.target.value)}
-                    placeholder="Search products, categories, or shops"
-                    className="h-12 w-full min-w-0 rounded-[1rem] bg-slate-50/90 pl-10 pr-3 text-[12px] font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 sm:h-13 sm:rounded-2xl sm:pl-12 sm:pr-4 sm:text-sm"
-                  />
-                </label>
-                <Button type="submit" className="h-12 shrink-0 rounded-[1rem] bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-xs font-black text-white shadow-[0_16px_34px_-18px_rgba(79,70,229,.65)] hover:from-indigo-700 hover:to-violet-700 sm:h-13 sm:rounded-2xl sm:px-8 sm:text-sm">
-                  <span className="sm:hidden">Search</span>
-                  <span className="hidden sm:inline">Search marketplace</span>
-                  <ArrowRight className="ml-1.5 h-4 w-4 sm:ml-2" />
-                </Button>
-              </div>
-            </form>
-
-            <div id="category-explorer" className="mt-4 max-w-7xl scroll-mt-24 rounded-[1.35rem] border border-white/90 bg-white/76 p-2.5 shadow-[0_20px_55px_-40px_rgba(15,23,42,.34)] backdrop-blur sm:mt-5 sm:p-4">
-              <div className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:overflow-visible sm:whitespace-normal sm:pb-0 lg:grid-cols-6">
-                {categoryGroups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => toggleCategoryGroup(group.id)}
-                    className={`min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-black transition sm:min-h-11 sm:rounded-xl sm:px-3 sm:py-2 sm:text-xs ${activeCategoryGroup === group.id ? 'border-indigo-600 bg-indigo-600 text-white shadow-[0_10px_24px_-14px_rgba(79,70,229,.8)]' : 'border-slate-200 bg-white/90 text-slate-700 hover:border-indigo-300 hover:text-indigo-700'}`}
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <Link
+                    to={customerAccessPath}
+                    aria-label="Open buyer account"
+                    className="group flex min-h-[68px] items-center justify-between rounded-2xl border border-indigo-600 bg-indigo-600 px-4 py-3.5 text-white shadow-[0_18px_44px_-26px_rgba(79,70,229,.58)] transition-[transform,background-color,border-color,box-shadow] duration-[250ms] ease-out hover:-translate-y-0.5 hover:border-indigo-700 hover:bg-indigo-700 hover:shadow-[0_24px_52px_-26px_rgba(67,56,202,.68)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 motion-reduce:transform-none motion-reduce:transition-none sm:px-5"
                   >
-                    {group.label}
-                  </button>
-                ))}
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/14 text-white transition-transform duration-300 group-hover:scale-[1.04] motion-reduce:transform-none motion-reduce:transition-none"><Users className="h-5 w-5" /></span>
+                      <span className="min-w-0"><span className="block text-sm font-black text-white">Open buyer account</span><span className="mt-0.5 block truncate text-xs font-semibold text-indigo-100">Browse, order and track purchases</span></span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-indigo-100 transition-transform group-hover:translate-x-1 motion-reduce:transform-none" />
+                  </Link>
+
+                  <Link
+                    to={merchantAccessPath}
+                    aria-label="Open seller dashboard"
+                    className="group flex min-h-[68px] items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-slate-950 shadow-[0_14px_34px_-28px_rgba(15,23,42,.3)] transition-[transform,background-color,border-color,box-shadow] duration-[250ms] ease-out hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,.38)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200 motion-reduce:transform-none motion-reduce:transition-none sm:px-5"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-700 transition-[transform,background-color,border-color] duration-[250ms] group-hover:scale-[1.03] group-hover:border-slate-300 group-hover:bg-white motion-reduce:transform-none motion-reduce:transition-none"><Store className="h-5 w-5" /></span>
+                      <span className="min-w-0"><span className="block text-sm font-black text-slate-950">Open seller dashboard</span><span className="mt-0.5 block truncate text-xs font-semibold text-slate-500">Create and manage your storefront</span></span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition-[transform,color] duration-[250ms] group-hover:translate-x-1 group-hover:text-slate-700 motion-reduce:transform-none" />
+                  </Link>
+                </div>
+
+                <form onSubmit={submitSearch} role="search" className="mt-4 rounded-[1.35rem] border border-white/95 bg-white/90 p-2 shadow-[0_24px_65px_-42px_rgba(15,23,42,.38)] backdrop-blur sm:p-2.5">
+                  <div className="flex items-center gap-2">
+                    <label className="relative min-w-0 flex-1">
+                      <span className="sr-only">Search marketplace</span>
+                      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 sm:left-5 sm:h-5 sm:w-5" />
+                      <input
+                        value={draftSearch}
+                        onChange={(event) => setDraftSearch(event.target.value)}
+                        placeholder="Search products, categories, or shops"
+                        aria-label="Search products, categories, or shops"
+                        className="h-12 w-full min-w-0 rounded-[1rem] border border-transparent bg-slate-50/90 pl-10 pr-3 text-[12px] font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-slate-200 focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-100 sm:h-[54px] sm:rounded-2xl sm:pl-12 sm:pr-4 sm:text-sm"
+                      />
+                    </label>
+                    <Button type="submit" className="group h-12 shrink-0 rounded-[1rem] bg-gradient-to-r from-indigo-600 to-violet-600 px-4 text-xs font-black text-white shadow-[0_16px_34px_-18px_rgba(79,70,229,.65)] transition-all duration-300 hover:-translate-y-0.5 hover:from-indigo-700 hover:to-violet-700 hover:shadow-[0_20px_42px_-20px_rgba(79,70,229,.72)] active:translate-y-0 focus-visible:ring-4 focus-visible:ring-indigo-200 motion-reduce:transform-none motion-reduce:transition-none sm:h-[54px] sm:rounded-2xl sm:px-7 sm:text-sm">
+                      <span className="sm:hidden">Search</span>
+                      <span className="hidden sm:inline">Search marketplace</span>
+                      <ArrowRight className="ml-1.5 h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none sm:ml-2" />
+                    </Button>
+                  </div>
+                </form>
               </div>
 
-              {activeGroup && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={{ duration: 0.28 }} className="overflow-hidden">
-                  <div className="mt-2.5 flex gap-2 overflow-x-auto border-t border-slate-200/80 pt-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mt-3 sm:flex-wrap sm:overflow-visible sm:pt-3">
-                    {activeGroup.items.length ? activeGroup.items.map((item) => (
-                      <button key={item.name} type="button" onClick={() => selectSubcategory(item.name)} className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold transition sm:text-[11px] ${category === item.name ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'}`}>
-                        {item.name}{item.count ? ` · ${item.count}` : ''}
-                      </button>
-                    )) : <p className="px-1 py-2 text-xs font-semibold text-slate-500">No published subcategories are available in this group yet.</p>}
-                  </div>
-                </motion.div>
-              )}
+              <div className="min-w-0 lg:pl-2">
+                <HeroMarketplaceVisual products={[...(data.top_products || []), ...(data.products || [])]} loading={marketplaceQuery.isLoading} />
+              </div>
             </div>
 
-            <div className="mt-4 max-w-5xl overflow-hidden rounded-[1.15rem] border border-white/90 bg-white/62 px-1 py-2 shadow-[0_18px_45px_-34px_rgba(15,23,42,.28)] backdrop-blur sm:mt-5 sm:px-2 sm:py-2.5">
-              <div className="grid grid-cols-4 divide-x divide-slate-200/80">
-                {[[data.metrics.shops, 'Shops', 'Active shops'], [data.metrics.products, 'Products', 'Products'], [data.metrics.orders, 'Orders', 'Orders completed'], [data.metrics.categories, 'Categories', 'Categories']].map(([value, mobileLabel, desktopLabel]) => (
-                  <div key={desktopLabel} className="min-w-0 px-1.5 py-1 text-center sm:px-4 sm:py-1.5">
-                    <p className="text-base font-black tracking-tight text-slate-950 sm:text-xl">{marketplaceQuery.isLoading ? '—' : compact(value)}</p>
-                    <p className="mt-0.5 truncate text-[8px] font-black uppercase tracking-[0.08em] text-slate-500 sm:mt-1 sm:text-[10px] sm:tracking-[0.12em]">
-                      <span className="sm:hidden">{mobileLabel}</span>
-                      <span className="hidden sm:inline">{desktopLabel}</span>
-                    </p>
-                  </div>
-                ))}
-              </div>
+            <div id="category-explorer" className="mt-5 scroll-mt-24 sm:mt-6">
+              <nav aria-label="Marketplace categories" className="flex gap-x-5 gap-y-1 overflow-x-auto whitespace-nowrap border-b border-indigo-100/80 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:overflow-visible sm:whitespace-normal lg:grid-cols-6">
+                {categoryGroups.map((group) => {
+                  const Icon = group.Icon
+                  const active = activeCategoryGroup === group.id
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={() => toggleCategoryGroup(group.id)}
+                      aria-pressed={active}
+                      className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 border-b-2 px-1 py-2 text-[10px] font-black outline-none transition-[color,border-color,transform] duration-200 focus-visible:rounded-sm focus-visible:ring-4 focus-visible:ring-indigo-100 motion-reduce:transform-none motion-reduce:transition-none sm:min-h-11 sm:text-xs ${active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-600 hover:border-indigo-200 hover:text-indigo-700'}`}
+                    >
+                      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {group.label}
+                    </button>
+                  )
+                })}
+              </nav>
+
+              <AnimatePresence initial={false}>
+                {activeGroup && (
+                  <motion.div
+                    key={activeGroup.id}
+                    initial={reduceMotion ? false : { opacity: 0, height: 0, y: -3 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -3 }}
+                    transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: 'easeOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex items-center gap-x-4 gap-y-1 overflow-x-auto pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible">
+                      <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 sm:text-[10px]">{activeGroup.label}</span>
+                      {activeGroup.items.length ? activeGroup.items.map((item) => (
+                        <button
+                          key={item.name}
+                          type="button"
+                          onClick={() => selectSubcategory(item.name)}
+                          aria-pressed={category === item.name}
+                          className={`shrink-0 border-b px-0.5 py-1.5 text-[10px] font-bold outline-none transition-colors duration-200 focus-visible:rounded-sm focus-visible:ring-4 focus-visible:ring-indigo-100 sm:text-[11px] ${category === item.name ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-indigo-700'}`}
+                        >
+                          {item.name}{item.count ? ` · ${item.count}` : ''}
+                        </button>
+                      )) : <p className="py-1.5 text-xs font-semibold text-slate-500">No published subcategories are available in this group yet.</p>}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11px] font-semibold leading-5 text-slate-500 sm:justify-start sm:text-xs">
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-indigo-500" aria-hidden="true" />
+                <span><span className="font-black text-indigo-700">Newly launched</span> · Growing every day with new shops and products.</span>
+              </p>
             </div>
           </motion.div>
         </section>
 
-        <section id="top-shops" className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
-          <motion.div {...fadeUp}>
-            <SectionHeading eyebrow="Trusted sellers" title="Top shops" description="Independent storefronts ranked from marketplace activity, product quality and verified customer feedback." action={<a href="#marketplace" className="inline-flex items-center gap-2 text-sm font-black text-slate-700">Browse products <ChevronRight className="h-4 w-4" /></a>} />
-            <div className="mt-7 grid auto-cols-[calc((100%-1rem)/3)] grid-flow-col grid-rows-1 gap-2 overflow-x-auto pb-3 [scrollbar-width:thin] sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-3 sm:overflow-visible md:grid-cols-4 xl:grid-cols-5">
-              {marketplaceQuery.isLoading && !data.top_shops.length
-                ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="h-56 animate-pulse rounded-[1.15rem] bg-slate-100" />)
-                : data.top_shops.slice(0, 10).map((shop) => <ShopCard key={shop.id} shop={shop} />)}
+        <section id="top-shops" className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-9 lg:px-8 lg:py-10">
+          <motion.div {...sectionReveal}>
+            <SectionHeading eyebrow="Trusted sellers" title="Top shops" description="Independent storefronts ranked from marketplace activity, product quality and verified customer feedback." action={<a href="#marketplace" className="group inline-flex items-center gap-2 rounded-sm text-sm font-black text-slate-700 transition hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100">Browse products <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none" /></a>} />
+            <div className="mt-5">
+              {marketplaceQuery.isLoading && !data.top_shops.length ? (
+                <div className="grid auto-cols-[44%] grid-flow-col grid-rows-1 gap-2 overflow-x-auto pb-3 [scrollbar-width:thin] sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-3 sm:overflow-visible md:grid-cols-4 xl:grid-cols-5">
+                  {Array.from({ length: 5 }).map((_, index) => <div key={index} className="h-56 animate-pulse rounded-[1.15rem] bg-slate-100" />)}
+                </div>
+              ) : data.top_shops.length ? (
+                <div className="grid auto-cols-[44%] grid-flow-col grid-rows-1 gap-2 overflow-x-auto pb-3 [scrollbar-width:thin] sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-3 sm:overflow-visible md:grid-cols-4 xl:grid-cols-5">
+                  {data.top_shops.slice(0, 10).map((shop) => <ShopCard key={shop.id} shop={shop} />)}
+                </div>
+              ) : !marketplaceQuery.error && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-6 text-center">
+                  <Store className="mx-auto h-6 w-6 text-slate-300" />
+                  <p className="mt-2 text-sm font-black text-slate-800">Top shops will appear as marketplace activity grows.</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Published storefronts remain available through the marketplace catalog.</p>
+                </div>
+              )}
             </div>
           </motion.div>
         </section>
 
         <section id="top-products" className="border-y border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
-            <motion.div {...fadeUp}>
-              <SectionHeading eyebrow="Marketplace ranking" title="Top products" description="Popular products ranked from real sales, product views and approved customer reviews." action={<span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-black text-slate-600"><Trophy className="h-3.5 w-3.5" /> Live ranking</span>} />
-              <div className="mt-7">
-                {marketplaceQuery.isLoading && !data.top_products.length ? <LoadingGrid count={5} /> : (
+          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-9 lg:px-8 lg:py-10">
+            <motion.div {...sectionReveal}>
+              <SectionHeading eyebrow="Marketplace ranking" title="Top products" description="Popular products ranked from real sales, product views and approved customer reviews." action={!marketplaceQuery.isLoading && data.top_products.length > 0 ? <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-black text-slate-600"><Trophy className="h-3.5 w-3.5" /> Live ranking</span> : null} />
+              <div className="mt-5">
+                {marketplaceQuery.isLoading && !data.top_products.length ? <LoadingGrid count={5} /> : data.top_products.length ? (
                   <>
                     <motion.div layout className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                       {data.top_products
@@ -672,46 +821,52 @@ export default function MarketplaceLandingPage() {
                     </motion.div>
 
                     {data.top_products.length > 5 && (
-                      <div className="mt-8 flex justify-center">
+                      <div className="mt-6 flex justify-center">
                         <button
                           type="button"
                           onClick={() => setShowMoreTopProducts((current) => !current)}
-                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-black text-slate-700 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-300 hover:text-indigo-700 hover:shadow-md"
+                          className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-black text-slate-700 shadow-sm transition duration-300 hover:-translate-y-0.5 hover:border-indigo-300 hover:text-indigo-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100 motion-reduce:transform-none motion-reduce:transition-none"
                           aria-expanded={showMoreTopProducts}
                         >
                           {showMoreTopProducts ? 'Show fewer products' : `More top products (${Math.min(data.top_products.length - 5, 15)})`}
-                          <ChevronRight className={`h-4 w-4 transition-transform duration-300 ${showMoreTopProducts ? '-rotate-90' : 'rotate-90'}`} />
+                          <ChevronRight className={`h-4 w-4 transition-transform duration-300 motion-reduce:transform-none ${showMoreTopProducts ? '-rotate-90' : 'rotate-90'}`} />
                         </button>
                       </div>
                     )}
                   </>
+                ) : !marketplaceQuery.error && (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-center">
+                    <Trophy className="mx-auto h-6 w-6 text-slate-300" />
+                    <p className="mt-2 text-sm font-black text-slate-800">Ranked products will appear once enough activity is available.</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">You can still browse every published product in the marketplace below.</p>
+                  </div>
                 )}
               </div>
             </motion.div>
           </div>
         </section>
 
-        <section id="compare" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
-          <motion.div {...fadeUp}>
+        <section id="compare" className="mx-auto max-w-7xl scroll-mt-24 px-4 py-8 sm:px-6 sm:py-9 lg:px-8 lg:py-10">
+          <motion.div {...sectionReveal}>
             <SectionHeading
               eyebrow="Live comparison"
               title="Compare current product data"
               description="Select up to four products. Prices, stock and ratings refresh automatically every 15 seconds while comparison is active."
               action={compareItems.length > 0 ? (
-                <button type="button" onClick={() => marketplaceQuery.refetch()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700">
+                <button type="button" onClick={() => marketplaceQuery.refetch()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100">
                   <RefreshCw className={`h-3.5 w-3.5 ${marketplaceQuery.isFetching ? 'animate-spin' : ''}`} /> Refresh now
                 </button>
               ) : null}
             />
 
             {compareItems.length > 0 ? (
-              <div className="mt-7 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_24px_70px_-44px_rgba(15,23,42,.44)]">
+              <div className="mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_24px_70px_-44px_rgba(15,23,42,.44)]">
                 <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-black text-slate-950">Real-time comparison ({compareItems.length}/4)</p>
                     <p className="mt-1 text-xs text-slate-500">Last synced {compareUpdatedAt ? compareUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'just now'} · auto refresh every 15 seconds</p>
                   </div>
-                  <button type="button" onClick={() => setCompareItems([])} className="text-xs font-bold text-slate-500 hover:text-rose-600">Clear comparison</button>
+                  <button type="button" onClick={() => setCompareItems([])} className="rounded-sm text-xs font-bold text-slate-500 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100">Clear comparison</button>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -724,7 +879,7 @@ export default function MarketplaceLandingPage() {
                             <div className="flex items-start gap-3">
                               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-slate-100">{(Array.isArray(product.images) ? product.images[0] : product.image_url) ? <img src={Array.isArray(product.images) ? product.images[0] : product.image_url} alt="" className="h-full w-full object-cover" /> : <ShoppingBag className="m-3 h-6 w-6 text-slate-300" />}</div>
                               <div className="min-w-0 flex-1"><p className="line-clamp-2 normal-case tracking-normal text-xs font-black text-slate-950">{product.title}</p><p className="mt-1 truncate normal-case tracking-normal text-[10px] font-semibold text-slate-500">{product.shop_name || 'BazarHQ shop'}</p></div>
-                              <button type="button" onClick={() => toggleCompare(product)} className="rounded-full p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label="Remove product"><X className="h-4 w-4" /></button>
+                              <button type="button" onClick={() => toggleCompare(product)} className="rounded-full p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100" aria-label="Remove product"><X className="h-4 w-4" /></button>
                             </div>
                           </th>
                         ))}
@@ -736,21 +891,21 @@ export default function MarketplaceLandingPage() {
                       <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Availability</th>{compareItems.map((product) => <td key={`stock-${product.id}`} className="px-4 py-4 font-bold text-slate-700">{number(product.stock) > 0 ? `${number(product.stock)} in stock` : 'Out of stock'}</td>)}</tr>
                       <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Sold</th>{compareItems.map((product) => <td key={`sold-${product.id}`} className="px-4 py-4 font-bold text-slate-700">{number(product.sold_quantity).toLocaleString('en-BD')}</td>)}</tr>
                       <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Category</th>{compareItems.map((product) => <td key={`category-${product.id}`} className="px-4 py-4 font-semibold text-slate-600">{product.category || 'General'}</td>)}</tr>
-                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Open product</th>{compareItems.map((product) => <td key={`link-${product.id}`} className="px-4 py-4"><Link to="/shop/$storeSlug/product/$productId" params={{ storeSlug: product.store_slug || product.subdomain, productId: String(product.slug || product.id) }} className="inline-flex items-center gap-1 text-xs font-black text-indigo-700">View details <ChevronRight className="h-3.5 w-3.5" /></Link></td>)}</tr>
+                      <tr><th className="px-5 py-4 text-xs font-black text-slate-500">Open product</th>{compareItems.map((product) => <td key={`link-${product.id}`} className="px-4 py-4"><Link to="/shop/$storeSlug/product/$productId" params={{ storeSlug: product.store_slug || product.subdomain, productId: String(product.slug || product.id) }} className="inline-flex items-center gap-1 rounded-sm text-xs font-black text-indigo-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-100">View details <ChevronRight className="h-3.5 w-3.5" /></Link></td>)}</tr>
                     </tbody>
                   </table>
                 </div>
               </div>
             ) : (
-              <div className="mt-7 flex items-center gap-4 rounded-[1.25rem] border border-dashed border-indigo-200 bg-indigo-50/40 px-5 py-5 text-sm text-slate-600">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm"><Scale className="h-5 w-5" /></span>
-                <p>Use the small scale icon on any product card to add it to the live comparison table.</p>
+              <div className="mt-5 flex items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/35 px-4 py-3.5 text-xs font-semibold leading-5 text-slate-600 sm:text-sm">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm"><Scale className="h-4 w-4" /></span>
+                <p>Select the scale icon on any product card to compare live price, stock and rating data.</p>
               </div>
             )}
 
             {data.comparisons.length > 0 && (
-              <div className="mt-9">
-                <div className="mb-5"><p className="text-sm font-black text-slate-950">Automatic cross-shop matches</p><p className="mt-1 text-xs text-slate-500">Products with current marketplace price alternatives.</p></div>
+              <div className="mt-7">
+                <div className="mb-4"><p className="text-sm font-black text-slate-950">Automatic cross-shop matches</p><p className="mt-1 text-xs text-slate-500">Products with current marketplace price alternatives.</p></div>
                 <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {data.comparisons.slice(0, 10).map((product) => <MarketplaceProductCard key={`compare-${product.id}`} product={product} comparison {...compareProps(product)} />)}
                 </div>
@@ -760,24 +915,24 @@ export default function MarketplaceLandingPage() {
         </section>
 
         <section id="marketplace" className={`scroll-mt-28 border-y border-slate-200 bg-white transition-shadow duration-700 ${resultsPulse ? 'shadow-[inset_0_0_0_3px_rgba(99,102,241,.14)]' : ''}`}>
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
+          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-9 lg:px-8 lg:py-10">
             <SectionHeading eyebrow="All marketplace products" title={search || category ? 'Search results' : 'Explore the marketplace'} description={search || category ? `Showing products${search ? ` matching “${search}”` : ''}${category ? ` in ${category}` : ''}.` : 'Browse active products from every published BazarHQ storefront.'} action={(search || category) && <Button variant="outline" className="rounded-full" onClick={() => { setDraftSearch(''); setSearch(''); setCategory('') }}>Clear search</Button>} />
-            {marketplaceQuery.error && <div className="mt-7 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{marketplaceQuery.error.message}</div>}
-            <div className="mt-7">
+            {marketplaceQuery.error && <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{marketplaceQuery.error.message}</div>}
+            <div className="mt-5">
               {marketplaceQuery.isFetching && !data.products.length ? <LoadingGrid count={10} /> : data.products.length ? (
                 <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {data.products.map((product) => <MarketplaceProductCard key={`market-${product.id}`} product={product} comparison {...compareProps(product)} />)}
                 </div>
               ) : !marketplaceQuery.error && (
-                <div className="rounded-[1.15rem] border border-dashed border-slate-300 bg-slate-50 p-12 text-center"><Search className="mx-auto h-9 w-9 text-slate-300" /><h3 className="mt-4 text-lg font-black">No matching products</h3><p className="mt-2 text-sm text-slate-500">Try another keyword or clear the selected category.</p></div>
+                <div className="rounded-[1.15rem] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center sm:py-10"><Search className="mx-auto h-9 w-9 text-slate-300" /><h3 className="mt-4 text-lg font-black">No matching products</h3><p className="mt-2 text-sm text-slate-500">Try another keyword or clear the selected category.</p></div>
               )}
             </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-18">
-          <motion.div {...fadeUp} className="grid overflow-hidden rounded-[1.4rem] border border-slate-200 bg-[#eef2f7] lg:grid-cols-[1.15fr_.85fr]">
-            <div className="p-7 sm:p-10 lg:p-12"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">One verified account</p><h2 className="mt-3 max-w-xl text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-4xl">Buy from any shop. Build your own storefront.</h2><p className="mt-4 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">Use one BazarHQ identity for customer purchases and merchant operations, while keeping orders and store management clearly organized.</p><div className="mt-7 flex flex-wrap gap-3"><Link to="/customer/signup"><Button className="h-11 rounded-full bg-slate-950 px-5 font-bold text-white hover:bg-slate-800"><ShoppingBag className="mr-2 h-4 w-4" /> Create buyer access</Button></Link><Link to="/signup"><Button variant="outline" className="h-11 rounded-full border-slate-300 bg-transparent px-5 font-bold"><Store className="mr-2 h-4 w-4" /> Open a shop</Button></Link></div></div>
+        <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-9 lg:px-8 lg:py-10">
+          <motion.div {...sectionReveal} className="grid overflow-hidden rounded-[1.4rem] border border-slate-200 bg-[#eef2f7] lg:grid-cols-[1.15fr_.85fr]">
+            <div className="p-6 sm:p-8 lg:p-10"><p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">One verified account</p><h2 className="mt-3 max-w-xl text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-4xl">Buy from any shop. Build your own storefront.</h2><p className="mt-3 max-w-xl text-sm leading-7 text-slate-600 sm:text-base">Use one BazarHQ identity for customer purchases and merchant operations, while keeping orders and store management clearly organized.</p><div className="mt-5 flex flex-wrap gap-3"><Link to={customerAccessPath}><Button className="h-11 rounded-full bg-slate-950 px-5 font-bold text-white hover:bg-slate-800"><ShoppingBag className="mr-2 h-4 w-4" /> {hasCustomerRole ? 'Open buyer account' : 'Create buyer access'}</Button></Link><Link to="/signup"><Button variant="outline" className="h-11 rounded-full border-slate-300 bg-transparent px-5 font-bold"><Store className="mr-2 h-4 w-4" /> Open a shop</Button></Link></div></div>
             <div className="grid grid-cols-2 gap-px border-t border-slate-200 bg-slate-200 lg:border-l lg:border-t-0">{[[Users, 'One identity', 'Customer and merchant access under one verified account.'], [BarChart3, 'Real rankings', 'Marketplace visibility shaped by real activity.'], [BadgeCheck, 'Published shops', 'Only active storefronts appear publicly.'], [ShieldCheck, 'Private data', 'Credentials and merchant revenue remain protected.']].map(([Icon, title, text]) => <div key={title} className="bg-[#f8fafc] p-5 sm:p-6"><Icon className="h-5 w-5 text-slate-700" /><h3 className="mt-4 text-sm font-black text-slate-950">{title}</h3><p className="mt-2 text-xs leading-6 text-slate-500">{text}</p></div>)}</div>
           </motion.div>
         </section>
@@ -785,7 +940,7 @@ export default function MarketplaceLandingPage() {
 
       <Footer />
       <CompareTray items={compareItems} notice={compareNotice} onRemove={toggleCompare} onClear={() => setCompareItems([])} onOpen={() => smoothTo('compare')} />
-      <MobileBottomNav customerPath={customerAccessPath} compareCount={compareItems.length} onHome={() => window.scrollTo({ top: 0, behavior: 'smooth' })} onCategories={() => smoothTo('category-explorer')} onCompare={() => smoothTo('compare')} />
+      <MobileBottomNav customerPath={customerAccessPath} compareCount={compareItems.length} onHome={() => window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' })} onCategories={() => smoothTo('category-explorer')} onCompare={() => smoothTo('compare')} />
     </div>
   )
 }

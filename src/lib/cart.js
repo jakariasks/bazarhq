@@ -1,3 +1,10 @@
+import {
+  buildVariantLabel,
+  getEffectiveVariantPrice,
+  getVariantId,
+  normalizeProductVariants,
+} from "@/lib/product-variants";
+
 // src/lib/cart.js
 // Cart persisted in localStorage per store.
 
@@ -13,35 +20,15 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-function getVariantId(variant) {
-  if (!variant) return null;
-  return (
-    variant.id ||
-    variant.combo ||
-    variant.label ||
-    (variant.options ? JSON.stringify(variant.options) : null)
-  );
-}
-
-function buildVariantLabel(variant) {
-  if (!variant) return null;
-  if (variant.combo) return variant.combo;
-  if (variant.label) return variant.label;
-  if (variant.options) {
-    return Object.entries(variant.options)
-      .map(([key, value]) => `${key}: ${value}`)
-      .join(", ");
-  }
-  return getVariantId(variant);
-}
-
 function buildItemKey(productId, variant) {
   const variantId = getVariantId(variant);
   return variantId ? `${productId}_${variantId}` : String(productId);
 }
 
-function findFreshVariant(variants = [], item) {
-  if (!Array.isArray(variants) || !item?.variantId) return null;
+function findFreshVariant(product, item) {
+  if (!item?.variantId) return null;
+
+  const variants = normalizeProductVariants(product);
 
   return variants.find((variant) => {
     const id = getVariantId(variant);
@@ -103,7 +90,16 @@ export function addToCart(storeId, product, variant = null, qty = 1) {
 
     existing.qty = nextQty;
     existing.stock = availableStock;
-    existing.price = toNumber(variant?.price ?? product.price, existing.price);
+    existing.price = getEffectiveVariantPrice(product, variant);
+    existing.variantLabel = buildVariantLabel(variant) || existing.variantLabel;
+    existing.variantOptions = variant?.options && typeof variant.options === "object"
+      ? variant.options
+      : existing.variantOptions || null;
+    existing.variantSku = variant?.sku || existing.variantSku || null;
+    existing.lowStockThreshold = toNumber(
+      variant?.low_stock_threshold ?? product.low_stock_threshold,
+      existing.lowStockThreshold ?? 5
+    );
     saveCart(storeId, cart);
     return { success: true };
   }
@@ -112,7 +108,7 @@ export function addToCart(storeId, product, variant = null, qty = 1) {
     return { success: false, message: `You can add up to ${MAX_LINE_ITEMS} different items.` };
   }
 
-  const price = toNumber(variant?.price ?? product.price, 0);
+  const price = getEffectiveVariantPrice(product, variant);
 
   cart.items.push({
     key,
@@ -124,6 +120,12 @@ export function addToCart(storeId, product, variant = null, qty = 1) {
     stock: availableStock,
     variantId: getVariantId(variant),
     variantLabel: buildVariantLabel(variant),
+    variantOptions: variant?.options && typeof variant.options === "object" ? variant.options : null,
+    variantSku: variant?.sku || null,
+    lowStockThreshold: toNumber(
+      variant?.low_stock_threshold ?? product.low_stock_threshold,
+      5
+    ),
     qty: requestedQty,
   });
 
@@ -179,7 +181,7 @@ export function reconcileCartWithProducts(storeId, freshProducts) {
       return;
     }
 
-    const freshVariant = item.variantId ? findFreshVariant(freshProduct.variants, item) : null;
+    const freshVariant = item.variantId ? findFreshVariant(freshProduct, item) : null;
 
     if (item.variantId && !freshVariant) {
       stockChanges.push({
@@ -191,7 +193,7 @@ export function reconcileCartWithProducts(storeId, freshProducts) {
       return;
     }
 
-    const freshPrice = toNumber(freshVariant?.price ?? freshProduct.price, 0);
+    const freshPrice = getEffectiveVariantPrice(freshProduct, freshVariant);
     const freshStock = Math.max(0, toNumber(freshVariant?.stock ?? freshProduct.stock, 0));
 
     if (freshPrice !== toNumber(item.price, 0)) {
@@ -205,6 +207,16 @@ export function reconcileCartWithProducts(storeId, freshProducts) {
     }
 
     item.stock = freshStock;
+
+    if (freshVariant) {
+      item.variantLabel = buildVariantLabel(freshVariant) || item.variantLabel;
+      item.variantOptions = freshVariant.options || item.variantOptions || null;
+      item.variantSku = freshVariant.sku || item.variantSku || null;
+      item.lowStockThreshold = toNumber(
+        freshVariant.low_stock_threshold ?? freshProduct.low_stock_threshold,
+        item.lowStockThreshold ?? 5
+      );
+    }
 
     if (freshStock <= 0) {
       stockChanges.push({

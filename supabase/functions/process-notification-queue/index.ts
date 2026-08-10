@@ -37,6 +37,7 @@ async function authorizeKick(
   req: Request,
   supabase: ReturnType<typeof createClient>,
   storeId: string,
+  requestedOrderId: string,
 ) {
   if (hasCronAccess(req)) return { mode: 'cron' as const }
 
@@ -51,17 +52,31 @@ async function authorizeKick(
   if (store?.owner_id === user.id) return { mode: 'merchant' as const, userId: user.id }
 
   const cutoff = new Date(Date.now() - 5 * 60_000).toISOString()
-  const { data: recentOrder } = await supabase
+  const { data: recentOrders, error: recentOrderError } = await supabase
     .from('orders')
-    .select('id')
+    .select('id,order_id,created_at')
     .eq('store_id', storeId)
     .eq('customer_id', user.id)
     .gte('created_at', cutoff)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(10)
 
-  return recentOrder ? { mode: 'customer' as const, userId: user.id } : null
+  if (recentOrderError) return null
+
+  const requested = String(requestedOrderId || '').trim()
+  const recentOrder = (recentOrders || []).find((order) => (
+    !requested ||
+    String(order.id) === requested ||
+    String(order.order_id || '').toLowerCase() === requested.toLowerCase()
+  ))
+
+  return recentOrder
+    ? {
+        mode: 'customer' as const,
+        userId: user.id,
+        orderDbId: String(recentOrder.id),
+      }
+    : null
 }
 
 async function logAttempt(supabase: ReturnType<typeof createClient>, payload: Record<string, unknown>) {
@@ -87,6 +102,8 @@ async function queueFallbackEmail(
 
   const { error } = await supabase.from('email_notification_queue').insert({
     store_id: job.store_id,
+    order_id: job.order_id || null,
+    dedupe_key: `sms-fallback:${job.id}`,
     recipient_email: fallbackEmail,
     subject: 'BazarHQ notification (SMS fallback)',
     body: job.message || 'A BazarHQ notification could not be delivered by SMS.',
@@ -115,10 +132,12 @@ Deno.serve(async (req) => {
   const supabase = createClient(url, serviceRole, { auth: { persistSession: false, autoRefreshToken: false } })
   const body = await req.json().catch(() => ({}))
   const storeId = String(body?.storeId || body?.store_id || '').trim()
-  const access = await authorizeKick(req, supabase, storeId)
+  const requestedOrderId = String(body?.orderId || body?.order_id || '').trim()
+  const access = await authorizeKick(req, supabase, storeId, requestedOrderId)
   if (!access) return json({ ok: false, error: 'Unauthorized notification processor request.' }, 401)
 
   const scopedStoreId = access.mode === 'cron' ? (storeId || null) : storeId
+  const scopedOrderId = access.mode === 'customer' ? access.orderDbId : null
   const summary = {
     mode: access.mode,
     smsSent: 0,
@@ -140,6 +159,7 @@ Deno.serve(async (req) => {
       updated_at: nowIso(),
     }).eq('status', 'processing').lt('updated_at', staleCutoff)
     if (scopedStoreId) query = query.eq('store_id', scopedStoreId)
+    if (scopedOrderId) query = query.eq('order_id', scopedOrderId)
     await query
   }
 
@@ -149,6 +169,7 @@ Deno.serve(async (req) => {
     .in('status', ['pending', 'retry']).lte('next_attempt_at', nowIso())
     .order('priority', { ascending: true }).order('created_at', { ascending: true }).limit(30)
   if (scopedStoreId) smsQuery = smsQuery.eq('store_id', scopedStoreId)
+  if (scopedOrderId) smsQuery = smsQuery.eq('order_id', scopedOrderId)
   const { data: smsJobs, error: smsLoadError } = await smsQuery
   if (smsLoadError) return json({ ok: false, error: safeText(smsLoadError.message), ...summary }, 500)
 
@@ -171,7 +192,7 @@ Deno.serve(async (req) => {
         error_message: null, provider_response: result.providerResponse, updated_at: sentAt,
       }).eq('id', job.id)
       await logAttempt(supabase, {
-        store_id: job.store_id, queue_type: 'sms', queue_id: job.id,
+        store_id: job.store_id, order_id: job.order_id || null, queue_type: 'sms', queue_id: job.id,
         notification_type: job.notification_type, recipient_masked: maskPhone(recipient),
         status: 'sent', attempt, provider: result.provider,
         provider_status: result.providerStatus, provider_message_id: result.providerMessageId,
@@ -196,7 +217,7 @@ Deno.serve(async (req) => {
       }).eq('id', job.id)
 
       await logAttempt(supabase, {
-        store_id: job.store_id, queue_type: 'sms', queue_id: job.id,
+        store_id: job.store_id, order_id: job.order_id || null, queue_type: 'sms', queue_id: job.id,
         notification_type: job.notification_type, recipient_masked: maskPhone(recipient),
         status: finalFailure ? 'failed' : 'retry', attempt,
         provider: deliveryError.provider || 'sms_gateway', provider_status: deliveryError.status,
@@ -212,6 +233,7 @@ Deno.serve(async (req) => {
     .in('status', ['pending', 'retry']).lte('next_attempt_at', nowIso())
     .order('priority', { ascending: true }).order('created_at', { ascending: true }).limit(40)
   if (scopedStoreId) emailQuery = emailQuery.eq('store_id', scopedStoreId)
+  if (scopedOrderId) emailQuery = emailQuery.eq('order_id', scopedOrderId)
   const { data: emails, error: emailLoadError } = await emailQuery
   if (emailLoadError) return json({ ok: false, error: safeText(emailLoadError.message), ...summary }, 500)
 
@@ -239,7 +261,7 @@ Deno.serve(async (req) => {
         error_message: null, provider_response: result.providerResponse, updated_at: sentAt,
       }).eq('id', job.id)
       await logAttempt(supabase, {
-        store_id: job.store_id, queue_type: 'email', queue_id: job.id,
+        store_id: job.store_id, order_id: job.order_id || null, queue_type: 'email', queue_id: job.id,
         notification_type: job.notification_type, recipient_masked: maskEmail(recipient),
         status: 'sent', attempt, provider: result.provider,
         provider_status: result.providerStatus, provider_message_id: result.providerMessageId,
@@ -256,7 +278,7 @@ Deno.serve(async (req) => {
         error_message: message, updated_at: nowIso(),
       }).eq('id', job.id)
       await logAttempt(supabase, {
-        store_id: job.store_id, queue_type: 'email', queue_id: job.id,
+        store_id: job.store_id, order_id: job.order_id || null, queue_type: 'email', queue_id: job.id,
         notification_type: job.notification_type, recipient_masked: maskEmail(recipient),
         status: finalFailure ? 'failed' : 'retry', attempt,
         provider: deliveryError.provider || 'resend', provider_status: deliveryError.status,

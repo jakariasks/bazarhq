@@ -21,11 +21,14 @@ import {
   ImagePlus,
   Layers3,
   Loader2,
+  MessageSquare,
   Package2,
   Pencil,
   Plus,
   Search,
+  Send,
   Sparkles,
+  Star,
   Tag,
   Trash2,
   Upload,
@@ -922,6 +925,124 @@ function ProductEditorDialog({ open, onOpenChange, form, setForm, onSave, saving
   )
 }
 
+function MerchantReviewInbox({ reviews, loading, drafts, savingId, onDraftChange, onReply, onRefresh }) {
+  const average = reviews.length ? reviews.reduce((sum, item) => sum + numberValue(item.rating), 0) / reviews.length : 0
+  const replied = reviews.filter((item) => item.merchant_reply).length
+
+  return (
+    <section className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_-42px_rgba(15,23,42,.22)] sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-indigo-700">
+            <MessageSquare className="h-3.5 w-3.5" /> Customer feedback
+          </span>
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">Reviews & merchant replies</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">Reply to verified customer reviews. Replies appear on the product page automatically.</p>
+        </div>
+        <button type="button" onClick={onRefresh} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">Refresh reviews</button>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl bg-slate-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Reviews</p><p className="mt-1 text-xl font-black text-slate-950">{reviews.length}</p></div>
+        <div className="rounded-2xl bg-amber-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-600">Average rating</p><p className="mt-1 text-xl font-black text-amber-700">{reviews.length ? average.toFixed(1) : '—'}</p></div>
+        <div className="rounded-2xl bg-emerald-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">Replied</p><p className="mt-1 text-xl font-black text-emerald-700">{replied}/{reviews.length}</p></div>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {loading ? (
+          [0, 1].map((item) => <div key={item} className="h-40 animate-pulse rounded-2xl bg-slate-100" />)
+        ) : reviews.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm font-semibold text-slate-500">No customer reviews yet.</div>
+        ) : reviews.map((review) => {
+          const draft = drafts[review.review_id] ?? review.merchant_reply ?? ''
+          return (
+            <article key={review.review_id} className="rounded-[1.3rem] border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:shadow-[0_18px_45px_-34px_rgba(79,70,229,.35)] sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-indigo-600">{review.product_title || 'Product'}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-sm font-black text-slate-950">{review.customer_name || 'Verified customer'}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Verified purchase</span></div>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">{new Date(review.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex items-center gap-0.5 text-amber-400" aria-label={`${review.rating} out of 5 stars`}>
+                  {[1,2,3,4,5].map((value) => <Star key={value} className={`h-4 w-4 ${value <= numberValue(review.rating) ? 'fill-current' : ''}`} />)}
+                </div>
+              </div>
+              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">{review.comment || 'No written comment.'}</p>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <label className="text-xs font-black text-slate-700">Your public reply</label>
+                <textarea value={draft} onChange={(event) => onDraftChange(review.review_id, event.target.value)} rows={3} maxLength={1500} placeholder="Thank the customer, clarify a concern, or provide helpful information..." className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100" />
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold text-slate-400">{draft.length}/1500 · Visible publicly on this product</span>
+                  <Button size="sm" className="rounded-full bg-slate-950 px-4 hover:bg-indigo-600" disabled={savingId === review.review_id} onClick={() => onReply(review.review_id)}>
+                    {savingId === review.review_id ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-2 h-3.5 w-3.5" />}{draft.trim() ? (review.merchant_reply ? 'Update reply' : 'Publish reply') : review.merchant_reply ? 'Remove reply' : 'Reply'}
+                  </Button>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function MerchantCommentInbox({ comments, loading, drafts, savingId, onDraftChange, onReply, onRefresh }) {
+  const replied = comments.filter((item) => item.merchant_reply).length
+
+  return (
+    <section className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-[0_20px_60px_-42px_rgba(15,23,42,.22)] sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <span className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-violet-700">
+            <MessageSquare className="h-3.5 w-3.5" /> Product conversations
+          </span>
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">Questions, comments & merchant replies</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">Answer public product questions from customers. Replies appear on the matching product page in realtime.</p>
+        </div>
+        <button type="button" onClick={onRefresh} className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">Refresh comments</button>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl bg-slate-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Customer comments</p><p className="mt-1 text-xl font-black text-slate-950">{comments.length}</p></div>
+        <div className="rounded-2xl bg-violet-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-600">Replied</p><p className="mt-1 text-xl font-black text-violet-700">{replied}/{comments.length}</p></div>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {loading ? (
+          [0, 1].map((item) => <div key={item} className="h-36 animate-pulse rounded-2xl bg-slate-100" />)
+        ) : comments.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm font-semibold text-slate-500">No customer questions or comments yet.</div>
+        ) : comments.map((item) => {
+          const draft = drafts[item.comment_id] ?? item.merchant_reply ?? ''
+          return (
+            <article key={item.comment_id} className="rounded-[1.3rem] border border-slate-200 bg-white p-4 transition hover:border-violet-200 hover:shadow-[0_18px_45px_-34px_rgba(124,58,237,.28)] sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-violet-600">{item.product_title || 'Product'}</p>
+                  <p className="mt-1 text-sm font-black text-slate-950">{item.customer_name || 'Customer'}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">{new Date(item.created_at).toLocaleDateString()}</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Product comment</span>
+              </div>
+              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">{item.comment}</p>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <label className="text-xs font-black text-slate-700">Your public reply</label>
+                <textarea value={draft} onChange={(event) => onDraftChange(item.comment_id, event.target.value)} rows={3} maxLength={1500} placeholder="Answer the customer clearly and helpfully…" className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100" />
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold text-slate-400">{draft.length}/1500 · Visible publicly on this product</span>
+                  <Button size="sm" className="rounded-full bg-slate-950 px-4 hover:bg-violet-600" disabled={savingId === item.comment_id} onClick={() => onReply(item.comment_id)}>
+                    {savingId === item.comment_id ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-2 h-3.5 w-3.5" />}{draft.trim() ? (item.merchant_reply ? 'Update reply' : 'Publish reply') : item.merchant_reply ? 'Remove reply' : 'Reply'}
+                  </Button>
+                </div>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 export default function MerchantProductsPage() {
   const { user } = useAuth()
   const { store, isLoading: storeLoading } = useCurrentStore()
@@ -937,6 +1058,14 @@ export default function MerchantProductsPage() {
   const [uploading, setUploading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [duplicating, setDuplicating] = useState(null)
+  const [reviewInbox, setReviewInbox] = useState([])
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewDrafts, setReviewDrafts] = useState({})
+  const [replySavingId, setReplySavingId] = useState(null)
+  const [commentInbox, setCommentInbox] = useState([])
+  const [commentLoading, setCommentLoading] = useState(false)
+  const [commentDrafts, setCommentDrafts] = useState({})
+  const [commentReplySavingId, setCommentReplySavingId] = useState(null)
 
   const channelRef = useRef(null)
 
@@ -946,6 +1075,8 @@ export default function MerchantProductsPage() {
       return () => window.clearTimeout(timer)
     }
     loadProducts()
+    loadReviewInbox()
+    loadCommentInbox()
     subscribeRealtime()
     return () => unsubscribeRealtime()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -966,9 +1097,64 @@ export default function MerchantProductsPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `store_id=eq.${store.id}` }, () => {
         loadProducts({ silent: true })
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_reviews', filter: `store_id=eq.${store.id}` }, () => {
+        loadReviewInbox({ silent: true })
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_comments', filter: `store_id=eq.${store.id}` }, () => {
+        loadCommentInbox({ silent: true })
+      })
       .subscribe()
     channelRef.current = channel
   }
+
+  async function loadReviewInbox({ silent = false } = {}) {
+    if (!store?.id) return
+    if (!silent) setReviewLoading(true)
+    const { data, error } = await supabase.rpc('merchant_list_product_reviews', { p_store_id: store.id })
+    if (error) {
+      if (!silent) toast.error(error.message || 'Could not load customer reviews')
+      setReviewInbox([])
+    } else {
+      setReviewInbox(data || [])
+    }
+    if (!silent) setReviewLoading(false)
+  }
+
+  async function saveMerchantReply(reviewId) {
+    const reply = String(reviewDrafts[reviewId] ?? reviewInbox.find((item) => item.review_id === reviewId)?.merchant_reply ?? '').trim()
+    setReplySavingId(reviewId)
+    const { error } = await supabase.rpc('merchant_reply_product_review', { p_review_id: reviewId, p_reply: reply })
+    setReplySavingId(null)
+    if (error) return toast.error(error.message || 'Could not save reply')
+    toast.success(reply ? 'Reply published' : 'Reply removed')
+    await loadReviewInbox({ silent: true })
+  }
+
+  async function loadCommentInbox({ silent = false } = {}) {
+    if (!store?.id) return
+    if (!silent) setCommentLoading(true)
+    const { data, error } = await supabase.rpc('merchant_list_product_comments', { p_store_id: store.id })
+    if (error) {
+      if (!silent && !/merchant_list_product_comments|function .* does not exist/i.test(String(error.message || ''))) {
+        toast.error(error.message || 'Could not load product comments')
+      }
+      setCommentInbox([])
+    } else {
+      setCommentInbox(data || [])
+    }
+    if (!silent) setCommentLoading(false)
+  }
+
+  async function saveMerchantCommentReply(commentId) {
+    const reply = String(commentDrafts[commentId] ?? commentInbox.find((item) => item.comment_id === commentId)?.merchant_reply ?? '').trim()
+    setCommentReplySavingId(commentId)
+    const { error } = await supabase.rpc('merchant_reply_product_comment', { p_comment_id: commentId, p_reply: reply })
+    setCommentReplySavingId(null)
+    if (error) return toast.error(error.message || 'Could not save comment reply')
+    toast.success(reply ? 'Comment reply published' : 'Comment reply removed')
+    await loadCommentInbox({ silent: true })
+  }
+
 
   async function loadProducts({ silent = false } = {}) {
     if (!store?.id) return
@@ -1373,6 +1559,26 @@ export default function MerchantProductsPage() {
           </Button>
         </div>
       )}
+
+      <MerchantReviewInbox
+        reviews={reviewInbox}
+        loading={reviewLoading}
+        drafts={reviewDrafts}
+        savingId={replySavingId}
+        onDraftChange={(reviewId, value) => setReviewDrafts((current) => ({ ...current, [reviewId]: value }))}
+        onReply={saveMerchantReply}
+        onRefresh={() => loadReviewInbox()}
+      />
+
+      <MerchantCommentInbox
+        comments={commentInbox}
+        loading={commentLoading}
+        drafts={commentDrafts}
+        savingId={commentReplySavingId}
+        onDraftChange={(commentId, value) => setCommentDrafts((current) => ({ ...current, [commentId]: value }))}
+        onReply={saveMerchantCommentReply}
+        onRefresh={() => loadCommentInbox()}
+      />
 
       {importOpen ? (
         <BulkImportDialog

@@ -25,8 +25,10 @@ export default function ProductImageGallery({
   className = '',
   compact = false,
   objectFit = 'contain',
+  aspectRatio = 'square',
 }) {
   const normalizedImages = useMemo(() => normalizeProductImages(images, fallbackImage), [images, fallbackImage])
+  const ratioClass = aspectRatio === 'portrait' ? 'aspect-[4/5]' : aspectRatio === 'landscape' ? 'aspect-[4/3]' : aspectRatio === 'wide' ? 'aspect-video' : 'aspect-square'
   const [activeIndex, setActiveIndex] = useState(0)
   const [zoom, setZoom] = useState({ active: false, x: 50, y: 50, left: 50, top: 50 })
   const mainRef = useRef(null)
@@ -64,7 +66,7 @@ export default function ProductImageGallery({
     <div className={`space-y-3 ${className}`}>
       <div
         ref={mainRef}
-        className={`group relative overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_50px_-34px_rgba(15,23,42,.35)] ${compact ? 'min-h-[300px]' : 'aspect-square'}`}
+        className={`group relative overflow-hidden rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_18px_50px_-34px_rgba(15,23,42,.35)] ${compact ? 'min-h-[300px]' : ratioClass}`}
         onPointerMove={handlePointerMove}
         onPointerEnter={(event) => {
           if (!compact && event.pointerType !== 'touch') setZoom((current) => ({ ...current, active: true }))

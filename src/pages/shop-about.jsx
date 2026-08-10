@@ -49,7 +49,7 @@ function clampText(text, fallback = "") {
   return text.trim() || fallback;
 }
 
-function EmptyState({ title, message }) {
+function EmptyState({ title, message, backTo = "/", backLabel = "Go to marketplace" }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-8 text-center dark:bg-slate-950">
       <div className="rounded-full bg-white p-5 text-slate-400 shadow-sm dark:bg-white/5">
@@ -57,8 +57,8 @@ function EmptyState({ title, message }) {
       </div>
       <h1 className="mt-5 text-2xl font-black text-slate-950 dark:text-white">{title}</h1>
       <p className="mt-2 max-w-md text-sm leading-7 text-slate-500">{message}</p>
-      <Link to="/shop" className="mt-6 inline-flex rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-white dark:border-white/10 dark:text-slate-300">
-        Back to shop
+      <Link to={backTo} className="mt-6 inline-flex rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-white/10 dark:text-slate-300">
+        {backLabel}
       </Link>
     </div>
   );
@@ -93,6 +93,8 @@ export default function ShopAboutPage() {
       }
 
       setStore(data);
+      if (data.account_status === "suspended") { setStatus("suspended"); return; }
+      if (data.account_status === "deleted") { setStatus("deleted"); return; }
       setStatus(data.storefront_published ? "ok" : "unpublished");
     }
 
@@ -114,6 +116,14 @@ export default function ShopAboutPage() {
     return <EmptyState title="Shop not found" message="No shop was found for this shop URL. Open /shop/your-shop/about." />;
   }
 
+  if (status === "suspended") {
+    return <EmptyState title="Shop temporarily unavailable" message="This storefront is currently suspended and cannot accept customer visits." />;
+  }
+
+  if (status === "deleted") {
+    return <EmptyState title="Shop unavailable" message="This storefront is no longer available." />;
+  }
+
   if (status === "unpublished") {
     return <EmptyState title="Shop is currently unavailable" message="The merchant has temporarily unpublished this storefront. Please check again later." />;
   }
@@ -123,7 +133,7 @@ export default function ShopAboutPage() {
   const themeAttrs = themeDataAttributes(activeTheme);
 
   const shopName = clampText(store.shop_name, "BazarHQ Store");
-  const tagline = clampText(store.tagline, "A trusted online shop powered by BazarHQ.");
+  const tagline = clampText(store.tagline, "An online shop powered by BazarHQ.");
   const aboutTitle = clampText(store.about_title, `About ${shopName}`);
   const aboutImage = clampText(store.about_image_url) || store.banner_url || store.logo_url;
   const about = clampText(
@@ -223,15 +233,15 @@ export default function ShopAboutPage() {
             <div className="mb-4 inline-flex rounded-2xl bg-[var(--shop-primary-soft)] p-3 text-[var(--shop-primary)]">
               <ShieldCheck className="h-6 w-6" />
             </div>
-            <h3 className="text-lg font-black">Trusted checkout</h3>
-            <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-300">Secure order placement with clear product, price, and delivery details.</p>
+            <h3 className="text-lg font-black">Clear checkout</h3>
+            <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-300">Review product, price, and delivery details clearly before placing an order.</p>
           </div>
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950">
             <div className="mb-4 inline-flex rounded-2xl bg-[var(--shop-primary-soft)] p-3 text-[var(--shop-primary)]">
               <CreditCard className="h-6 w-6" />
             </div>
             <h3 className="text-lg font-black">BD payment ready</h3>
-            <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-300">Supports customer-friendly payment options such as bKash, Nagad, Rocket, and COD when enabled.</p>
+            <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-300">Payment options enabled by this merchant are shown during checkout.</p>
           </div>
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950">
             <div className="mb-4 inline-flex rounded-2xl bg-[var(--shop-primary-soft)] p-3 text-[var(--shop-primary)]">
@@ -246,8 +256,16 @@ export default function ShopAboutPage() {
           <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950 sm:p-8">
             <h2 className="text-2xl font-black">Store information</h2>
             <div className="mt-6 grid gap-4 text-sm text-slate-600 dark:text-slate-300">
-              {store.contact_email && <p className="flex items-center gap-3"><Mail className="h-5 w-5 text-[var(--shop-primary)]" /> {store.contact_email}</p>}
-              {(store.contact_phone || store.phone) && <p className="flex items-center gap-3"><Phone className="h-5 w-5 text-[var(--shop-primary)]" /> {store.contact_phone || store.phone}</p>}
+              {store.contact_email && (
+                <a href={`mailto:${store.contact_email}`} className="flex items-center gap-3 transition hover:text-[var(--shop-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shop-primary-ring)]">
+                  <Mail className="h-5 w-5 text-[var(--shop-primary)]" /> {store.contact_email}
+                </a>
+              )}
+              {(store.contact_phone || store.phone) && (
+                <a href={`tel:${String(store.contact_phone || store.phone).replace(/\s+/g, '')}`} className="flex items-center gap-3 transition hover:text-[var(--shop-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--shop-primary-ring)]">
+                  <Phone className="h-5 w-5 text-[var(--shop-primary)]" /> {store.contact_phone || store.phone}
+                </a>
+              )}
               {store.address && <p className="flex items-center gap-3"><MapPin className="h-5 w-5 text-[var(--shop-primary)]" /> {store.address}</p>}
               {!store.contact_email && !(store.contact_phone || store.phone) && !store.address && <p>Contact details will appear here after merchant setup.</p>}
             </div>
@@ -266,13 +284,13 @@ export default function ShopAboutPage() {
           <section className="mx-auto max-w-7xl px-4 pb-14 sm:px-6 lg:px-8">
             <div className="grid gap-6 lg:grid-cols-2">
               {store.return_policy && (
-                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950 sm:p-8">
+                <div id="return-policy" className="scroll-mt-24 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950 sm:p-8">
                   <h2 className="text-xl font-black">Return policy</h2>
                   <p className="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600 dark:text-slate-300">{store.return_policy}</p>
                 </div>
               )}
               {store.shipping_policy && (
-                <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950 sm:p-8">
+                <div id="shipping-policy" className="scroll-mt-24 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950 sm:p-8">
                   <h2 className="text-xl font-black">Shipping policy</h2>
                   <p className="mt-4 whitespace-pre-line text-sm leading-7 text-slate-600 dark:text-slate-300">{store.shipping_policy}</p>
                 </div>

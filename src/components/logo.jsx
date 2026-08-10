@@ -48,7 +48,7 @@ export function Logo({ size = 'md', className = '', showText = true, compact = f
             Bazar<span className="text-emerald-500">HQ</span>
           </span>
           <span className={joinClass('mt-1 block font-bold uppercase tracking-[0.34em] text-slate-400', current.subtitle)}>
-            Commerce OS
+            A Bangladeshi MarketPlace
           </span>
         </span>
       ) : null}

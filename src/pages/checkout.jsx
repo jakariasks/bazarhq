@@ -573,6 +573,8 @@ export default function CheckoutPage() {
         title: item.title,
         variant_id: item.variantId,
         variant: item.variantLabel,
+        variant_options: item.variantOptions || null,
+        variant_sku: item.variantSku || null,
         price: Number(item.price),
         qty: Number(item.qty),
       }));
@@ -602,14 +604,16 @@ export default function CheckoutPage() {
 
       const createdOrderId = data?.order_id || publicOrderId;
 
-      // Kick the durable notification worker immediately so merchant SMS/email
-      // delivery normally starts within seconds. Cron remains the retry fallback.
+      // Kick the durable notification worker immediately. The order INSERT
+      // queues both merchant notifications and customer confirmation SMS/email.
+      // This immediate authenticated kick is the primary path for the scenario's
+      // <=30-second confirmation target; cron remains the durable retry fallback.
       try {
         await Promise.race([
           supabase.functions.invoke("process-notification-queue", {
             body: { storeId: store.id, orderId: createdOrderId, reason: "order_placed" },
           }),
-          new Promise((resolve) => window.setTimeout(resolve, 10_000)),
+          new Promise((resolve) => window.setTimeout(resolve, 8_000)),
         ]);
       } catch {
         // Order placement must never fail because a notification provider is slow.
