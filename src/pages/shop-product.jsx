@@ -678,9 +678,9 @@ export default function ShopProductPage() {
         </div>
       </header>
 
-      <main className="shop-main w-full py-7">
+      <main className="shop-main w-full py-5 sm:py-6">
         <div className="shop-product-shell mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 sm:text-sm">
           <Link to="/shop/$storeSlug" params={{ storeSlug }} className="inline-flex items-center gap-2 hover:text-[var(--shop-primary)]">
             <ArrowLeft className="h-4 w-4" /> {store.shop_name}
           </Link>
@@ -688,7 +688,7 @@ export default function ShopProductPage() {
           <span className="truncate text-slate-700">{getProductTitle(product)}</span>
         </div>
 
-        <section className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,.9fr)] lg:gap-8">
+        <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.04fr)_minmax(340px,.82fr)] lg:gap-6">
           <ProductImageGallery
             images={images}
             fallbackImage={product.image_url}
@@ -697,10 +697,10 @@ export default function ShopProductPage() {
             aspectRatio={activeTheme.image_ratio}
           />
 
-          <div className="shop-product-surface rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:p-7">
+          <div className="shop-product-surface shop-compact-purchase rounded-[1.35rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{product.category || 'General'}</span>
-              {discount > 0 && <span className="rounded-full bg-rose-500 px-3 py-1 text-xs font-black text-white">-{discount}%</span>}
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">{product.category || 'General'}</span>
+              {discount > 0 && <span className="rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-black text-white">-{discount}%</span>}
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2 text-xs font-bold">
                 <a href="#reviews" className="inline-flex items-center gap-1 text-amber-400 transition hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">
                   {[0,1,2,3,4].map(i => <Star key={i} className={`h-4 w-4 ${i < Math.round(reviewStats.avg || 0) ? 'fill-current' : ''}`} />)}
@@ -710,10 +710,10 @@ export default function ShopProductPage() {
                 <a href="#questions" className="inline-flex items-center gap-1 text-slate-500 transition hover:text-[var(--shop-primary)]"><MessageSquare className="h-3.5 w-3.5" /> {comments.length} comment{comments.length === 1 ? '' : 's'}</a>
               </div>
             </div>
-            <h1 className="mt-5 text-3xl font-black tracking-tight sm:text-4xl">{getProductTitle(product)}</h1>
-            <div className="mt-4">
-              <div className="flex items-end gap-3">
-                <p className="text-3xl font-black text-[var(--shop-primary)]">
+            <h1 className="mt-3 text-[1.9rem] font-black leading-tight tracking-tight sm:text-[2.15rem]">{getProductTitle(product)}</h1>
+            <div className="mt-2">
+              <div className="flex items-end gap-2">
+                <p className="text-[1.65rem] font-black leading-none text-[var(--shop-primary)] sm:text-[1.85rem]">
                   {selectionIncomplete && commerce.hasPriceRange ? 'From ' : ''}
                   {money(price, currency)}
                 </p>
@@ -724,18 +724,21 @@ export default function ShopProductPage() {
                 )}
               </div>
               {selectedVariant && toNumber(selectedVariant.price_adjustment, 0) !== 0 && (
-                <p className="mt-1 text-xs font-bold text-slate-500">
+                <p className="mt-1 text-[11px] font-bold text-slate-500">
                   Variant price adjustment: {toNumber(selectedVariant.price_adjustment, 0) > 0 ? '+' : ''}
                   {money(selectedVariant.price_adjustment, currency)}
                 </p>
               )}
             </div>
 
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">
-              {product.description || 'No description added yet.'}
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-600 sm:text-sm">
+              <p className="overflow-hidden [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                {product.description || 'No description added yet.'}
+              </p>
             </div>
 
             {variants.length > 0 && (
+              <div className="mt-3">
               <ProductVariantSelector
                 product={product}
                 variants={variants}
@@ -746,23 +749,24 @@ export default function ShopProductPage() {
                   setMessage('')
                 }}
               />
+              </div>
             )}
 
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <div className="flex items-center rounded-2xl border border-slate-200 bg-white p-1">
+            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center rounded-xl border border-slate-200 bg-white p-0.5">
                 <button
                   type="button"
-                  className="rounded-xl p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => setQty(Math.max(1, qty - 1))}
                   disabled={selectionIncomplete || outOfStock}
                   aria-label="Decrease quantity"
                 >
                   <Minus className="h-4 w-4" />
                 </button>
-                <span className="w-12 text-center text-sm font-black">{qty}</span>
+                <span className="w-10 text-center text-sm font-black">{qty}</span>
                 <button
                   type="button"
-                  className="rounded-xl p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => setQty(Math.min(stock || 1, qty + 1))}
                   disabled={selectionIncomplete || outOfStock || qty >= stock}
                   aria-label="Increase quantity"
@@ -772,7 +776,7 @@ export default function ShopProductPage() {
               </div>
 
               <Button
-                className="h-12 flex-1 rounded-2xl bg-[var(--shop-primary)] text-white hover:opacity-90 disabled:bg-slate-300"
+                className="h-10 flex-1 rounded-xl bg-[var(--shop-primary)] text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md hover:opacity-95 disabled:translate-y-0 disabled:bg-slate-300 disabled:shadow-none"
                 disabled={overallOutOfStock || selectionIncomplete || outOfStock}
                 onClick={addSelectedToCart}
               >
@@ -788,7 +792,7 @@ export default function ShopProductPage() {
             </div>
 
             <p
-              className={`mt-3 text-sm font-semibold ${
+              className={`mt-2 text-xs font-semibold ${
                 overallOutOfStock || outOfStock
                   ? 'text-rose-600'
                   : selectionIncomplete
@@ -808,47 +812,44 @@ export default function ShopProductPage() {
                       ? `Only ${stock} left in stock`
                       : `${stock} in stock`}
             </p>
-            {message && <p className="mt-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">{message}</p>}
+            {message && <p className="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">{message}</p>}
 
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-3 gap-2">
               {[['Secure checkout', ShieldCheck], ['Delivery at checkout', Truck], ['Order tracking', CheckCircle2]].map(([label, Icon]) => (
-                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center text-xs font-bold text-slate-600">
-                  <Icon className="mx-auto mb-2 h-5 w-5 text-[var(--shop-primary)]" /> {label}
+                <div key={label} className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-center text-[10px] font-bold leading-tight text-slate-600 sm:text-[11px]">
+                  <Icon className="h-4 w-4 shrink-0 text-[var(--shop-primary)]" /> <span>{label}</span>
                 </div>
               ))}
             </div>
 
-            <div className="mt-8 rounded-[1rem] border border-slate-200 bg-slate-50 p-5">
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="flex items-center gap-2">
-                <Tag className="h-4 w-4 text-[var(--shop-primary)]" />
-                <h3 className="text-sm font-black text-slate-950">More product information</h3>
+                <Tag className="h-3.5 w-3.5 text-[var(--shop-primary)]" />
+                <h3 className="text-xs font-black text-slate-950">Product information</h3>
               </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-white p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Category</p>
-                  <p className="mt-2 text-sm font-bold text-slate-900">{product.category || 'General'}</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-white px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Category</p>
+                  <p className="mt-0.5 truncate text-xs font-bold text-slate-900">{product.category || 'General'}</p>
                 </div>
-                <div className="rounded-2xl bg-white p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">SKU</p>
-                  <p className="mt-2 text-sm font-bold text-slate-900">{selectedVariant?.sku || product.sku || 'Not provided'}</p>
+                <div className="rounded-lg bg-white px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">SKU</p>
+                  <p className="mt-0.5 truncate text-xs font-bold text-slate-900">{selectedVariant?.sku || product.sku || 'Not provided'}</p>
                 </div>
-                <div className="rounded-2xl bg-white p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Availability</p>
-                  <p className="mt-2 text-sm font-bold text-slate-900">{overallOutOfStock ? 'Out of stock' : selectionIncomplete ? `${totalVariantStock} total across variants` : `${stock} available now`}</p>
+                <div className="rounded-lg bg-white px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Availability</p>
+                  <p className="mt-0.5 truncate text-xs font-bold text-slate-900">{overallOutOfStock ? 'Out of stock' : selectionIncomplete ? `${totalVariantStock} total across variants` : `${stock} available now`}</p>
                 </div>
-                <div className="rounded-2xl bg-white p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Store</p>
-                  <p className="mt-2 text-sm font-bold text-slate-900">{store.shop_name}</p>
+                <div className="rounded-lg bg-white px-3 py-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">Store</p>
+                  <p className="mt-0.5 truncate text-xs font-bold text-slate-900">{store.shop_name}</p>
                 </div>
               </div>
               {tagList.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Tags</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {tagList.slice(0, 10).map((tag) => (
-                      <span key={tag} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">{tag}</span>
-                    ))}
-                  </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {tagList.slice(0, 5).map((tag) => (
+                    <span key={tag} className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">{tag}</span>
+                  ))}
                 </div>
               )}
             </div>
