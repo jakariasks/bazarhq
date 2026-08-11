@@ -59,6 +59,64 @@ const EMPTY = {
   payment_policy: 'Cash on Delivery remains pending until collection. Mobile banking payments require a valid transaction ID and remain pending until merchant verification.',
 }
 
+const MAX_STORE_IMAGE_BYTES = 2 * 1024 * 1024
+
+function storeForm(store, user) {
+  if (!store) return EMPTY
+  return {
+    shop_name: store.shop_name ?? '',
+    business_category: store.business_category ?? '',
+    tagline: store.tagline ?? '',
+    description: store.description ?? '',
+    contact_email: store.contact_email ?? user?.email ?? '',
+    phone: store.phone ?? '',
+    whatsapp_number: store.whatsapp_number ?? '',
+    website_url: store.website_url ?? '',
+    address: store.address ?? '',
+    city: store.city ?? '',
+    currency: store.currency ?? 'BDT',
+    brand_color: store.brand_color ?? '#6366f1',
+    facebook_handle: store.facebook_handle ?? '',
+    instagram_handle: store.instagram_handle ?? '',
+    hero_title: store.hero_title ?? '',
+    hero_subtitle: store.hero_subtitle ?? '',
+    hero_banner_urls: padHeroUrls(store.hero_banner_urls ?? store.banner_urls ?? store.banner_images ?? store.hero_images),
+    about_title: store.about_title ?? '',
+    about_image_url: store.about_image_url ?? '',
+    about_mission: store.about_mission ?? '',
+    offer_enabled: store.offer_enabled ?? true,
+    offer_badge: store.offer_badge ?? '',
+    offer_title: store.offer_title ?? '',
+    offer_subtitle: store.offer_subtitle ?? '',
+    offer_button_text: store.offer_button_text ?? '',
+    offer_image_url: store.offer_image_url ?? '',
+    delivery_charge_dhaka: store.delivery_charge_dhaka ?? 60,
+    delivery_charge_outside_dhaka: store.delivery_charge_outside_dhaka ?? 120,
+    free_delivery_min_amount: store.free_delivery_min_amount ?? 0,
+    return_policy: store.return_policy || EMPTY.return_policy,
+    shipping_policy: store.shipping_policy || EMPTY.shipping_policy,
+    payment_policy: store.payment_policy || EMPTY.payment_policy,
+  }
+}
+
+function validateStoreImage(file) {
+  if (!file) return 'Choose an image file.'
+  if (!String(file.type || '').startsWith('image/')) return 'Only image files are supported.'
+  if (file.size > MAX_STORE_IMAGE_BYTES) return 'Image must be under 2 MB.'
+  return ''
+}
+
+function validOptionalUrl(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return true
+  try {
+    const url = new URL(raw)
+    return ['http:', 'https:'].includes(url.protocol)
+  } catch {
+    return false
+  }
+}
+
 
 
 export default function SettingsPage() {
@@ -80,45 +138,17 @@ export default function SettingsPage() {
   useEffect(() => {
     if (storeLoading) return
     if (store) {
-      setForm({
-        shop_name: store.shop_name ?? '',
-        business_category: store.business_category ?? '',
-        tagline: store.tagline ?? '',
-        description: store.description ?? '',
-        contact_email: store.contact_email ?? user?.email ?? '',
-        phone: store.phone ?? '',
-        whatsapp_number: store.whatsapp_number ?? '',
-        website_url: store.website_url ?? '',
-        address: store.address ?? '',
-        city: store.city ?? '',
-        currency: store.currency ?? 'BDT',
-        brand_color: store.brand_color ?? '#6366f1',
-        facebook_handle: store.facebook_handle ?? '',
-        instagram_handle: store.instagram_handle ?? '',
-        hero_title: store.hero_title ?? '',
-        hero_subtitle: store.hero_subtitle ?? '',
-        hero_banner_urls: padHeroUrls(store.hero_banner_urls ?? store.banner_urls ?? store.banner_images ?? store.hero_images),
-        about_title: store.about_title ?? '',
-        about_image_url: store.about_image_url ?? '',
-        about_mission: store.about_mission ?? '',
-        offer_enabled: store.offer_enabled ?? true,
-        offer_badge: store.offer_badge ?? '',
-        offer_title: store.offer_title ?? '',
-        offer_subtitle: store.offer_subtitle ?? '',
-        offer_button_text: store.offer_button_text ?? '',
-        offer_image_url: store.offer_image_url ?? '',
-        delivery_charge_dhaka: store.delivery_charge_dhaka ?? 60,
-        delivery_charge_outside_dhaka: store.delivery_charge_outside_dhaka ?? 120,
-        free_delivery_min_amount: store.free_delivery_min_amount ?? 0,
-        return_policy: store.return_policy || EMPTY.return_policy,
-        shipping_policy: store.shipping_policy || EMPTY.shipping_policy,
-        payment_policy: store.payment_policy || EMPTY.payment_policy,
-      })
+      setForm(storeForm(store, user))
       setLogoUrl(store.logo_url ?? null)
       setBannerUrl(store.banner_url ?? null)
+    } else {
+      setForm(EMPTY)
+      setLogoUrl(null)
+      setBannerUrl(null)
     }
     setLoading(false)
   }, [store, storeLoading, user])
+
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -132,10 +162,11 @@ export default function SettingsPage() {
 
   const uploadCustomImage = async (file, target, index = null) => {
     if (!user || !store || !file) return
-    if (file.size > 3 * 1024 * 1024) { toast.error('Image must be under 3 MB'); return }
+    const validationError = validateStoreImage(file)
+    if (validationError) { toast.error(validationError); return }
     const uploadKey = index == null ? target : `${target}-${index}`
     setUploading(uploadKey)
-    const ext = file.name.split('.').pop() || 'png'
+    const ext = String(file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'png'
     const path = `${user.id}/${target}-${index ?? 'single'}-${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage.from('shop-branding').upload(path, file, { upsert: true, contentType: file.type })
     if (upErr) { toast.error(upErr.message); setUploading(null); return }
@@ -150,15 +181,21 @@ export default function SettingsPage() {
 
   const uploadImage = async (file, kind) => {
     if (!user || !store) return
-    if (file.size > 3 * 1024 * 1024) { toast.error('Image must be under 3 MB'); return }
+    const validationError = validateStoreImage(file)
+    if (validationError) { toast.error(validationError); return }
     setUploading(kind)
-    const ext = file.name.split('.').pop() || 'png'
+    const ext = String(file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'png'
     const path = `${user.id}/${kind}-${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage.from('shop-branding').upload(path, file, { upsert: true, contentType: file.type })
     if (upErr) { toast.error(upErr.message); setUploading(null); return }
     const { data: pub } = supabase.storage.from('shop-branding').getPublicUrl(path)
     const patch = kind === 'logo' ? { logo_url: pub.publicUrl } : { banner_url: pub.publicUrl }
-    await supabase.from('stores').update(patch).eq('id', store.id)
+    const { error: saveError } = await supabase.from('stores').update(patch).eq('id', store.id)
+    if (saveError) {
+      setUploading(null)
+      toast.error(`Image uploaded, but the store could not be updated: ${saveError.message}`)
+      return
+    }
     if (kind === 'logo') setLogoUrl(pub.publicUrl)
     else setBannerUrl(pub.publicUrl)
     setUploading(null)
@@ -169,6 +206,10 @@ export default function SettingsPage() {
   const saveProfile = async () => {
     if (!store) return
     if (!form.shop_name.trim() || form.shop_name.trim().length < 2) { toast.error('Shop name is too short'); return }
+    if (form.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contact_email.trim())) { toast.error('Enter a valid contact email.'); return }
+    if (!validOptionalUrl(form.website_url)) { toast.error('Website URL must start with http:// or https://.'); return }
+    const imageUrls = [...padHeroUrls(form.hero_banner_urls), form.offer_image_url, form.about_image_url].filter(Boolean)
+    if (imageUrls.some((url) => !validOptionalUrl(url))) { toast.error('Storefront image URLs must use http:// or https://.'); return }
     setSaving(true)
     const { error } = await supabase.from('stores').update({
       shop_name: form.shop_name.trim(),
@@ -208,6 +249,14 @@ export default function SettingsPage() {
     if (error) { toast.error(error.message); return }
     qc.invalidateQueries({ queryKey: ['stores', user.id] })
     toast.success('Store profile saved ✓')
+  }
+
+  const discardChanges = () => {
+    if (!store) return
+    setForm(storeForm(store, user))
+    setLogoUrl(store.logo_url ?? null)
+    setBannerUrl(store.banner_url ?? null)
+    toast.info('Unsaved store changes discarded.')
   }
 
   const initial = (form.shop_name || user?.email || '?').charAt(0).toUpperCase()
@@ -420,7 +469,7 @@ export default function SettingsPage() {
               </Sec>
 
               <div className="flex justify-end gap-2">
-                <Button variant="ghost" onClick={()=>window.location.reload()} disabled={saving}>Discard</Button>
+                <Button variant="ghost" onClick={discardChanges} disabled={saving}>Discard</Button>
                 <Button onClick={saveProfile} disabled={saving} className="bg-gradient-primary px-8">
                   {saving&&<Loader2 className="mr-2 h-4 w-4 animate-spin"/>}Save changes
                 </Button>

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { supabase } from '@/integrations/supabase/client'
 import { useCurrentStore } from '@/lib/use-current-store'
+import { getProductCommerceSummary, normalizeProductVariants } from '@/lib/product-variants'
 import { toast } from 'sonner'
 
 const ANALYTICS_SLA_MS = 3000
@@ -43,6 +44,25 @@ function headerNumber(response, name) {
   return Number.isFinite(value) ? value : null
 }
 function nearlyEqual(a, b, tolerance = 0.01) { return Math.abs(Number(a || 0) - Number(b || 0)) <= tolerance }
+
+function inventoryState(product) {
+  const commerce = getProductCommerceSummary(product)
+  const stock = Number(commerce.stock || 0)
+  if (stock <= 0) return { stock, outOfStock: true, lowStock: false }
+
+  if (product?.has_variants) {
+    const variants = normalizeProductVariants(product)
+    const lowStock = variants.some((variant) => {
+      const variantStock = Number(variant.stock || 0)
+      const threshold = Number(variant.low_stock_threshold ?? product.low_stock_threshold ?? 5)
+      return variant.available && variantStock <= threshold
+    })
+    return { stock, outOfStock: false, lowStock }
+  }
+
+  const threshold = Number(product?.low_stock_threshold ?? 5)
+  return { stock, outOfStock: false, lowStock: stock > 0 && stock <= threshold }
+}
 
 function Kpi({ label, value, sub, icon: Icon, gradient }) {
   return <div className="rounded-2xl border border-border bg-card p-4 shadow-sm"><div className={`flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br text-white ${gradient}`}><Icon className="h-4 w-4" /></div><p className="mt-3 text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold">{value}</p>{sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}</div>
@@ -88,7 +108,7 @@ export default function AnalyticsPage() {
     queryKey: ['analytics-product-stock', store?.id],
     enabled: !!store?.id,
     queryFn: async () => {
-      const { data, error: productError } = await supabase.from('products').select('id,title,stock,status,low_stock_threshold').eq('store_id', store.id)
+      const { data, error: productError } = await supabase.from('products').select('id,title,stock,status,low_stock_threshold,has_variants,variants').eq('store_id', store.id)
       if (productError) throw productError
       return data || []
     },
@@ -103,8 +123,8 @@ export default function AnalyticsPage() {
   const viewedProducts = analytics.top_viewed_products || []
   const sellingProducts = analytics.top_selling_products || []
   const conversion = percent(Number(summary.valid_orders || 0), Number(summary.unique_visitors || 0))
-  const lowStock = products.filter((p) => p.status === 'published' && Number(p.stock || 0) > 0 && Number(p.stock || 0) <= Number(p.low_stock_threshold ?? 5))
-  const outOfStock = products.filter((p) => p.status === 'published' && Number(p.stock || 0) <= 0)
+  const lowStock = products.filter((p) => p.status === 'published' && inventoryState(p).lowStock)
+  const outOfStock = products.filter((p) => p.status === 'published' && inventoryState(p).outOfStock)
   const hasOrders = Number(summary.orders || 0) > 0
   const hasData = hasOrders || Number(summary.unique_visitors || 0) > 0 || Number(summary.product_views || 0) > 0
   const slaMet = Number(response?.loadMs || 0) <= ANALYTICS_SLA_MS

@@ -1,15 +1,12 @@
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
-import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, Search, Menu, X, LogOut, Check, AlertTriangle, ShieldAlert, PlusCircle, Store as StoreIcon, Sparkles, ShoppingBag } from 'lucide-react'
+import { LayoutDashboard, Package, ShoppingCart, Users, BarChart3, Palette, CreditCard, Settings, Search, Menu, X, LogOut, AlertTriangle, ShieldAlert, PlusCircle, Store as StoreIcon, Sparkles, ShoppingBag } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/logo'
 import { Input } from '@/components/ui/input'
 import { AuthGuard } from '@/components/auth-guard'
 import { useAuth } from '@/hooks/use-auth'
-import { supabase } from '@/integrations/supabase/client'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { previewThemes, themeCssVars, getTheme, DEFAULT_THEME_ID } from '@/lib/preview-themes'
 import { toast } from 'sonner'
 import { StoreSwitcher } from '@/components/store-switcher'
 import { NotificationCenter } from '@/components/notification-center'
@@ -26,6 +23,17 @@ const nav = [
   { to: '/merchant/themes', label: 'Themes', icon: Palette },
   { to: '/merchant/payments', label: 'Payments', icon: CreditCard },
   { to: '/merchant/settings', label: 'Settings', icon: Settings },
+]
+
+const MERCHANT_SEARCH_ITEMS = [
+  { to: '/merchant', label: 'Dashboard', keywords: 'overview home setup publish' },
+  { to: '/merchant/products', label: 'Products', keywords: 'catalog inventory stock variants csv import reviews comments' },
+  { to: '/merchant/orders', label: 'Orders', keywords: 'pending confirmed shipped delivered payment invoice cancellation' },
+  { to: '/merchant/customers', label: 'Customers', keywords: 'buyers contacts repeat customer history' },
+  { to: '/merchant/analytics', label: 'Analytics', keywords: 'revenue traffic conversion reports csv performance' },
+  { to: '/merchant/themes', label: 'Themes', keywords: 'storefront design colors layout branding' },
+  { to: '/merchant/payments', label: 'Payments', keywords: 'bkash nagad rocket sslcommerz cod gateway' },
+  { to: '/merchant/settings', label: 'Settings', keywords: 'profile policy delivery notifications security account' },
 ]
 
 function NoStoreDashboard({ user, navigate }) {
@@ -99,22 +107,23 @@ function MerchantLayout() {
   const [open, setOpen] = useState(false)
   const { user, signOut, hasCustomerRole, refreshRoles } = useAuth()
   const navigate = useNavigate()
-  const qc = useQueryClient()
   const { store, isLoading: storeLoading } = useCurrentStore()
+  const [merchantSearch, setMerchantSearch] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
 
-  const [themeId, setThemeId] = useState(DEFAULT_THEME_ID)
-  useEffect(() => { if (store?.theme_id) setThemeId(store.theme_id) }, [store?.theme_id])
+  const merchantSearchResults = MERCHANT_SEARCH_ITEMS.filter((item) => {
+    const term = merchantSearch.trim().toLowerCase()
+    if (!term) return false
+    return `${item.label} ${item.keywords}`.toLowerCase().includes(term)
+  }).slice(0, 6)
 
-  const applyTheme = async (t) => {
-    setThemeId(t.id)
-    if (!store) return
-    const { error } = await supabase.from('stores').update({ theme_id: t.id }).eq('id', store.id)
-    if (error) { toast.error(error.message); return }
-    toast.success(`Theme set to ${t.name}`)
-    qc.invalidateQueries({ queryKey: ['stores', user?.id] })
+  const runMerchantSearch = (item = merchantSearchResults[0]) => {
+    if (!item) return
+    setMerchantSearch('')
+    setSearchOpen(false)
+    navigate({ to: item.to })
   }
 
-  const activeTheme = getTheme(themeId)
   const initial = (user?.user_metadata?.shop_name || user?.email || '?').charAt(0).toUpperCase()
   const accountStatus = store?.account_status || 'active'
   const isSuspended = accountStatus === 'suspended'
@@ -125,7 +134,7 @@ function MerchantLayout() {
   const showNoStoreDashboard = hasNoActiveStore && !isNewStoreRoute
 
   return (
-    <div className="flex min-h-screen w-full bg-muted/30" style={themeCssVars(activeTheme)}>
+    <div className="flex min-h-screen w-full bg-muted/30">
       {open && <div className="fixed inset-0 z-30 bg-foreground/30 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} />}
 
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 transform border-r border-border bg-sidebar transition-transform lg:static lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -160,10 +169,9 @@ function MerchantLayout() {
           })}
         </nav>
 
-        <div className="absolute bottom-4 left-3 right-3 rounded-xl border border-border bg-gradient-primary p-4 text-primary-foreground">
-          <div className="text-sm font-medium">Upgrade to Pro</div>
-          <p className="mt-1 text-xs opacity-90">Unlock advanced analytics & API access.</p>
-          <Button size="sm" variant="secondary" className="mt-3 w-full">Upgrade</Button>
+        <div className="absolute bottom-4 left-3 right-3 rounded-xl border border-border bg-muted/50 p-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Sparkles className="h-3.5 w-3.5 text-primary" /> Current plan</div>
+          <p className="mt-1 text-[11px] leading-5 text-muted-foreground">One active store is available in the current merchant version.</p>
         </div>
       </aside>
 
@@ -171,34 +179,42 @@ function MerchantLayout() {
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md sm:px-6">
           <button className="lg:hidden" onClick={() => setOpen(true)}><Menu className="h-5 w-5" /></button>
           <div className="relative hidden flex-1 max-w-md md:block">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder={hasNoActiveStore ? 'Create a store to search products, orders, customers…' : 'Search products, orders, customers…'} className="pl-9" disabled={hasNoActiveStore} />
+            <Search className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={merchantSearch}
+              onChange={(event) => { setMerchantSearch(event.target.value); setSearchOpen(true) }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && merchantSearchResults.length) { event.preventDefault(); runMerchantSearch() }
+                if (event.key === 'Escape') { setSearchOpen(false); setMerchantSearch('') }
+              }}
+              placeholder={hasNoActiveStore ? 'Create a store to unlock merchant tools…' : 'Search merchant tools…'}
+              aria-label="Search merchant tools"
+              className="pl-9 pr-16"
+              disabled={hasNoActiveStore}
+            />
+            {!hasNoActiveStore && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">Enter</span>}
+            {searchOpen && merchantSearch.trim() && (
+              <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-xl border border-border bg-popover p-1.5 shadow-xl">
+                {merchantSearchResults.length ? merchantSearchResults.map((item) => (
+                  <button key={item.to} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => runMerchantSearch(item)} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
+                    <span>{item.label}</span><span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Open</span>
+                  </button>
+                )) : <p className="px-3 py-3 text-sm text-muted-foreground">No merchant tool matches “{merchantSearch.trim()}”.</p>}
+              </div>
+            )}
           </div>
           <div className="flex flex-1 items-center justify-end gap-2">
             <span className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${hasNoActiveStore ? 'border-primary/20 bg-primary/10 text-primary' : isSuspended ? 'border-red-300 bg-red-50 text-red-700' : isDeleted ? 'border-slate-300 bg-slate-100 text-slate-600' : store?.storefront_published ? 'border-success/30 bg-success/10 text-success' : 'border-border bg-muted text-muted-foreground'}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${hasNoActiveStore ? 'bg-primary' : isSuspended ? 'bg-red-600' : isDeleted ? 'bg-slate-500' : store?.storefront_published ? 'bg-success' : 'bg-muted-foreground'}`} />
               {hasNoActiveStore ? 'No store yet' : isSuspended ? 'Suspended' : isDeleted ? 'Deleted' : store?.storefront_published ? 'Live' : 'Draft'}
             </span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2" disabled={hasNoActiveStore}>
-                  <span className="inline-block h-3.5 w-3.5 rounded-full ring-2 ring-background" style={{ background: activeTheme.swatch }} />
-                  <span className="hidden sm:inline">{activeTheme.name}</span>
-                  <Palette className="h-3.5 w-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Preview theme</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {previewThemes.map((t) => (
-                  <DropdownMenuItem key={t.id} onClick={() => applyTheme(t)} className="gap-2">
-                    <span className="inline-block h-4 w-4 rounded-full" style={{ background: t.swatch }} />
-                    <span className="flex-1">{t.name}</span>
-                    {t.id === activeTheme.id && <Check className="h-4 w-4 opacity-70" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button variant="outline" size="sm" className="gap-2" disabled={hasNoActiveStore} onClick={() => navigate({ to: '/merchant/themes' })}>
+              <span className="inline-block h-3.5 w-3.5 rounded-full ring-2 ring-background" style={{ background: store?.brand_color || '#6366f1' }} />
+              <span className="hidden max-w-28 truncate sm:inline">{store?.theme_name || 'Theme studio'}</span>
+              <Palette className="h-3.5 w-3.5 opacity-70" />
+            </Button>
             <NotificationCenter />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

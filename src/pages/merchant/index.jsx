@@ -15,7 +15,8 @@ export default function DashboardPage() {
     queryKey: ['product-count', store?.id],
     enabled: !!store,
     queryFn: async () => {
-      const { count } = await supabase.from('products').select('id', { count: 'exact', head: true }).eq('store_id', store.id)
+      const { count, error } = await supabase.from('products').select('id', { count: 'exact', head: true }).eq('store_id', store.id)
+      if (error) throw error
       return count ?? 0
     },
   })
@@ -24,17 +25,18 @@ export default function DashboardPage() {
     queryKey: ['order-stats', store?.id],
     enabled: !!store,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .select('status, total, created_at')
         .eq('store_id', store.id)
+      if (error) throw error
       const all = data ?? []
       const today = new Date().toDateString()
-      const revenue = all.filter(o => o.status !== 'cancelled').reduce((s, o) => s + Number(o.total || 0), 0)
+      const revenue = all.filter(o => !['cancelled', 'canceled'].includes(String(o.status || '').toLowerCase())).reduce((s, o) => s + Number(o.total || 0), 0)
       const todayOrders = all.filter(o => new Date(o.created_at).toDateString() === today).length
-      const pending = all.filter(o => o.status === 'pending').length
-      const stalePending = all.filter(o => o.status === 'pending' && Date.now() - new Date(o.created_at).getTime() > 48 * 60 * 60 * 1000).length
-      return { total: all.length, revenue, todayOrders, pending, stalePending }
+      const pending = all.filter(o => String(o.status || '').toLowerCase() === 'pending').length
+      const stalePending = all.filter(o => String(o.status || '').toLowerCase() === 'pending' && Date.now() - new Date(o.created_at).getTime() > 48 * 60 * 60 * 1000).length
+      return { total: all.length, revenue, todayOrders, pending, stalePending, freshPending: Math.max(0, pending - stalePending) }
     },
   })
 
@@ -135,7 +137,7 @@ export default function DashboardPage() {
       )}
 
       {/* Pending orders alert */}
-      {(orderStats?.pending || 0) > 0 && (
+      {(orderStats?.freshPending || 0) > 0 && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100">
@@ -143,7 +145,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex-1">
             <p className="text-sm font-semibold text-amber-800">
-              You have {orderStats.pending} pending order{orderStats.pending !== 1 ? 's' : ''} waiting
+              You have {orderStats.freshPending} pending order{orderStats.freshPending !== 1 ? 's' : ''} waiting
             </p>
             <p className="text-xs text-amber-600">Review and confirm them to keep customers happy.</p>
           </div>
@@ -221,12 +223,13 @@ export default function DashboardPage() {
 }
 
 function RecentOrders({ storeId }) {
-  const { data: orders = [], isLoading } = useQuery({
+  const { data: orders = [], isLoading, error } = useQuery({
     queryKey: ['recent-orders', storeId],
     enabled: !!storeId,
     queryFn: async () => {
-      const { data } = await supabase.from('orders').select('order_id,customer_name,total,status,created_at')
+      const { data, error: queryError } = await supabase.from('orders').select('order_id,customer_name,total,status,created_at')
         .eq('store_id', storeId).order('created_at', { ascending: false }).limit(5)
+      if (queryError) throw queryError
       return data ?? []
     },
   })
@@ -240,6 +243,7 @@ function RecentOrders({ storeId }) {
   }
 
   if (isLoading) return <div className="space-y-2">{[0,1,2].map(i => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>
+  if (error) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">Could not load recent orders. Refresh the dashboard to try again.</div>
   if (!orders.length) return (
     <div className="flex flex-col items-center justify-center py-10 text-center">
       <ShoppingCart className="h-7 w-7 text-muted-foreground" />

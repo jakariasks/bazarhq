@@ -54,6 +54,10 @@ function getOrderTotal(order) {
   return Number(order.total ?? order.total_amount ?? order.grand_total ?? 0)
 }
 
+function isCancelledOrder(order) {
+  return ['cancelled', 'canceled'].includes(String(order?.status || '').trim().toLowerCase())
+}
+
 function getCustomerKey(order) {
   if (order.customer_id) return `id:${order.customer_id}`
   if (order.customer_email) return `email:${String(order.customer_email).trim().toLowerCase()}`
@@ -69,7 +73,7 @@ function getItemsCount(order) {
 function statusClass(status) {
   const s = String(status || '').toLowerCase()
   if (s === 'delivered') return 'bg-emerald-100 text-emerald-700'
-  if (s === 'cancelled') return 'bg-red-100 text-red-700'
+  if (s === 'cancelled' || s === 'canceled') return 'bg-red-100 text-red-700'
   if (s === 'shipped') return 'bg-indigo-100 text-indigo-700'
   if (s === 'confirmed') return 'bg-blue-100 text-blue-700'
   return 'bg-amber-100 text-amber-700'
@@ -82,12 +86,13 @@ function csvEscape(value) {
 
 function exportCustomers(customers, shopName) {
   const rows = [
-    ['Name', 'Email', 'Phone', 'District', 'Orders', 'Total Spent', 'Last Order', 'Last Status'],
+    ['Name', 'Email', 'Phone', 'District', 'Valid Orders', 'All Orders', 'Total Spent', 'Last Order', 'Last Status'],
     ...customers.map((c) => [
       c.name,
       c.email,
       c.phone,
       c.district,
+      c.validOrdersCount,
       c.ordersCount,
       c.totalSpent,
       c.lastOrderAt,
@@ -123,6 +128,7 @@ function buildCustomersFromOrders(orders) {
       district: order.district || order.delivery_area || '',
       address: order.delivery_address || '',
       ordersCount: 0,
+      validOrdersCount: 0,
       totalSpent: 0,
       itemsCount: 0,
       lastOrderAt: created,
@@ -136,9 +142,13 @@ function buildCustomersFromOrders(orders) {
     base.phone = base.phone || order.customer_phone || ''
     base.district = base.district || order.district || order.delivery_area || ''
     base.address = base.address || order.delivery_address || ''
+    const cancelled = isCancelledOrder(order)
     base.ordersCount += 1
-    base.totalSpent += total
-    base.itemsCount += getItemsCount(order)
+    if (!cancelled) {
+      base.validOrdersCount += 1
+      base.totalSpent += total
+      base.itemsCount += getItemsCount(order)
+    }
     base.orders.push(order)
 
     if (created && (!base.lastOrderAt || new Date(created) > new Date(base.lastOrderAt))) {
@@ -190,10 +200,10 @@ export default function CustomersPage() {
 
   const stats = useMemo(() => ({
     totalCustomers: customers.length,
-    totalOrders: orders.length,
+    totalOrders: orders.filter((order) => !isCancelledOrder(order)).length,
     totalRevenue: customers.reduce((sum, c) => sum + Number(c.totalSpent || 0), 0),
-    repeatCustomers: customers.filter((c) => c.ordersCount > 1).length,
-  }), [customers, orders.length])
+    repeatCustomers: customers.filter((c) => c.validOrdersCount > 1).length,
+  }), [customers, orders])
 
   if (storeLoading) {
     return (
@@ -242,7 +252,7 @@ export default function CustomersPage() {
         </div>
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Customer orders</p>
+            <p className="text-sm text-muted-foreground">Valid customer orders</p>
             <ShoppingBag className="h-4 w-4 text-primary" />
           </div>
           <p className="mt-2 text-2xl font-bold">{stats.totalOrders}</p>
@@ -311,7 +321,7 @@ export default function CustomersPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="truncate font-semibold">{customer.name || 'Unknown customer'}</h3>
-                      {customer.ordersCount > 1 && <Badge variant="secondary">Repeat</Badge>}
+                      {customer.validOrdersCount > 1 && <Badge variant="secondary">Repeat</Badge>}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       {customer.email && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> {customer.email}</span>}
@@ -324,7 +334,8 @@ export default function CustomersPage() {
                 <div className="grid grid-cols-3 gap-2 text-center text-sm lg:w-[360px]">
                   <div className="rounded-xl bg-muted/60 px-3 py-2">
                     <p className="text-xs text-muted-foreground">Orders</p>
-                    <p className="font-semibold">{customer.ordersCount}</p>
+                    <p className="font-semibold">{customer.validOrdersCount}</p>
+                    {customer.ordersCount !== customer.validOrdersCount && <p className="text-[10px] text-muted-foreground">{customer.ordersCount} total</p>}
                   </div>
                   <div className="rounded-xl bg-muted/60 px-3 py-2">
                     <p className="text-xs text-muted-foreground">Spent</p>
@@ -375,8 +386,9 @@ export default function CustomersPage() {
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Total orders</p>
-                  <p className="mt-1 text-xl font-bold">{selected.ordersCount}</p>
+                  <p className="text-xs text-muted-foreground">Valid orders</p>
+                  <p className="mt-1 text-xl font-bold">{selected.validOrdersCount}</p>
+                  {selected.ordersCount !== selected.validOrdersCount && <p className="mt-0.5 text-[11px] text-muted-foreground">{selected.ordersCount} including cancelled</p>}
                 </div>
                 <div className="rounded-xl border border-border p-3">
                   <p className="text-xs text-muted-foreground">Total spent</p>

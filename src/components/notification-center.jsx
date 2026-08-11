@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bell, CheckCheck, Loader2, Package, ShieldAlert, Megaphone, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,9 +30,10 @@ function formatTime(value) {
 export function NotificationCenter() {
   const { store } = useCurrentStore()
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const queryKey = ['merchant-notifications', store?.id]
 
-  const { data: notifications = [], isLoading } = useQuery({
+  const { data: notifications = [], isLoading, error: notificationsError, refetch } = useQuery({
     queryKey,
     enabled: !!store?.id,
     queryFn: async () => {
@@ -90,8 +92,32 @@ export function NotificationCenter() {
 
   async function markOneRead(id) {
     const now = new Date().toISOString()
-    const { error } = await supabase.from('merchant_notifications').update({ read_at: now, is_read: true }).eq('id', id)
-    if (!error) qc.setQueryData(queryKey, (current = []) => current.map((item) => item.id === id ? { ...item, read_at: now, is_read: true } : item))
+    const { error } = await supabase
+      .from('merchant_notifications')
+      .update({ read_at: now, is_read: true })
+      .eq('id', id)
+      .eq('store_id', store.id)
+    if (error) {
+      toast.error('Could not mark the notification as read.')
+      return false
+    }
+    qc.setQueryData(queryKey, (current = []) => current.map((item) => item.id === id ? { ...item, read_at: now, is_read: true } : item))
+    return true
+  }
+
+  function notificationRoute(item) {
+    const explicit = String(item?.action_url || item?.link_url || '').trim()
+    if (explicit.startsWith('/merchant')) return explicit
+    if (item?.type === 'new_order' || item?.type === 'order_status') return '/merchant/orders'
+    if (item?.type === 'low_stock') return '/merchant/products'
+    if (item?.type === 'store_suspended' || item?.type === 'store_deleted') return '/merchant/settings'
+    return ''
+  }
+
+  async function openNotification(item) {
+    await markOneRead(item.id)
+    const target = notificationRoute(item)
+    if (target) navigate({ to: target })
   }
 
   return (
@@ -111,13 +137,19 @@ export function NotificationCenter() {
         <div className="max-h-[420px] overflow-y-auto p-2">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading...</div>
+          ) : notificationsError ? (
+            <div className="px-4 py-8 text-center">
+              <AlertTriangle className="mx-auto h-5 w-5 text-destructive" />
+              <p className="mt-2 text-sm font-medium">Notifications could not be loaded</p>
+              <button type="button" onClick={() => refetch()} className="mt-2 text-xs font-semibold text-primary hover:underline">Try again</button>
+            </div>
           ) : notifications.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground">No notifications yet.</div>
           ) : notifications.map((item) => {
             const Icon = iconFor(item.type)
             const read = item.read_at || item.is_read
             return (
-              <DropdownMenuItem key={item.id} onClick={() => markOneRead(item.id)} className="mb-1 cursor-pointer rounded-xl p-3 focus:bg-muted">
+              <DropdownMenuItem key={item.id} onSelect={() => openNotification(item)} className="mb-1 cursor-pointer rounded-xl p-3 focus:bg-muted">
                 <div className="flex w-full gap-3">
                   <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${read ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}><Icon className="h-4 w-4" /></div>
                   <div className="min-w-0 flex-1">

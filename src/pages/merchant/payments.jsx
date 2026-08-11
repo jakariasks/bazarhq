@@ -14,14 +14,14 @@ import { useAuth } from '@/hooks/use-auth'
 import { useCurrentStore } from '@/lib/use-current-store'
 
 const METHODS = [
-  { id: 'bkash', name: 'bKash', logo: '🔴', color: '#E2136E', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
-  { id: 'nagad', name: 'Nagad', logo: '🟠', color: '#F7941D', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
-  { id: 'rocket', name: 'Rocket (DBBL)', logo: '🟣', color: '#8B3FC8', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
-  { id: 'ssl', name: 'SSLCommerz (Cards)', logo: '💳', color: '#2563EB', fields: [
+  { id: 'bkash', name: 'bKash', logo: 'bK', color: '#E2136E', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
+  { id: 'nagad', name: 'Nagad', logo: 'N', color: '#F7941D', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
+  { id: 'rocket', name: 'Rocket (DBBL)', logo: 'R', color: '#8B3FC8', fields: [{ key: 'merchant_number', label: 'Merchant Number', placeholder: '01XXXXXXXXX' }] },
+  { id: 'ssl', name: 'SSLCommerz (Cards)', logo: 'SSL', color: '#2563EB', fields: [
     { key: 'ssl_store_id', label: 'SSL Store ID', placeholder: 'Your SSLCommerz Store ID' },
     { key: 'store_password', label: 'SSL Store Password', placeholder: 'Enter the gateway password', secret: true },
   ] },
-  { id: 'cod', name: 'Cash on Delivery', logo: '💵', color: '#16A34A', fields: [] },
+  { id: 'cod', name: 'Cash on Delivery', logo: 'COD', color: '#16A34A', fields: [] },
 ]
 
 function masked(last4) { return last4 ? `••••••••${last4}` : '' }
@@ -129,6 +129,8 @@ export default function PaymentsPage() {
 
   if (isLoading || loading) return <div className="space-y-5"><Skeleton className="h-10 w-64 rounded-xl" /><div className="grid gap-4 lg:grid-cols-2">{[0,1,2,3].map((item) => <Skeleton key={item} className="h-36 rounded-2xl" />)}</div></div>
 
+  if (!store) return <div className="flex min-h-[45vh] flex-col items-center justify-center text-center"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted"><CreditCard className="h-6 w-6 text-muted-foreground" /></div><h3 className="mt-4 font-semibold">No store selected</h3><p className="mt-1 text-sm text-muted-foreground">Create or select a store before configuring payment methods.</p></div>
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -148,7 +150,7 @@ export default function PaymentsPage() {
             <div key={method.id} className="rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-2xl" style={{ background: `${method.color}18`, border: `1.5px solid ${method.color}40` }}>{method.logo}</div>
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-sm font-black tracking-tight" style={{ background: `${method.color}18`, border: `1.5px solid ${method.color}40` }}>{method.logo}</div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{method.name}</h3>{enabled && <Badge variant="secondary" className="gap-1 text-[10px] text-success"><Check className="h-3 w-3" />Active</Badge>}{method.id === 'ssl' && config?.credential_valid && <Badge variant="secondary" className="text-[10px] text-blue-600">{config.is_live ? 'Live verified' : 'Sandbox verified'}</Badge>}{invalid && <Badge variant="secondary" className="gap-1 text-[10px] text-red-600"><ShieldAlert className="h-3 w-3" />Invalid / disabled</Badge>}{!config?.configured && <Badge variant="secondary" className="text-[10px] text-amber-600">Setup needed</Badge>}</div>
                     {config?.credential_last4 && <p className="mt-1 text-xs text-muted-foreground">Configured value: <span className="font-mono">{masked(config.credential_last4)}</span></p>}

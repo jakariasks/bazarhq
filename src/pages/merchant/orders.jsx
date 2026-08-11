@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Skeleton } from '@/components/ui/skeleton'
 import { supabase } from '@/integrations/supabase/client'
 import { useCurrentStore } from '@/lib/use-current-store'
+import { downloadInvoicePdf } from '@/lib/invoice'
 
 const STATUS_CONFIG = {
   pending:    { label: 'Pending',    color: 'bg-amber-100 text-amber-800',   icon: Clock,        next: 'confirmed' },
@@ -56,9 +57,9 @@ export default function OrdersPage() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [sortBy, setSortBy] = useState('newest')
   const [cancelReason, setCancelReason] = useState('')
-  const [updating, setUpdating] = useState(false)
+  const [updatingOrderId, setUpdatingOrderId] = useState(null)
 
-  const { data: orders = [], isLoading } = useQuery({
+  const { data: orders = [], isLoading, error: ordersError } = useQuery({
     queryKey: ['orders', store?.id],
     enabled: !!store,
     queryFn: async () => {
@@ -94,92 +95,99 @@ export default function OrdersPage() {
     return acc
   }, {})
 
+  const invalidateOrderData = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['orders', store?.id] }),
+      qc.invalidateQueries({ queryKey: ['order-stats', store?.id] }),
+      qc.invalidateQueries({ queryKey: ['recent-orders', store?.id] }),
+      qc.invalidateQueries({ queryKey: ['merchant-analytics-v3', store?.id] }),
+      qc.invalidateQueries({ queryKey: ['merchant-customers-orders', store?.id] }),
+    ])
+  }
+
+  const appendTimeline = async ({ orderId, status, note }) => {
+    const { error } = await supabase
+      .from('order_timeline')
+      .insert({ order_id: orderId, status, note })
+    if (error) toast.warning('Order updated, but the timeline entry could not be saved.')
+  }
+
   const updateStatus = async (order, newStatus) => {
-    setUpdating(true)
-    const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', order.id)
-    if (error) { toast.error(error.message); setUpdating(false); return }
-    await supabase.from('order_timeline').insert({ order_id: order.id, status: newStatus, note: `Order ${newStatus}` })
-    toast.success(`Order marked as ${newStatus}`)
-    qc.invalidateQueries({ queryKey: ['orders', store?.id] })
-    if (selectedOrder?.id === order.id) setSelectedOrder(prev => ({ ...prev, status: newStatus }))
-    setUpdating(false)
+    if (!store?.id || updatingOrderId === order.id) return
+    setUpdatingOrderId(order.id)
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', order.id)
+        .eq('store_id', store.id)
+      if (error) throw error
+
+      await appendTimeline({ orderId: order.id, status: newStatus, note: `Order ${newStatus}` })
+      toast.success(`Order marked as ${newStatus}`)
+      await invalidateOrderData()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => ({ ...prev, status: newStatus }))
+    } catch (error) {
+      toast.error(error.message || 'Could not update the order')
+    } finally {
+      setUpdatingOrderId(null)
+    }
   }
 
   const cancelOrder = async () => {
-    if (selectedOrder?.status === 'delivered') { toast.error('Delivered orders cannot be cancelled'); return }
+    if (!selectedOrder || !store?.id || updatingOrderId === selectedOrder.id) return
+    if (selectedOrder.status === 'delivered') { toast.error('Delivered orders cannot be cancelled'); return }
     if (!cancelReason.trim()) { toast.error('Please provide a cancellation reason'); return }
-    setUpdating(true)
-    const { error } = await supabase.from('orders').update({ status: 'cancelled' }).eq('id', selectedOrder.id)
-    if (error) { toast.error(error.message); setUpdating(false); return }
-    await supabase.from('order_timeline').insert({ order_id: selectedOrder.id, status: 'cancelled', note: cancelReason.trim() })
-    toast.success('Order cancelled')
-    qc.invalidateQueries({ queryKey: ['orders', store?.id] })
-    setCancelOpen(false)
-    setCancelReason('')
-    if (selectedOrder) setSelectedOrder(prev => ({ ...prev, status: 'cancelled' }))
-    setUpdating(false)
+
+    setUpdatingOrderId(selectedOrder.id)
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: 'cancelled' })
+        .eq('id', selectedOrder.id)
+        .eq('store_id', store.id)
+      if (error) throw error
+
+      await appendTimeline({ orderId: selectedOrder.id, status: 'cancelled', note: cancelReason.trim() })
+      toast.success('Order cancelled')
+      await invalidateOrderData()
+      setCancelOpen(false)
+      setCancelReason('')
+      setSelectedOrder(prev => prev ? ({ ...prev, status: 'cancelled', cancellation_reason: cancelReason.trim() }) : prev)
+    } catch (error) {
+      toast.error(error.message || 'Could not cancel the order')
+    } finally {
+      setUpdatingOrderId(null)
+    }
   }
 
   const updatePaymentStatus = async (order, payStatus) => {
-    const { error } = await supabase.from('orders').update({ payment_status: payStatus }).eq('id', order.id)
-    if (error) { toast.error(error.message); return }
-    toast.success(`Payment marked as ${payStatus}`)
-    qc.invalidateQueries({ queryKey: ['orders', store?.id] })
-    if (selectedOrder?.id === order.id) setSelectedOrder(prev => ({ ...prev, payment_status: payStatus }))
+    if (!store?.id || updatingOrderId === order.id) return
+    setUpdatingOrderId(order.id)
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ payment_status: payStatus })
+        .eq('id', order.id)
+        .eq('store_id', store.id)
+      if (error) throw error
+
+      toast.success(`Payment marked as ${payStatus}`)
+      await invalidateOrderData()
+      if (selectedOrder?.id === order.id) setSelectedOrder(prev => ({ ...prev, payment_status: payStatus }))
+    } catch (error) {
+      toast.error(error.message || 'Could not update payment status')
+    } finally {
+      setUpdatingOrderId(null)
+    }
   }
 
   const openDetail = (order) => { setSelectedOrder(order); setDetailOpen(true) }
 
-  // SRS M5: PDF Invoice download
   const downloadInvoice = (order) => {
-    const items = Array.isArray(order.items) ? order.items : []
-    const date = new Date(order.created_at).toLocaleDateString('en-BD', { day:'numeric', month:'long', year:'numeric' })
-    const html = `<!DOCTYPE html><html>
-<head><meta charset="UTF-8"><title>Invoice ${order.order_id}</title>
-<style>
-  body{font-family:Arial,sans-serif;max-width:700px;margin:40px auto;padding:20px;color:#111}
-  .header{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid #6366f1;padding-bottom:16px;margin-bottom:20px}
-  .logo{font-size:22px;font-weight:900;color:#6366f1}
-  .badge{background:#f3f4f6;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;color:#374151}
-  table{width:100%;border-collapse:collapse;margin:20px 0}
-  th{background:#f9fafb;text-align:left;padding:10px 12px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}
-  td{padding:10px 12px;border-bottom:1px solid #f3f4f6;font-size:14px}
-  .total-row td{font-weight:700;font-size:15px;border-top:2px solid #e5e7eb;padding-top:14px}
-  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
-  .info-box{background:#f9fafb;border-radius:8px;padding:14px}
-  .info-box h4{margin:0 0 8px;font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em}
-  .info-box p{margin:3px 0;font-size:13px}
-  .footer{margin-top:30px;text-align:center;font-size:12px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:16px}
-  .pay-badge{display:inline-block;background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600}
-</style></head>
-<body>
-<div class="header">
-  <div><div class="logo">BazarHQ</div><div style="font-size:13px;color:#6b7280;margin-top:4px">${order.store_id ? 'Powered by BazarHQ' : ''}</div></div>
-  <div style="text-align:right"><div style="font-size:20px;font-weight:800;font-family:monospace">${order.order_id}</div><div style="font-size:12px;color:#6b7280;margin-top:4px">${date}</div><div class="badge" style="margin-top:6px">${order.status.toUpperCase()}</div></div>
-</div>
-<div class="info-grid">
-  <div class="info-box"><h4>Customer</h4><p><strong>${order.customer_name}</strong></p><p>📱 ${order.customer_phone}</p>${order.customer_email ? `<p>✉️ ${order.customer_email}</p>` : ''}</div>
-  <div class="info-box"><h4>Delivery Address</h4><p>${order.delivery_address}</p>${order.delivery_area ? `<p>${order.delivery_area}</p>` : ''}<p>${order.district}</p>${order.delivery_note ? `<p style="color:#6b7280;font-style:italic">Note: ${order.delivery_note}</p>` : ''}</div>
-</div>
-<table>
-  <thead><tr><th>#</th><th>Product</th><th style="text-align:right">Price</th><th style="text-align:center">Qty</th><th style="text-align:right">Total</th></tr></thead>
-  <tbody>
-    ${items.map((item, i) => `<tr><td>${i+1}</td><td>${item.title}</td><td style="text-align:right">৳ ${Number(item.price).toLocaleString()}</td><td style="text-align:center">${item.qty}</td><td style="text-align:right">৳ ${(item.price*item.qty).toLocaleString()}</td></tr>`).join('')}
-    <tr><td colspan="4" style="text-align:right;color:#6b7280;font-size:13px">Delivery charge</td><td style="text-align:right;font-size:13px">Free</td></tr>
-    <tr class="total-row"><td colspan="4" style="text-align:right">Total</td><td style="text-align:right;color:#6366f1">৳ ${Number(order.total).toLocaleString()}</td></tr>
-  </tbody>
-</table>
-<div class="info-box" style="display:flex;justify-content:space-between;align-items:center">
-  <div><strong>Payment method:</strong> ${order.payment_method === 'cod' ? 'Cash on Delivery' : order.payment_method?.toUpperCase()}</div>
-  <div><span class="pay-badge">${order.payment_status?.replace('_',' ').toUpperCase()}</span></div>
-</div>
-<div class="footer">Thank you for your order! For questions, please contact the shop directly.<br>Invoice generated by BazarHQ — bazarhq.com</div>
-</body></html>`
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    const win = window.open(url, '_blank')
-    win?.print()
-    setTimeout(() => URL.revokeObjectURL(url), 5000)
+    downloadInvoicePdf(order, store, {
+      cancellationReason: order.cancellation_reason || order.cancel_reason || '',
+    })
   }
 
   if (!store) return (
@@ -244,6 +252,12 @@ export default function OrdersPage() {
 
         {isLoading ? (
           <div className="space-y-3 p-4">{[0,1,2].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+        ) : ordersError ? (
+          <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+            <AlertCircle className="h-9 w-9 text-destructive" />
+            <h3 className="mt-3 font-semibold">Orders could not be loaded</h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">{ordersError.message || 'Please refresh and try again.'}</p>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
             <ShoppingCart className="h-10 w-10 text-muted-foreground" />
@@ -278,9 +292,9 @@ export default function OrdersPage() {
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     {sc.next && (
-                      <Button size="sm" disabled={updating} onClick={() => updateStatus(order, sc.next)}
+                      <Button size="sm" disabled={updatingOrderId === order.id} onClick={() => updateStatus(order, sc.next)}
                         className="gap-1.5 bg-gradient-primary text-xs text-primary-foreground">
-                        {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                        {updatingOrderId === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                         {NEXT_LABEL[sc.next]}
                       </Button>
                     )}
@@ -317,19 +331,19 @@ export default function OrdersPage() {
                   {o.status !== 'cancelled' && o.status !== 'delivered' && (
                     <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-muted/30 p-3">
                       {sc.next && (
-                        <Button size="sm" disabled={updating} onClick={() => updateStatus(o, sc.next)}
+                        <Button size="sm" disabled={updatingOrderId === o.id} onClick={() => updateStatus(o, sc.next)}
                           className="gap-1.5 bg-gradient-primary text-primary-foreground">
-                          {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          {updatingOrderId === o.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                           {NEXT_LABEL[sc.next]}
                         </Button>
                       )}
                       {o.payment_method === 'cod' && o.payment_status !== 'collected' && (
-                        <Button size="sm" variant="outline" disabled={updating} onClick={() => updatePaymentStatus(o, 'collected')} className="gap-1.5">
+                        <Button size="sm" variant="outline" disabled={updatingOrderId === o.id} onClick={() => updatePaymentStatus(o, 'collected')} className="gap-1.5">
                           <CreditCard className="h-3.5 w-3.5" /> Mark Payment Collected
                         </Button>
                       )}
                       {['bkash','nagad','rocket'].includes(o.payment_method) && o.payment_status === 'pending_verification' && (
-                        <Button size="sm" variant="outline" disabled={updating} onClick={() => updatePaymentStatus(o, 'paid')} className="gap-1.5 text-green-700 border-green-300">
+                        <Button size="sm" variant="outline" disabled={updatingOrderId === o.id} onClick={() => updatePaymentStatus(o, 'paid')} className="gap-1.5 text-green-700 border-green-300">
                           <Check className="h-3.5 w-3.5" /> Verify Payment
                         </Button>
                       )}
@@ -380,7 +394,8 @@ export default function OrdersPage() {
                     </div>
                     <div className="border-t border-border bg-muted/20 px-4 py-3 space-y-1">
                       <div className="flex justify-between text-sm text-muted-foreground"><span>Subtotal</span><span>৳ {Number(o.subtotal || o.total).toLocaleString()}</span></div>
-                      <div className="flex justify-between text-sm text-muted-foreground"><span>Delivery</span><span className="text-green-600">Free</span></div>
+                      <div className="flex justify-between text-sm text-muted-foreground"><span>Delivery</span><span>৳ {Number(o.delivery_charge ?? o.shipping_charge ?? 0).toLocaleString()}</span></div>
+                      {Number(o.discount_amount ?? o.coupon_discount ?? 0) > 0 && <div className="flex justify-between text-sm text-green-700"><span>Discount</span><span>− ৳ {Number(o.discount_amount ?? o.coupon_discount ?? 0).toLocaleString()}</span></div>}
                       <div className="flex justify-between font-bold border-t border-border pt-2"><span>Total</span><span>৳ {Number(o.total).toLocaleString()}</span></div>
                     </div>
                   </div>
@@ -417,8 +432,8 @@ export default function OrdersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCancelOpen(false); setCancelReason('') }}>Go back</Button>
-            <Button variant="destructive" onClick={cancelOrder} disabled={updating || !cancelReason.trim()}>
-              {updating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+            <Button variant="destructive" onClick={cancelOrder} disabled={updatingOrderId === selectedOrder?.id || !cancelReason.trim()}>
+              {updatingOrderId === selectedOrder?.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
               Cancel Order
             </Button>
           </DialogFooter>

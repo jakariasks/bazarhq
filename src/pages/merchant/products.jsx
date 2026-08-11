@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client'
 import { useCurrentStore } from '@/lib/use-current-store'
 import { useAuth } from '@/hooks/use-auth'
 import { buildVariantRows, normalizeVariantTypes, parseCsv, uniqueCatalogSlug, validateProductCsv, variantsForDatabase } from '@/lib/product-catalog-tools'
+import { getProductCommerceSummary, normalizeProductVariants } from '@/lib/product-variants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -79,6 +80,24 @@ const DELIVERY_OPTIONS = [
   { value: 'custom', label: 'Use custom delivery charge' },
 ]
 
+const MAX_PRODUCT_IMAGE_BYTES = 2 * 1024 * 1024
+const MAX_PRODUCT_IMAGES = 6
+
+function productInventorySummary(product) {
+  const commerce = getProductCommerceSummary(product)
+  if (commerce.hasVariants) {
+    const variants = normalizeProductVariants(product)
+    const lowStock = variants.some((variant) => variant.available && variant.stock <= Number(variant.low_stock_threshold ?? 5))
+    return { ...commerce, lowStock, outOfStock: commerce.stock <= 0 }
+  }
+  const threshold = Math.max(0, Math.round(numberValue(product?.low_stock_threshold, 5)))
+  return {
+    ...commerce,
+    lowStock: commerce.stock > 0 && commerce.stock <= threshold,
+    outOfStock: commerce.stock <= 0,
+  }
+}
+
 function numberValue(value, fallback = 0) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
@@ -141,7 +160,9 @@ function ProductStat({ label, value, tone = 'slate' }) {
 
 function ProductListCard({ product, onEdit, onDuplicate, onDelete, duplicating }) {
   const images = normalizeImages(product?.images, product?.image_url)
-  const hasDiscount = numberValue(product?.compare_at_price) > numberValue(product?.price)
+  const inventory = productInventorySummary(product)
+  const displayPrice = inventory.minPrice
+  const hasDiscount = numberValue(product?.compare_at_price) > displayPrice
   const productTone = productStatus(product)
 
   return (
@@ -166,7 +187,7 @@ function ProductListCard({ product, onEdit, onDuplicate, onDelete, duplicating }
           )}
           {hasDiscount && (
             <span className="absolute left-2 top-2 rounded-full bg-white/95 px-2 py-1 text-[10px] font-black text-rose-600 shadow-sm">
-              -{Math.round((1 - numberValue(product.price) / numberValue(product.compare_at_price)) * 100)}%
+              -{Math.round((1 - displayPrice / numberValue(product.compare_at_price)) * 100)}%
             </span>
           )}
         </div>
@@ -193,12 +214,12 @@ function ProductListCard({ product, onEdit, onDuplicate, onDelete, duplicating }
             </div>
 
             <div className="shrink-0 text-right">
-              <p className="text-2xl font-black tracking-tight text-slate-950">{money(product?.price)}</p>
-              {numberValue(product?.compare_at_price) > numberValue(product?.price) ? (
+              <p className="text-2xl font-black tracking-tight text-slate-950">{inventory.hasPriceRange ? `From ${money(displayPrice)}` : money(displayPrice)}</p>
+              {hasDiscount ? (
                 <p className="mt-1 text-xs font-semibold text-slate-400 line-through">{money(product?.compare_at_price)}</p>
               ) : null}
-              <p className={`mt-2 text-xs font-black ${numberValue(product?.stock) > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                {numberValue(product?.stock) > 0 ? `${numberValue(product?.stock)} in stock` : 'Out of stock'}
+              <p className={`mt-2 text-xs font-black ${inventory.outOfStock ? 'text-rose-600' : inventory.lowStock ? 'text-amber-700' : 'text-emerald-700'}`}>
+                {inventory.outOfStock ? 'Out of stock' : `${inventory.stock} in stock${inventory.hasVariants ? ' across variants' : ''}`}
               </p>
             </div>
           </div>
@@ -1058,6 +1079,8 @@ export default function MerchantProductsPage() {
   const [uploading, setUploading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [duplicating, setDuplicating] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
   const [reviewInbox, setReviewInbox] = useState([])
   const [reviewLoading, setReviewLoading] = useState(false)
   const [reviewDrafts, setReviewDrafts] = useState({})
@@ -1192,7 +1215,7 @@ export default function MerchantProductsPage() {
   const stats = useMemo(() => {
     const active = products.filter((item) => productStatus(item) === 'active').length
     const draft = products.filter((item) => productStatus(item) === 'draft').length
-    const lowStock = products.filter((item) => numberValue(item.stock) > 0 && numberValue(item.stock) <= 5).length
+    const lowStock = products.filter((item) => productInventorySummary(item).lowStock).length
     return { active, draft, lowStock }
   }, [products])
 
@@ -1239,14 +1262,24 @@ export default function MerchantProductsPage() {
     }
     setUploading(true)
     try {
+      const existingImages = normalizeImages(form.images, form.image_url)
+      const slots = Math.max(0, MAX_PRODUCT_IMAGES - existingImages.length)
+      if (!slots) throw new Error(`A product can contain up to ${MAX_PRODUCT_IMAGES} images.`)
+      const selectedFiles = files.slice(0, slots)
+      const invalidType = selectedFiles.find((file) => !String(file?.type || '').startsWith('image/'))
+      if (invalidType) throw new Error(`“${invalidType.name}” is not a supported image file.`)
+      const oversized = selectedFiles.find((file) => Number(file?.size || 0) > MAX_PRODUCT_IMAGE_BYTES)
+      if (oversized) throw new Error(`“${oversized.name}” is larger than 2 MB.`)
+      if (files.length > slots) toast.info(`Only ${slots} more image${slots === 1 ? '' : 's'} can be added to this product.`)
+
       const uploaded = []
-      for (const file of files.slice(0, 6)) {
-        const ext = String(file.name.split('.').pop() || 'jpg').toLowerCase()
+      for (const file of selectedFiles) {
+        const ext = String(file.name.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg'
         // Existing shop-branding RLS expects the authenticated user id as the
         // first folder segment: <auth.uid()>/<file-name>. Keep product images
         // isolated under products/<store-id>/ while preserving that contract.
         const path = `${user.id}/products/${store.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-        const { error: uploadError } = await supabase.storage.from('shop-branding').upload(path, file, { upsert: false })
+        const { error: uploadError } = await supabase.storage.from('shop-branding').upload(path, file, { upsert: false, contentType: file.type })
         if (uploadError) throw uploadError
         const { data } = supabase.storage.from('shop-branding').getPublicUrl(path)
         if (data?.publicUrl) uploaded.push(data.publicUrl)
@@ -1291,6 +1324,20 @@ export default function MerchantProductsPage() {
     if (!form.description.trim()) return toast.error('Enter product description')
     if (!form.category.trim()) return toast.error('Choose a category')
     if (numberValue(form.price) <= 0) return toast.error('Enter a valid selling price')
+    if (form.compare_at_price && numberValue(form.compare_at_price) <= numberValue(form.price)) return toast.error('Compare-at price must be higher than the selling price')
+    const nextSlug = slugify(form.slug || form.title)
+    if (!nextSlug) return toast.error('Enter a product title or valid slug')
+    const slugConflict = products.find((item) => item.id !== form.id && String(item.slug || '').trim().toLowerCase() === nextSlug)
+    if (slugConflict) return toast.error(`The product URL “${nextSlug}” is already used by ${slugConflict.title || 'another product'}.`)
+    const nextSku = form.sku.trim().toLowerCase()
+    if (nextSku) {
+      const skuConflict = products.find((item) => {
+        if (item.id === form.id) return false
+        if (String(item.sku || '').trim().toLowerCase() === nextSku) return true
+        return normalizeProductVariants(item.variants).some((variant) => String(variant.sku || '').trim().toLowerCase() === nextSku)
+      })
+      if (skuConflict) return toast.error(`SKU “${form.sku.trim()}” is already used by ${skuConflict.title || 'another product'}.`)
+    }
     if (!Number.isInteger(numberValue(form.lowStockThreshold, NaN)) || numberValue(form.lowStockThreshold, NaN) < 0) return toast.error('Low-stock threshold must be a non-negative whole number')
     if (form.hasVariants) {
       const invalidThreshold = (form.variants || []).find((variant) => {
@@ -1299,6 +1346,29 @@ export default function MerchantProductsPage() {
         return !Number.isInteger(value) || value < 0
       })
       if (invalidThreshold) return toast.error(`Low-stock threshold for ${invalidThreshold.label || 'a variant'} must be a non-negative whole number`)
+
+      const seenVariantSkus = new Set()
+      for (const variant of form.variants || []) {
+        const sku = String(variant.sku || '').trim().toLowerCase()
+        if (!sku) continue
+        if (seenVariantSkus.has(sku)) return toast.error(`Variant SKU “${variant.sku.trim()}” is duplicated in this product.`)
+        seenVariantSkus.add(sku)
+      }
+
+      const externalSkus = new Map()
+      products.filter((item) => item.id !== form.id).forEach((item) => {
+        const baseSku = String(item.sku || '').trim().toLowerCase()
+        if (baseSku) externalSkus.set(baseSku, item.title || 'another product')
+        normalizeProductVariants(item.variants).forEach((variant) => {
+          const variantSku = String(variant.sku || '').trim().toLowerCase()
+          if (variantSku) externalSkus.set(variantSku, item.title || 'another product')
+        })
+      })
+      const conflictingVariant = (form.variants || []).find((variant) => externalSkus.has(String(variant.sku || '').trim().toLowerCase()))
+      if (conflictingVariant) {
+        const owner = externalSkus.get(String(conflictingVariant.sku || '').trim().toLowerCase())
+        return toast.error(`Variant SKU “${conflictingVariant.sku.trim()}” is already used by ${owner}.`)
+      }
     }
 
     setSaving(true)
@@ -1316,7 +1386,7 @@ export default function MerchantProductsPage() {
         store_id: store.id,
         user_id: user?.id,
         title: form.title.trim(),
-        slug: slugify(form.slug || form.title),
+        slug: nextSlug,
         category: form.category.trim(),
         status: form.status === 'active' ? 'published' : form.status === 'archived' ? 'archived' : 'draft',
         description: form.description.trim(),
@@ -1339,7 +1409,7 @@ export default function MerchantProductsPage() {
 
       let response
       if (form.id) {
-        response = await supabase.from('products').update(payload).eq('id', form.id).select('*').single()
+        response = await supabase.from('products').update(payload).eq('id', form.id).eq('store_id', store.id).select('*').single()
       } else {
         response = await supabase.from('products').insert({ ...payload, created_at: new Date().toISOString() }).select('*').single()
       }
@@ -1458,15 +1528,23 @@ export default function MerchantProductsPage() {
     }
   }
 
-  async function deleteProduct(product) {
-    if (!window.confirm(`Delete “${product?.title || 'this product'}”?`)) return
-    const { error } = await supabase.from('products').delete().eq('id', product.id)
+  function deleteProduct(product) {
+    if (!product?.id) return
+    setDeleteTarget(product)
+  }
+
+  async function confirmDeleteProduct() {
+    if (!deleteTarget?.id || !store?.id) return
+    setDeletingId(deleteTarget.id)
+    const { error } = await supabase.from('products').delete().eq('id', deleteTarget.id).eq('store_id', store.id)
+    setDeletingId(null)
     if (error) {
       toast.error(error.message || 'Could not delete product')
       return
     }
     toast.success('Product deleted')
-    loadProducts({ silent: true })
+    setDeleteTarget(null)
+    await loadProducts({ silent: true })
   }
 
   return (
@@ -1601,6 +1679,19 @@ export default function MerchantProductsPage() {
         suggestedCategories={suggestedCategories}
         onUploadFiles={uploadImages}
       />
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deletingId) setDeleteTarget(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Delete product?</DialogTitle></DialogHeader>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800">
+            “{deleteTarget?.title || 'This product'}” will be removed from the merchant catalog and storefront. Historical order records remain unchanged.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={!!deletingId}>Keep product</Button>
+            <Button variant="destructive" onClick={confirmDeleteProduct} disabled={!!deletingId}>{deletingId && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Delete product</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {uploading ? (
         <div className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-lg">
